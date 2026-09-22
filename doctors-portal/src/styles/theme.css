@@ -1,0 +1,276 @@
+/* ===========================================================================
+   Indostates Health · Doctors Portal — design tokens
+   ---------------------------------------------------------------------------
+   The reconciliation, stated once:
+     GLASSMORPHISM GOVERNS SURFACES.  THE ATLAS GOVERNS MEANING.
+
+   UI_ATLAS.md §5.3 freezes three palettes that never borrow from each other —
+   brand, clinical semantics, and AI. The reference image supplies only the
+   SURFACE layer (page gradient, frosted fills, blur, borders, radii, shadow).
+   Its indigo accent card happens to sit inside the atlas's AI-indigo family,
+   so the image's hero surface becomes the AI surface and no palette is fought
+   over.
+
+   Sampled from the reference image (median over card regions):
+     page gradient  #e7f0f2 -> #d2dee1
+     glass fill     #f8f8f8 @ ~62%
+     muted fill     #e6edef @ ~55%
+     accent card    #4e568a -> #7980a7,  deep mark #3f467f
+   =========================================================================== */
+
+@import 'tailwindcss';
+
+@theme {
+  /* ---------------------------------------------------------------- SURFACE
+     From the reference image. These are the only tokens the night theme
+     substantially rewrites. */
+  --color-page-from: #e2eef1;
+  --color-page-via: #d8e6ea;
+  --color-page-to: #c7d7dc;
+
+  /* Two decorative blooms behind the glass, from the image's soft blobs. */
+  --color-bloom-a: rgb(79 70 229 / 0.16);
+  --color-bloom-b: rgb(19 117 71 / 0.10);
+
+  --color-glass-fill: rgb(255 255 255 / 0.62);
+  --color-glass-fill-strong: rgb(255 255 255 / 0.82);
+  --color-glass-fill-muted: rgb(230 237 239 / 0.55);
+  --color-glass-fill-hover: rgb(255 255 255 / 0.74);
+  --color-glass-border: rgb(255 255 255 / 0.65);
+  --color-glass-hairline: rgb(23 32 56 / 0.07);
+  --color-glass-inset: rgb(23 32 56 / 0.04);
+
+  /* ------------------------------------------------------------------- INK */
+  --color-ink: #15161c;
+  --color-ink-2: #3f4453;
+  --color-ink-3: #5b6273;
+  --color-ink-muted: #6b7280;
+  --color-ink-invert: #ffffff;
+
+  /* ----------------------------------------------------------------- BRAND
+     §5.3 — "Indostates blue #1B4D8F primary, #0F2F57 dark. Used for
+     navigation, primary actions and identity — NEVER for clinical status." */
+  --color-brand: #1b4d8f;
+  --color-brand-dark: #0f2f57;
+  --color-brand-soft: #e8f0f9;
+  --color-brand-on: #ffffff;
+
+  /* -------------------------------------------------------------- CLINICAL
+     §5.3 closed set. Never glass, never tint-only: every semantic state also
+     renders an icon and a text label (~8% of male clinicians have a CVD). */
+  --color-normal: #137547;
+  --color-normal-soft: #e3f3ea;
+  --color-caution: #b45309;
+  --color-caution-soft: #fdf0e1;
+  --color-abnormal: #b42318;
+  --color-abnormal-soft: #fdeceb;
+  --color-critical: #7a0c16;
+  --color-critical-soft: #fbe4e6;
+  --color-isolation: #7c3aed;
+  --color-isolation-soft: #f2ebfe;
+  --color-inactive: #667085;
+  --color-inactive-soft: #eef0f3;
+
+  /* --------------------------------------------------------------------- AI
+     §5.3 — "AI palette, deliberately outside the clinical range. AI-indigo
+     #4F46E5 for the diamond glyph, ghost-text accent rules and suggestion
+     cards." Indigo appears nowhere in the clinical table, by design. */
+  --color-ai: #4f46e5;
+  --color-ai-strong: #3f36cf;
+  --color-ai-soft: #eef2ff;
+  --color-ai-ghost: rgb(79 70 229 / 0.05);
+  --color-ai-on: #ffffff;
+  --color-ai-grad-from: #4f46e5;
+  --color-ai-grad-to: #7c79e8;
+
+  /* ---------------------------------------------------------------- PRIORITY
+     My Day's urgency scale. A fifth job, kept separate from brand, clinical
+     status, AI and chart series for the same reason those four are separate:
+     "this needs you next" is not a clinical finding, and must not look like one.
+
+     The four hues are the brief's, verbatim and unaltered. They carry every
+     NON-TEXT role — the status dot, a row's left stripe, a badge fill.
+
+     Measured on the glass-strong surface (#f8fafb light / #292e3c night):
+       as text      critical 4.18  warning 2.09  pending 1.52  normal 3.12
+     Only critical is even close, so the hues are NOT used as text. Instead:
+       · `-ink`   a minimally darkened variant that clears 4.5:1 on the surface,
+                  used only where a status word must be tinted (4.50 / 4.53).
+       · `-fill`  the solid badge. Critical darkens 4 steps to carry WHITE text
+                  at 4.52 (the raw hue gives 4.38 — under AA for a 13px label).
+                  Warning, pending and normal take DARK ink on the raw hue at
+                  8.25 / 11.38 / 5.53 — which is the brief's own rule.
+     Everywhere else the reason text is plain --color-ink-2 and the hue lives in
+     the dot alone. That is both the accessible answer and the calmer one. */
+  --color-pri-critical: #d64545;
+  --color-pri-critical-fill: #d24444;
+  --color-pri-critical-ink: #cd4242;
+  --color-pri-critical-soft: rgb(214 69 69 / 0.12);
+
+  --color-pri-warning: #e6a23c;
+  --color-pri-warning-fill: #e6a23c;
+  --color-pri-warning-ink: #966927;
+  --color-pri-warning-soft: rgb(230 162 60 / 0.16);
+
+  --color-pri-pending: #f2c94c;
+  --color-pri-pending-fill: #f2c94c;
+  --color-pri-pending-ink: #88712b;
+  --color-pri-pending-soft: rgb(242 201 76 / 0.18);
+
+  --color-pri-normal: #3a8dff;
+  --color-pri-normal-fill: #3a8dff;
+  --color-pri-normal-ink: #2f72cf;
+  --color-pri-normal-soft: #e8f2ff;
+
+  /** Ink laid ON a solid priority fill. */
+  --color-pri-on-critical: #ffffff;
+  --color-pri-on-warning: #15161c;
+
+  /* ------------------------------------------------------------ CHART SERIES
+     A fourth, separate job: "this series", as distinct from brand, clinical
+     status and AI. §5.3's separation rule is the reason these are their own
+     tokens rather than borrowed from the palettes above — a trend line is not
+     a status and must not look like one.
+
+     Validated for both themes against the frosted-card surface:
+     worst adjacent CVD ΔE 24.7 light / 26.8 dark, normal-vision 33.6 / 31.8.
+     The light orange sits at 2.88:1 on the surface, so every chart using slot 2
+     ships direct labels and a table view. */
+  --color-viz-1: #2a78d6;
+  --color-viz-2: #eb6834;
+  --color-viz-band: rgb(19 117 71 / 0.10);
+  --color-viz-grid: rgb(23 32 56 / 0.10);
+
+  /* ------------------------------------------------------------------ SHAPE */
+  --radius-card: 24px;
+  --radius-panel: 20px;
+  --radius-field: 14px;
+  --radius-chip: 10px;
+  --radius-pill: 999px;
+
+  --blur-glass: 18px;
+  --blur-glass-lg: 28px;
+
+  --shadow-glass: 0 8px 32px rgb(31 41 72 / 0.10), 0 1px 2px rgb(31 41 72 / 0.04);
+  --shadow-glass-lg: 0 18px 54px rgb(31 41 72 / 0.16), 0 2px 6px rgb(31 41 72 / 0.06);
+  --shadow-bubble: 0 10px 30px rgb(79 70 229 / 0.36), 0 2px 6px rgb(31 41 72 / 0.14);
+
+  /* ------------------------------------------------------------------- TYPE
+     §5.4 — Inter for Latin UI; tabular figures are non-negotiable in
+     flowsheets and any column of numbers; density IS a type token. */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Inter', ui-monospace, monospace;
+
+  --text-compact: 13px;
+  --text-comfortable: 14px;
+  --text-wall: 18px;
+
+  /* §5.1 asks for an 8px spacing base. Tailwind's `--spacing` is the UNIT that
+     every step multiplies, so it stays at the default 4px and the 8px rhythm
+     comes from using even steps (p-2 = 8px, p-4 = 16px, p-6 = 24px). Overriding
+     it to 8px would silently double every padding in the app. */
+
+  /* ------------------------------------------------- BREAKPOINTS  (§5.1)
+     md = 1024 is the ward tablet — "the breakpoint that matters most and is
+     usually designed last." wall = 1920, read at 3-4 metres. */
+  --breakpoint-sm: 768px;
+  --breakpoint-md: 1024px;
+  --breakpoint-lg: 1280px;
+  --breakpoint-xl: 1440px;
+  --breakpoint-wall: 1920px;
+
+  /* ------------------------------------------------------- ZONE GEOMETRY
+     §5.2, the closed set of 8 zones. */
+  --spacing-z1: 56px; /* app bar */
+  --spacing-z2: 240px; /* nav rail */
+  --spacing-z2-collapsed: 64px;
+  --spacing-z3: 64px; /* patient banner */
+  --spacing-z4: 64px; /* page header */
+  --spacing-z6: 320px; /* right rail */
+  --spacing-z7: 64px; /* sticky action bar */
+  --spacing-z7b: 56px; /* the assistant bubble — a bubble, not a bar */
+  --spacing-assistant-panel: 420px;
+  --spacing-explain-drawer: 480px;
+
+  /* ----------------------------------------------------------------- MOTION
+     §5.7 — "Nothing on a clinical screen animates for longer than 200ms." */
+  --ease-out-clinical: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ===========================================================================
+   NIGHT THEME
+   §5.3 mandates it on S-12-*, S-13-*, S-18-*, S-15-04/05 and every ARC-06
+   flowsheet — "ICU, radiology reading rooms and stroke calls happen at 03:00."
+   Contrast must hold >= 4.5:1 in BOTH themes, so every clinical hex is lifted
+   to a dark-safe variant rather than reused.
+   =========================================================================== */
+[data-theme='night'] {
+  --color-page-from: #0d1220;
+  --color-page-via: #111726;
+  --color-page-to: #161d2e;
+
+  --color-bloom-a: rgb(129 140 248 / 0.16);
+  --color-bloom-b: rgb(52 211 153 / 0.08);
+
+  --color-glass-fill: rgb(255 255 255 / 0.06);
+  --color-glass-fill-strong: rgb(255 255 255 / 0.10);
+  --color-glass-fill-muted: rgb(255 255 255 / 0.035);
+  --color-glass-fill-hover: rgb(255 255 255 / 0.12);
+  --color-glass-border: rgb(255 255 255 / 0.12);
+  --color-glass-hairline: rgb(255 255 255 / 0.08);
+  --color-glass-inset: rgb(0 0 0 / 0.20);
+
+  --color-ink: #eef1f7;
+  --color-ink-2: #c4cad8;
+  --color-ink-3: #9aa3b6;
+  --color-ink-muted: #8b94a8;
+  --color-ink-invert: #0d1220;
+
+  --color-brand: #7cb0ec;
+  --color-brand-dark: #a8ccf4;
+  --color-brand-soft: rgb(124 176 236 / 0.16);
+  --color-brand-on: #0d1220;
+
+  --color-normal: #34d399;
+  --color-normal-soft: rgb(52 211 153 / 0.16);
+  --color-caution: #fbbf24;
+  --color-caution-soft: rgb(251 191 36 / 0.16);
+  --color-abnormal: #f87171;
+  --color-abnormal-soft: rgb(248 113 113 / 0.16);
+  --color-critical: #ff8a8a;
+  --color-critical-soft: rgb(255 138 138 / 0.20);
+  --color-isolation: #a78bfa;
+  --color-isolation-soft: rgb(167 139 250 / 0.16);
+  --color-inactive: #98a2b3;
+  --color-inactive-soft: rgb(152 162 179 / 0.14);
+
+  --color-ai: #a5b4fc;
+  --color-ai-strong: #c7d2fe;
+  --color-ai-soft: rgb(165 180 252 / 0.14);
+  --color-ai-ghost: rgb(165 180 252 / 0.07);
+  --color-ai-on: #0d1220;
+  --color-ai-grad-from: #4f46e5;
+  --color-ai-grad-to: #8b86f0;
+
+  /* The four priority hues hold up on the dark surface, so the dots and fills
+     are unchanged. Only the text inks are lifted, and warning and pending
+     already clear 4.5:1 unmodified (6.19 and 8.54). */
+  --color-pri-critical-ink: #e17575;
+  --color-pri-critical-soft: rgb(214 69 69 / 0.22);
+  --color-pri-warning-ink: #e6a23c;
+  --color-pri-warning-soft: rgb(230 162 60 / 0.20);
+  --color-pri-pending-ink: #f2c94c;
+  --color-pri-pending-soft: rgb(242 201 76 / 0.18);
+  --color-pri-normal-ink: #4895ff;
+  --color-pri-normal-soft: rgb(58 141 255 / 0.18);
+
+  /* Dark chart steps are SELECTED for the dark surface, not an auto-flip. */
+  --color-viz-1: #3987e5;
+  --color-viz-2: #d95926;
+  --color-viz-band: rgb(52 211 153 / 0.12);
+  --color-viz-grid: rgb(255 255 255 / 0.12);
+
+  --shadow-glass: 0 8px 32px rgb(0 0 0 / 0.40), 0 1px 2px rgb(0 0 0 / 0.30);
+  --shadow-glass-lg: 0 18px 54px rgb(0 0 0 / 0.52), 0 2px 6px rgb(0 0 0 / 0.34);
+  --shadow-bubble: 0 10px 30px rgb(79 70 229 / 0.50), 0 2px 6px rgb(0 0 0 / 0.40);
+}

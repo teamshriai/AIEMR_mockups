@@ -1,0 +1,230 @@
+/* ===========================================================================
+   Glass surface system + base element styles.
+   Five rules keep the glass accessible; three of them are atlas hard rules:
+     1. Text never sits on the page gradient — always on a glass fill.
+     2. Colour is never the only carrier (§5.3): icon + text label always.
+     3. Clinical semantics never get glass — a critical chip is opaque.
+     4. The diamond is reserved for AI, 12px, AI-indigo, nowhere else (§5.5).
+     5. backdrop-filter is capped at two stacked layers, with an opaque
+        fallback where the browser has no support.
+   =========================================================================== */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    font-size: var(--text-comfortable);
+    line-height: 1.5;
+    color: var(--color-ink);
+    background-color: var(--color-page-to);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* The page backdrop: a soft gradient plus two blurred blooms, matching the
+     reference image's pale ice field with indigo and mint hazes. Fixed, so it
+     never scrolls out from under the glass. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(60rem 40rem at 12% -10%, var(--color-bloom-a), transparent 60%),
+      radial-gradient(50rem 38rem at 105% 15%, var(--color-bloom-b), transparent 62%),
+      linear-gradient(145deg, var(--color-page-from), var(--color-page-via) 45%, var(--color-page-to));
+    transition: background 200ms var(--ease-out-clinical);
+  }
+
+  /* §5.4 — tabular figures are "non-negotiable in flowsheets and any column of
+     numbers", and a clock whose digits shift width is unreadable at a glance. */
+  :where(table, .tabular, input[type='number']) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* A visible focus ring everywhere — a full mouse-free path to every primary
+     action is mandatory (§10.1 ARC-15). */
+  :focus-visible {
+    outline: 2px solid var(--color-ai);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* §5.7 — "Respect prefers-reduced-motion: all transitions become instant." */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* ------------------------------------------------------------- SURFACES */
+
+  /* The workhorse. A frosted card, as in the reference image. */
+  .glass {
+    background-color: var(--color-glass-fill);
+    border: 1px solid var(--color-glass-border);
+    box-shadow: var(--shadow-glass);
+    backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  }
+
+  /* For anything carrying body copy or dense data — rule 1 above. */
+  .glass-strong {
+    background-color: var(--color-glass-fill-strong);
+    border: 1px solid var(--color-glass-border);
+    box-shadow: var(--shadow-glass);
+    backdrop-filter: blur(var(--blur-glass-lg)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur-glass-lg)) saturate(150%);
+  }
+
+  /* Secondary, cooler fill — the reference image's #e6edef cards. */
+  .glass-muted {
+    background-color: var(--color-glass-fill-muted);
+    border: 1px solid var(--color-glass-hairline);
+  }
+
+  /* Nested inside a .glass parent: no second backdrop-filter (rule 5). */
+  .glass-inset {
+    background-color: var(--color-glass-inset);
+    border: 1px solid var(--color-glass-hairline);
+  }
+
+  .glass-card {
+    border-radius: var(--radius-card);
+  }
+
+  .glass-hover {
+    transition:
+      background-color 150ms var(--ease-out-clinical),
+      box-shadow 150ms var(--ease-out-clinical),
+      transform 150ms var(--ease-out-clinical);
+  }
+
+  .glass-hover:hover {
+    background-color: var(--color-glass-fill-hover);
+    box-shadow: var(--shadow-glass-lg);
+  }
+
+  /* Opaque fallback where backdrop-filter is unavailable, so text never lands
+     on the raw gradient. */
+  @supports not (backdrop-filter: blur(1px)) {
+    .glass,
+    .glass-strong {
+      background-color: color-mix(in srgb, var(--color-page-from) 75%, white);
+    }
+
+    [data-theme='night'] .glass,
+    [data-theme='night'] .glass-strong {
+      background-color: color-mix(in srgb, var(--color-page-to) 80%, black);
+    }
+  }
+
+  /* ------------------------------------------------------- AI SURFACES
+     The reference image's indigo hero card. §5.3 puts AI deliberately outside
+     the clinical range, so this gradient is used for AI and nothing else. */
+  .ai-surface {
+    background-image: linear-gradient(135deg, var(--color-ai-grad-from), var(--color-ai-grad-to));
+    color: #fff;
+    border: 1px solid rgb(255 255 255 / 0.18);
+    box-shadow: var(--shadow-glass);
+  }
+
+  /* AIP-01 inline ghost content: 85% opacity, left accent rule in AI-indigo.
+     §4.3 is explicit that ghost text sits IN the field, not in a side card. */
+  .ai-ghost {
+    background-color: var(--color-ai-ghost);
+    border-left: 3px solid var(--color-ai);
+    opacity: 0.85;
+  }
+
+  .ai-ghost-accepted {
+    background-color: transparent;
+    border-left: 3px solid var(--color-normal);
+    opacity: 1;
+  }
+
+  /* ----------------------------------------------------------- SCROLLBARS */
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-glass-hairline) transparent;
+  }
+
+  .thin-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--color-glass-hairline);
+    border-radius: var(--radius-pill);
+  }
+
+  .thin-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /* Density is a typographic token, not a spacing token (§5.4). */
+  [data-density='compact'] {
+    font-size: var(--text-compact);
+  }
+
+  [data-density='comfortable'] {
+    font-size: var(--text-comfortable);
+  }
+
+  [data-density='wall'] {
+    font-size: var(--text-wall);
+  }
+
+  /* §5.1 — 16px minimum side gutter at EVERY breakpoint. */
+  .gutter {
+    padding-inline: 16px;
+  }
+
+  @media (min-width: 1024px) {
+    .gutter {
+      padding-inline: 24px;
+    }
+  }
+
+  /* §10.4 rule 9 — touch targets >= 44px on any frame a gloved or mobile
+     persona uses, which is all of them. */
+  .tap {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

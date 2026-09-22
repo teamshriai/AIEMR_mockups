@@ -1,0 +1,595 @@
+/**
+ * M-27's doctor slice — three screens that reuse M-06's surfaces over video.
+ *
+ * S-27-02 · Clinician Teleconsult Queue — `/tele/queue` · T3 · ARC-01
+ * S-27-03 · Teleconsult Session — `/tele/session/:id` · T2 · ARC-22
+ * S-27-04 · Tele-Prescription & Category Gate — `/tele/session/:id/rx` · T2 · ARC-07
+ *
+ * The screen that earns its place is S-27-04. CMP-DRUG-06 and AI-310 make the
+ * prescribing-category gate HARD-CODED and never AI-decided: "the prohibited
+ * list is never off." A teleconsultation can prescribe less than a face-to-face
+ * consultation can, and the gate is the law rather than a policy choice.
+ */
+
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { Worklist } from '@/archetypes'
+import type { WorklistColumn } from '@/archetypes'
+import { Diamond, RowBadge } from '@/components/ai'
+import { Alert, Button, Card, Chip, Icon, KeyValue, TextArea, cx } from '@/components/primitives'
+import { ENCOUNTERS, encounter } from '@/data/clinical'
+import { formatDateTime, formatTime, minutesAhead, NOW } from '@/data/format'
+import { patient } from '@/data/kit'
+import { selectAiActive, useAI } from '@/store/ai'
+import { useUI } from '@/store/ui'
+import { Screen, ScreenSection } from '@/shell/Screen'
+
+// ───────────────────────────────────────────── S-27-02 · the queue
+
+interface TeleRow {
+  id: string
+  patientId: string
+  scheduledAt: Date
+  reason: string
+  videoReady: boolean
+  rankReason: string
+}
+
+const QUEUE: TeleRow[] = [
+  {
+    id: 'E-118430',
+    patientId: 'SD-P-10',
+    scheduledAt: minutesAhead(25),
+    reason: 'Chronic plaque psoriasis, review after topical therapy',
+    videoReady: true,
+    rankReason: 'On time, video tested, photographs already uploaded',
+  },
+  {
+    id: 'E-118441',
+    patientId: 'SD-P-01',
+    scheduledAt: minutesAhead(55),
+    reason: 'Thyroid results discussion',
+    videoReady: true,
+    rankReason: 'Results are back and normal — likely a short consultation',
+  },
+  {
+    id: 'E-118452',
+    patientId: 'SD-P-09',
+    scheduledAt: minutesAhead(85),
+    reason: 'Dialysis access site concern',
+    videoReady: false,
+    rankReason: 'No video on the patient side — needs a telephone fallback arranged',
+  },
+]
+
+export function S2702() {
+  const navigate = useNavigate()
+  const [aiSort, setAiSort] = useState(true)
+
+  const rows = aiSort
+    ? [...QUEUE].sort((a, b) => Number(b.videoReady) - Number(a.videoReady) || a.scheduledAt.getTime() - b.scheduledAt.getTime())
+    : [...QUEUE].sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
+
+  const columns: WorklistColumn<TeleRow>[] = [
+    {
+      key: 'patient',
+      label: 'Patient',
+      cell: (r) => {
+        const p = patient(r.patientId)
+        return (
+          <span className="block min-w-0">
+            <span className="block truncate font-medium">{p.name}</span>
+            <span className="tabular block text-[0.86em] text-ink-3">
+              {p.age}/{p.sex} · {p.payer}
+            </span>
+          </span>
+        )
+      },
+    },
+    { key: 'reason', label: 'Reason', cell: (r) => <span className="text-[0.92em]">{r.reason}</span> },
+    {
+      key: 'at',
+      label: 'Scheduled',
+      cell: (r) => <span className="tabular">{formatTime(r.scheduledAt)}</span>,
+    },
+    {
+      key: 'video',
+      label: 'Video',
+      cell: (r) =>
+        r.videoReady ? (
+          <Chip tone="normal" icon="Video">
+            tested
+          </Chip>
+        ) : (
+          <Chip tone="caution" icon="Phone">
+            telephone fallback
+          </Chip>
+        ),
+    },
+    {
+      key: 'why',
+      label: 'Why here',
+      secondary: true,
+      cell: (r) => <RowBadge label="rank" reason={r.rankReason} tone="ai" band="MED" />,
+    },
+    {
+      key: 'action',
+      label: '',
+      className: 'text-right',
+      cell: (r) => (
+        <Button
+          size="sm"
+          tone="primary"
+          icon="Video"
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate(`/tele/session/${r.id}`)
+          }}
+        >
+          Join
+        </Button>
+      ),
+    },
+  ]
+
+  return (
+    <Screen
+      screenId="S-27-02"
+      loadingShape="list"
+      states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'OFFLINE', 'STALE', 'AI-OFF']}
+      chips={<Chip tone="neutral">{QUEUE.length} today</Chip>}
+      empty={
+        <Card className="p-10 text-center">
+          <p className="text-lg font-medium">No teleconsultations booked.</p>
+          <p className="mx-auto mt-2 max-w-md text-ink-3">
+            A patient booking a video appointment, or a follow-up converted to remote, would appear here.
+          </p>
+        </Card>
+      }
+      rail={
+        <Card className="p-4">
+          <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
+            A telephone fallback is not a failure
+          </h3>
+          <p className="mt-1.5 text-[0.9em] text-ink-2">
+            One patient has no working video. The consultation still happens by telephone, and the prescribing
+            category gate is stricter for it — which the prescription screen enforces rather than trusting anyone to
+            remember.
+          </p>
+        </Card>
+      }
+      railTitle="Teleconsult"
+    >
+      <Worklist
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => r.id}
+        onOpen={(r) => navigate(`/tele/session/${r.id}`)}
+        aiSort={aiSort}
+        onSortChange={setAiSort}
+        sortCapability="AI-613"
+        aiSortLabel="Readiness"
+        deterministicLabel="Appointment time"
+        caption="Today's teleconsultations"
+        emptyWhy="No teleconsultations booked. A patient booking a video appointment would appear here."
+        filters={
+          <>
+            <Chip tone="neutral" icon="Clock">
+              today
+            </Chip>
+          </>
+        }
+      />
+    </Screen>
+  )
+}
+
+// ──────────────────────────────────────── S-27-03 · the session
+
+export function S2703({ id }: { id?: string }) {
+  const navigate = useNavigate()
+  const aiActive = useAI(selectAiActive)
+  const [elapsed, setElapsed] = useState(0)
+  const [notes, setNotes] = useState('')
+
+  const enc = ENCOUNTERS.some((e) => e.id === id) ? encounter(id!) : encounter('E-118430')
+  const p = patient(enc.patientId)
+
+  useEffect(() => {
+    const t = window.setInterval(() => setElapsed((e) => e + 1), 1000)
+    return () => window.clearInterval(t)
+  }, [])
+
+  return (
+    <Screen
+      screenId="S-27-03"
+      patient={p}
+      loadingShape="thread"
+      states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'AI-OFF', 'AI-LOW']}
+      wide
+      chips={
+        <>
+          <Chip tone="normal" icon="Video">
+            in session · {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+          </Chip>
+          <Chip tone="neutral" icon="Shield">
+            consent recorded
+          </Chip>
+        </>
+      }
+      actionBar={
+        <>
+          <Button icon="PhoneOff" tone="destructive">
+            End the session
+          </Button>
+          <span className="text-[0.88em] text-ink-3">The session note reuses the consultation note surface</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button icon="FileText" onClick={() => navigate(`/encounter/${enc.id}/note`)}>
+              Write the note
+            </Button>
+            <Button tone="primary" icon="Pill" onClick={() => navigate(`/tele/session/${enc.id}/rx`)}>
+              Prescribe
+            </Button>
+          </div>
+        </>
+      }
+      rail={
+        <div className="space-y-4">
+          <Card className="p-4">
+            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Consent</h3>
+            <dl className="mt-2 divide-y divide-glass-hairline">
+              <KeyValue label="Teleconsultation">
+                <Chip tone="normal" icon="Check">
+                  taken
+                </Chip>
+              </KeyValue>
+              <KeyValue label="Recording">
+                <Chip tone="inactive" icon="X">
+                  declined
+                </Chip>
+              </KeyValue>
+              <KeyValue label="Language">English</KeyValue>
+            </dl>
+            <p className="mt-2 text-[0.86em] text-ink-3">
+              The patient declined recording, so the transcript is not retained after the session. The note is.
+            </p>
+          </Card>
+
+          <Card className="p-4">
+            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Your note</h3>
+            <TextArea
+              className="mt-2"
+              rows={6}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="What you observed over video, and what you could not assess…"
+            />
+            <p className="mt-2 text-[0.86em] text-ink-3">
+              What you could not examine matters as much as what you could. Record both.
+            </p>
+          </Card>
+        </div>
+      }
+      railTitle="Session"
+    >
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <Card className="overflow-hidden">
+          <div className="relative aspect-video w-full bg-[#0a0d14]">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <span className="mx-auto flex size-16 items-center justify-center rounded-pill bg-[#1a2030] text-[#6b7690]">
+                  <Icon name="User" size={30} />
+                </span>
+                <p className="mt-2 text-[0.9em] text-[#8b94a8]">{p.name}</p>
+              </div>
+            </div>
+            <div className="absolute right-3 bottom-3 flex size-24 items-center justify-center rounded-panel bg-[#151b28]">
+              <Icon name="User" size={18} className="text-[#6b7690]" />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+            <Button size="sm" icon="Mic">
+              Mute
+            </Button>
+            <Button size="sm" icon="Video">
+              Camera
+            </Button>
+            <Button size="sm" icon="Image">
+              Patient photographs
+            </Button>
+            <span className="ml-auto text-[0.84em] text-ink-3">{formatTime(NOW)}</span>
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <ScreenSection title="What a teleconsultation cannot do">
+            <Card className="p-4">
+              <ul className="space-y-2 text-[0.92em] text-ink-2">
+                {[
+                  'Palpate, percuss or auscultate',
+                  'Take a blood pressure or a temperature you can trust',
+                  'Assess a rash for texture, only for appearance',
+                  'Prescribe from the prohibited category list',
+                ].map((t) => (
+                  <li key={t} className="flex gap-2">
+                    <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2.5 text-[0.86em] text-ink-3">
+                The last one is enforced by the prescription screen. The first three are yours to remember, and the
+                note should say what you could not assess.
+              </p>
+            </Card>
+          </ScreenSection>
+
+          {aiActive && (
+            <Card className="p-4">
+              <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
+                <Diamond size={10} />
+                AI-101 · the same scribe
+              </p>
+              <p className="mt-1.5 text-[0.9em] text-ink-2">
+                The teleconsult uses the same ambient scribe as a face-to-face consultation, and the note lands on the
+                same surface. The patient declined recording here, so it is off for this session.
+              </p>
+            </Card>
+          )}
+        </div>
+      </div>
+    </Screen>
+  )
+}
+
+// ─────────────────────────────── S-27-04 · the category gate
+
+type Category = 'O' | 'A' | 'B' | 'Prohibited'
+
+const TELE_FORMULARY: { drug: string; category: Category; why: string }[] = [
+  { drug: 'Paracetamol 1g IV', category: 'O', why: 'Over-the-counter. Prescribable on any consultation mode.' },
+  { drug: 'Atorvastatin 40mg', category: 'B', why: 'Add-on to an existing prescription for the same condition only.' },
+  { drug: 'Metformin 500mg', category: 'B', why: 'Add-on for an established condition already under management.' },
+  { drug: 'Co-amoxiclav 1.2g IV', category: 'A', why: 'Permitted on a first video consultation, or a re-consult for the same condition.' },
+  { drug: 'Clopidogrel 75mg', category: 'B', why: 'Add-on only; not a first prescription by telemedicine.' },
+  { drug: 'Tenecteplase', category: 'Prohibited', why: 'Never by telemedicine. Parenteral thrombolytic.' },
+]
+
+const CATEGORY_TONE: Record<Category, 'normal' | 'brand' | 'caution' | 'critical'> = {
+  O: 'normal',
+  A: 'brand',
+  B: 'caution',
+  Prohibited: 'critical',
+}
+
+export function S2704({ id }: { id?: string }) {
+  const navigate = useNavigate()
+  const toast = useUI((s) => s.toast)
+  const aiActive = useAI(selectAiActive)
+
+  const enc = ENCOUNTERS.some((e) => e.id === id) ? encounter(id!) : encounter('E-118430')
+  const p = patient(enc.patientId)
+
+  /** Video vs telephone changes what is prescribable. Hard-coded, not a setting. */
+  const [mode, setMode] = useState<'video' | 'telephone'>('video')
+  const [basket, setBasket] = useState<string[]>([])
+
+  /** The gate. Never AI-decided; never off. */
+  function blockedReason(drug: string): string | null {
+    const entry = TELE_FORMULARY.find((f) => f.drug === drug)
+    if (!entry) return null
+    if (entry.category === 'Prohibited') {
+      return 'On the prohibited list. This cannot be prescribed by telemedicine under any circumstances.'
+    }
+    if (mode === 'telephone' && entry.category === 'A') {
+      return 'List A requires a video consultation. On a telephone consultation only List O and List B add-ons are permitted.'
+    }
+    return null
+  }
+
+  const blocked = basket.filter((d) => blockedReason(d) !== null)
+
+  return (
+    <Screen
+      screenId="S-27-04"
+      patient={p}
+      loadingShape="form"
+      states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF']}
+      chips={
+        <>
+          <Chip tone={mode === 'video' ? 'normal' : 'caution'} icon={mode === 'video' ? 'Video' : 'Phone'}>
+            {mode} consultation
+          </Chip>
+          {blocked.length > 0 && (
+            <Chip tone="critical" icon="Ban">
+              {blocked.length} blocked by the category gate
+            </Chip>
+          )}
+        </>
+      }
+      actions={
+        <Button icon="Video" onClick={() => navigate(`/tele/session/${enc.id}`)}>
+          Back to the session
+        </Button>
+      }
+      rail={
+        <div className="space-y-4">
+          <Card className="p-4">
+            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">The four categories</h3>
+            <ul className="mt-2 space-y-2.5">
+              {[
+                { c: 'O' as Category, t: 'Over-the-counter. Any consultation mode.' },
+                { c: 'A' as Category, t: 'First video consultation, or a re-consult for the same condition.' },
+                { c: 'B' as Category, t: 'Add-on to an existing prescription for the same condition only.' },
+                { c: 'Prohibited' as Category, t: 'Never by telemedicine. Includes Schedule X and narcotics.' },
+              ].map((x) => (
+                <li key={x.c}>
+                  <Chip tone={CATEGORY_TONE[x.c]}>List {x.c}</Chip>
+                  <p className="mt-1 text-[0.88em] text-ink-2">{x.t}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2.5 text-[0.84em] text-ink-3">
+              Telemedicine Practice Guidelines 2020 · CMP-DRUG-06.
+            </p>
+          </Card>
+
+          <Card className="p-4">
+            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
+              This gate is not a model
+            </h3>
+            <p className="mt-1.5 text-[0.9em] text-ink-2">
+              The prohibited list is hard-coded and never AI-decided. {aiActive ? 'AI-310' : 'The static list'} decides
+              nothing here — it is a regulatory boundary, and it holds with the AI on or off.
+            </p>
+          </Card>
+        </div>
+      }
+      railTitle="Category gate"
+      actionBar={
+        <>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" tone={mode === 'video' ? 'primary' : 'secondary'} onClick={() => setMode('video')}>
+              Video
+            </Button>
+            <Button size="sm" tone={mode === 'telephone' ? 'primary' : 'secondary'} onClick={() => setMode('telephone')}>
+              Telephone
+            </Button>
+          </div>
+          <span className="text-[0.88em] text-ink-3">
+            {blocked.length > 0
+              ? 'Remove the blocked items before signing'
+              : `${basket.length} item${basket.length === 1 ? '' : 's'} · HPR printed on the prescription`}
+          </span>
+          <Button
+            tone="primary"
+            className="ml-auto"
+            icon="Signature"
+            disabled={basket.length === 0 || blocked.length > 0}
+            onClick={() => {
+              toast({
+                tone: 'success',
+                title: 'Tele-prescription signed',
+                detail: 'Printed bilingually with your HPR number, and published to ABDM.',
+              })
+              navigate('/tele/queue')
+            }}
+          >
+            Sign the tele-prescription
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <Alert
+          tone={mode === 'telephone' ? 'caution' : 'info'}
+          title={
+            mode === 'telephone'
+              ? 'Telephone consultation — List A is not available'
+              : 'Video consultation — List O, A and B are available'
+          }
+        >
+          Switching the mode changes what is prescribable, because the guidelines tie the category to the consultation
+          mode. Try the toggle in the bar below and watch the formulary change.
+        </Alert>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <ScreenSection title="Formulary, filtered by mode">
+            <Card className="overflow-hidden">
+              <ul className="divide-y divide-glass-hairline">
+                {TELE_FORMULARY.map((f) => {
+                  const reason = blockedReason(f.drug)
+                  return (
+                    <li key={f.drug} className={cx('px-4 py-3', reason && 'bg-critical-soft/30')}>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 font-medium">
+                            {f.drug}
+                            <Chip tone={CATEGORY_TONE[f.category]}>List {f.category}</Chip>
+                          </p>
+                          <p className="mt-0.5 text-[0.88em] text-ink-3">{f.why}</p>
+                        </div>
+                        {reason ? (
+                          <Chip tone="critical" icon="Ban" title={reason}>
+                            blocked
+                          </Chip>
+                        ) : (
+                          <Button
+                            size="sm"
+                            icon="Plus"
+                            disabled={basket.includes(f.drug)}
+                            onClick={() => setBasket((b) => [...b, f.drug])}
+                          >
+                            Add
+                          </Button>
+                        )}
+                      </div>
+                      {reason && (
+                        <p className="mt-2 flex items-start gap-2 rounded-panel bg-critical-soft px-3 py-2 text-[0.88em] font-medium text-critical">
+                          <Icon name="OctagonAlert" size={13} className="mt-0.5 shrink-0" />
+                          {reason}
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </Card>
+          </ScreenSection>
+
+          <ScreenSection title="Prescription">
+            {basket.length === 0 ? (
+              <Card className="p-8 text-center text-ink-2">
+                Nothing added yet. The formulary on the left shows which categories this consultation mode permits.
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <ul className="divide-y divide-glass-hairline">
+                  {basket.map((d) => {
+                    const entry = TELE_FORMULARY.find((f) => f.drug === d)!
+                    const reason = blockedReason(d)
+                    return (
+                      <li key={d} className={cx('px-4 py-3', reason && 'bg-critical-soft/30')}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="flex flex-wrap items-center gap-2 font-medium">
+                            {d}
+                            <Chip tone={CATEGORY_TONE[entry.category]}>List {entry.category}</Chip>
+                          </span>
+                          <Button
+                            size="sm"
+                            tone="tertiary"
+                            icon="Trash2"
+                            onClick={() => setBasket((b) => b.filter((x) => x !== d))}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        {reason && (
+                          <p className="mt-2 text-[0.88em] font-medium text-critical">
+                            <Icon name="Ban" size={12} className="mr-1 inline" />
+                            {reason}
+                          </p>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+                <p className="border-t border-glass-hairline px-4 py-3 text-[0.86em] text-ink-3">
+                  Signing prints bilingually with your HPR number and publishes a Prescription record to ABDM. No PHI
+                  goes out in any SMS — only a pointer back in.
+                </p>
+              </Card>
+            )}
+          </ScreenSection>
+        </div>
+
+        <p className="flex items-start gap-2 text-[0.86em] text-ink-3">
+          <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
+          Encounter {enc.encounterNo} · {formatDateTime(enc.startedAt)} · the same note and prescription surfaces as a
+          face-to-face consultation, with one extra gate that the law puts there.
+        </p>
+      </div>
+    </Screen>
+  )
+}

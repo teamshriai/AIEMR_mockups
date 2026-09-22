@@ -1,0 +1,272 @@
+/**
+ * S-08-07 · Admission Assessment — `/ip/encounter/:id/assessment` · T3 · ARC-15
+ *
+ * "The admission assessment the 24-hour NABH clock is counting down to."
+ *
+ * CMP-NABH-01 requires an initial assessment within 24 hours of admission, so
+ * the clock is the screen's organising idea rather than a footnote. AI-211
+ * scores fall, pressure-ulcer and VTE risk at G1 — it notices, and the manual
+ * assessment scales remain the fallback.
+ */
+
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { FieldGroup } from '@/archetypes'
+import { AIActionBar, Diamond } from '@/components/ai'
+import { Alert, Button, Card, Checkbox, Chip, Field, Icon, Select, TextArea, cx } from '@/components/primitives'
+import { NOTE_DRAFT_SD_P_03, encounter } from '@/data/clinical'
+import { formatDateTime, formatElapsed, formatTime, NOW } from '@/data/format'
+import { patient } from '@/data/kit'
+import { selectAiActive, useAI } from '@/store/ai'
+import { useCurrentStaff } from '@/store/session'
+import { useUI } from '@/store/ui'
+import { Screen } from '@/shell/Screen'
+
+const RISK_SCALES = [
+  {
+    key: 'falls',
+    name: 'Falls risk — Morse',
+    score: 55,
+    band: 'High' as const,
+    drivers: ['History of falling', 'Intravenous access in situ', 'Weak gait'],
+    action: 'Bed in the low position, call bell within reach, hourly rounding.',
+    confidence: 0.84,
+  },
+  {
+    key: 'pressure',
+    name: 'Pressure ulcer — Braden',
+    score: 14,
+    band: 'Moderate' as const,
+    drivers: ['Reduced mobility', 'Poor oral intake', 'Moisture from diaphoresis'],
+    action: 'Two-hourly repositioning, pressure-redistributing mattress, skin inspection each shift.',
+    confidence: 0.79,
+  },
+  {
+    key: 'vte',
+    name: 'VTE risk — Padua',
+    score: 5,
+    band: 'High' as const,
+    drivers: ['Acute infection', 'Reduced mobility > 3 days', 'Age over 70 — not met'],
+    action: 'Pharmacological prophylaxis unless contraindicated. Already prescribed, renally adjusted.',
+    confidence: 0.88,
+  },
+]
+
+export function S0807({ id }: { id?: string }) {
+  const navigate = useNavigate()
+  const me = useCurrentStaff()
+  const toast = useUI((s) => s.toast)
+  const aiActive = useAI(selectAiActive)
+
+  const enc = encounter(id ?? 'E-118366')
+  const p = patient(enc.patientId)
+
+  const [history, setHistory] = useState(NOTE_DRAFT_SD_P_03[0].draft)
+  const [nutrition, setNutrition] = useState('At risk')
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
+  const [complete, setComplete] = useState(false)
+
+  /** CMP-NABH-01's clock. Admitted 17-Sep 14:20; the 24h window has passed. */
+  const hoursSince = (NOW.getTime() - enc.startedAt.getTime()) / 3_600_000
+  const overdue = hoursSince > 24
+  const remaining = Math.max(0, 24 - hoursSince)
+
+  return (
+    <Screen
+      screenId="S-08-07"
+      patient={p}
+      loadingShape="form"
+      states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-LOW']}
+      chips={
+        <Chip tone={overdue ? 'abnormal' : 'caution'} icon="Clock">
+          {overdue
+            ? `${formatElapsed((hoursSince - 24) * 60)} overdue`
+            : `${formatElapsed(remaining * 60)} remaining`}
+        </Chip>
+      }
+      actions={
+        <Button icon="PenLine" onClick={() => navigate(`/ip/encounter/${enc.id}/note`)}>
+          Progress note
+        </Button>
+      }
+      rail={
+        <div className="space-y-4">
+          <Card className={cx('p-4', overdue ? 'border-l-[3px] border-l-abnormal' : 'border-l-[3px] border-l-caution')}>
+            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">CMP-NABH-01</h3>
+            <p className="mt-1.5 font-semibold">Initial assessment within 24 hours</p>
+            <p className="tabular mt-1 text-[0.9em] text-ink-2">
+              Admitted {formatDateTime(enc.startedAt)} · {formatElapsed(hoursSince * 60)} ago
+            </p>
+            <p className={cx('mt-2 text-[0.92em] font-semibold', overdue ? 'text-abnormal' : 'text-caution')}>
+              {overdue
+                ? 'The window has passed. Completing it now still records the delay — which is the honest behaviour.'
+                : `${formatElapsed(remaining * 60)} left in the window.`}
+            </p>
+          </Card>
+
+          <Card className="p-4">
+            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
+              <Diamond size={10} />
+              AI-211 · risk scales
+            </p>
+            <p className="mt-1.5 text-[0.9em] text-ink-2">
+              Three scales are pre-scored from the record. Each still needs your disposition, and the manual scale is
+              the fallback — the score is a starting point, not the assessment.
+            </p>
+          </Card>
+        </div>
+      }
+      railTitle="NABH clock"
+      actionBar={
+        <>
+          <Button icon="Save">Save draft</Button>
+          <span className="text-[0.88em] text-ink-3">
+            {Object.values(confirmed).filter(Boolean).length} of {RISK_SCALES.length} scales confirmed
+          </span>
+          <Button
+            tone="primary"
+            className="ml-auto"
+            icon="Signature"
+            disabled={!complete || Object.values(confirmed).filter(Boolean).length < RISK_SCALES.length}
+            onClick={() =>
+              toast({
+                tone: 'success',
+                title: 'Admission assessment completed',
+                detail: `Stamped ${me.name} · ${me.identifier}. The NABH clock is closed${overdue ? ', with the delay recorded' : ''}.`,
+              })
+            }
+          >
+            Complete the assessment
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        {overdue && (
+          <Alert tone="abnormal" role="alert" title="This assessment is past its 24-hour window">
+            Completing it now is still the right thing to do. The delay is recorded rather than hidden — an accreditation
+            record that quietly back-dates itself is worse than one that shows a miss.
+          </Alert>
+        )}
+
+        <div className="grid gap-5 lg:grid-cols-2">
+          <FieldGroup title="History and presenting problem" hint="Carried forward from the admission note, marked as such">
+            <Field label="History" required htmlFor="ass-history">
+              <TextArea id="ass-history" rows={7} value={history} onChange={(e) => setHistory(e.target.value)} />
+            </Field>
+            <p className="flex items-start gap-1.5 text-[0.86em] text-ink-3">
+              <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
+              Carried-forward text is marked as carried forward, so a reviewer can tell it from something newly
+              assessed today.
+            </p>
+          </FieldGroup>
+
+          <FieldGroup title="Nutrition and functional screening">
+            <Field label="Nutrition risk" required htmlFor="ass-nutrition">
+              <Select id="ass-nutrition" value={nutrition} onChange={(e) => setNutrition(e.target.value)}>
+                {['Not at risk', 'At risk', 'High risk — dietitian referral'].map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Functional status on admission" required htmlFor="ass-function">
+              <Select id="ass-function" defaultValue="Needs assistance" aria-label="Functional status">
+                {['Independent', 'Needs assistance', 'Fully dependent'].map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </FieldGroup>
+        </div>
+
+        <FieldGroup title="Risk assessment scales" hint="Pre-scored by AI-211 · each needs a disposition" span>
+          <div className="space-y-4">
+            {RISK_SCALES.map((scale) => (
+              <Card key={scale.key} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className="font-semibold">{scale.name}</h4>
+                    <p className="tabular text-[0.9em] text-ink-2">
+                      Score {scale.score} · {scale.band} risk
+                    </p>
+                  </div>
+                  <Chip tone={scale.band === 'High' ? 'abnormal' : 'caution'} icon="TriangleAlert">
+                    {scale.band}
+                  </Chip>
+                </div>
+
+                <ul className="mt-2.5 flex flex-wrap gap-1.5">
+                  {scale.drivers.map((d) => (
+                    <Chip key={d} tone="neutral">
+                      {d}
+                    </Chip>
+                  ))}
+                </ul>
+
+                <p className="mt-2.5 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.92em] text-ink-2">
+                  <strong>Required action.</strong> {scale.action}
+                </p>
+
+                {aiActive ? (
+                  <AIActionBar
+                    className="mt-3"
+                    touchpointId={`${enc.id}:scale:${scale.key}`}
+                    capabilityId="AI-211"
+                    gate="G1"
+                    band={scale.confidence >= 0.85 ? 'HIGH' : 'MED'}
+                    score={scale.confidence}
+                    onAccept={() => setConfirmed((c) => ({ ...c, [scale.key]: true }))}
+                    onEdit={() => setConfirmed((c) => ({ ...c, [scale.key]: true }))}
+                    explain={{
+                      touchpointId: `${enc.id}:scale:${scale.key}`,
+                      capabilityId: 'AI-211',
+                      claim: `${scale.name} scores ${scale.score}, which is ${scale.band.toLowerCase()} risk.`,
+                      confidence: scale.confidence,
+                      band: scale.confidence >= 0.85 ? 'HIGH' : 'MED',
+                      computedAt: formatTime(NOW),
+                      inputs: scale.drivers.map((d) => ({ label: d, source: 'Admission record and flowsheet' })),
+                      evidence: [scale.action],
+                      model: 'risk-scales v2.4.0',
+                      limits: [
+                        'Scores from what is charted. An unrecorded fall at home does not reach it.',
+                        'The manual scale remains the fallback and the authority.',
+                        'Scales are validated for adult inpatients only.',
+                      ],
+                    }}
+                  />
+                ) : (
+                  <Checkbox
+                    className="mt-2"
+                    checked={confirmed[scale.key] ?? false}
+                    onChange={(v) => setConfirmed((c) => ({ ...c, [scale.key]: v }))}
+                    label="Scored manually and confirmed"
+                  />
+                )}
+              </Card>
+            ))}
+          </div>
+        </FieldGroup>
+
+        <Card className="p-5">
+          <Checkbox
+            checked={complete}
+            onChange={setComplete}
+            label={
+              <>
+                I have completed the initial assessment, including the risk scales and the actions they require.
+                <span className="block text-[0.88em] text-ink-3">
+                  Fixed wording. It is stamped with your name, registration number and the time on completion.
+                </span>
+              </>
+            }
+          />
+        </Card>
+      </div>
+    </Screen>
+  )
+}
