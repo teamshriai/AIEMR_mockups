@@ -6,13 +6,18 @@
  * It has no route and it is not a modal in the usual sense: it expands over the
  * wall, which is why its Z7b line reads "⊘ absent — rendered within S-18-01".
  * A wall operator who navigates away loses the wall.
+ *
+ * Calm pass: the three live intervals in full, the completed ones one tap away;
+ * imaging and team each reduced to the one line the wall operator needs, with
+ * the screen that owns the detail linked from it.
  */
 
 import { useNavigate } from 'react-router-dom'
 
 import { ClockRing } from '@/archetypes'
-import { Confidence, Diamond } from '@/components/ai'
-import { Button, Card, Chip, Icon, KeyValue } from '@/components/primitives'
+import { Diamond } from '@/components/ai'
+import { Disclosure, PillLink } from '@/components/calm'
+import { Button, Chip, Icon } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { IMAGING_TRIAGE, PAGING_LOG, STROKE_TASKS, strokeCase } from '@/data/stroke'
@@ -31,7 +36,20 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
   const c = strokeCase(caseId)
   const p = patient(c.patientId)
   const blocking = intervals.find(atRisk)
+  const live = intervals.filter((i) => i.state !== 'DONE')
+  const done = intervals.filter((i) => i.state === 'DONE')
   const acked = PAGING_LOG.filter((x) => x.ackAt).length
+  const inProgress = STROKE_TASKS.filter((t) => t.column === 'In progress' || t.column === 'Blocked')
+
+  const lvo = IMAGING_TRIAGE.findings.find((f) => f.label === 'LVO')
+  const ich = IMAGING_TRIAGE.findings.find((f) => f.label === 'ICH')
+
+  const ring = (i: (typeof intervals)[number], size: number) => (
+    <div key={i.key} className="flex w-24 flex-col items-center text-center">
+      <ClockRing label={i.label} elapsedMin={i.elapsed} targetMin={i.targetMin} state={i.state} size={size} />
+      <p className="mt-1 text-[0.74em] leading-tight text-ink-3">{i.label}</p>
+    </div>
+  )
 
   return (
     <div className="fixed inset-0 z-90 overflow-y-auto bg-[rgb(10_14_26/0.55)] backdrop-blur-[3px]">
@@ -59,30 +77,26 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
             </Button>
           </header>
 
-          {/* The clocks, larger than on the card. */}
+          {/* The live clocks, larger than on the card. Completed ones fold. */}
           <section className="mt-6">
-            <h3 className="text-[0.86em] font-bold tracking-wider text-ink-3 uppercase">Intervals</h3>
-            <div className="mt-3 flex flex-wrap gap-5">
-              {intervals.map((i) => (
-                <div key={i.key} className="w-24 text-center">
-                  <ClockRing
-                    label={i.label}
-                    elapsedMin={i.elapsed}
-                    targetMin={i.targetMin}
-                    state={i.state}
-                    size={80}
-                  />
-                  <p className="mt-1 text-[0.74em] leading-tight text-ink-3">{i.label}</p>
-                </div>
-              ))}
-            </div>
+            <h3 className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">Live intervals</h3>
+            <div className="mt-3 flex flex-wrap gap-5">{live.map((i) => ring(i, 80))}</div>
+            {done.length > 0 && (
+              <Disclosure label="all intervals" count={intervals.length} className="mt-3">
+                <div className="flex flex-wrap gap-4 px-1 pt-1">{done.map((i) => ring(i, 64))}</div>
+              </Disclosure>
+            )}
           </section>
 
+          {/* The one operative alert: what is about to breach, and who moves it. */}
           {blocking && (
             <div className="mt-5 rounded-panel border border-abnormal/40 bg-abnormal-soft px-4 py-3">
               <p className="flex items-center gap-2 font-bold text-abnormal">
                 <Icon name="TriangleAlert" size={17} />
-                {blocking.label} projected to breach in {blocking.projectedBreachIn} minutes
+                {blocking.label}{' '}
+                {blocking.state === 'BREACH'
+                  ? `past its ${blocking.targetMin}-minute target`
+                  : `projected to breach in ${blocking.projectedBreachIn} minutes`}
               </p>
               <p className="mt-1 text-[0.95em] text-ink-2">
                 <strong>Blocking:</strong> {blocking.blockingStep}
@@ -93,69 +107,58 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
             </div>
           )}
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {aiActive && (
-              <Card className="p-4">
-                <h3 className="flex items-center gap-2 text-[0.86em] font-bold tracking-wider text-ink-3 uppercase">
+          {/* Imaging and team, one line each, each linking to the screen that owns it. */}
+          <ul className="mt-5 divide-y divide-glass-hairline rounded-panel bg-glass-fill-muted">
+            {aiActive && lvo && ich && (
+              <li className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-4 py-2">
+                <span className="flex items-center gap-2 text-[0.95em]">
                   <Diamond size={10} />
-                  Imaging AI
-                </h3>
-                <dl className="mt-2 divide-y divide-glass-hairline">
-                  {IMAGING_TRIAGE.findings.map((f) => (
-                    <KeyValue key={f.label} label={f.label}>
-                      <span className={f.emphasisNegative ? 'font-bold text-normal' : 'font-semibold'}>{f.value}</span>
-                    </KeyValue>
-                  ))}
-                </dl>
-                <p className="tabular mt-2 text-[0.84em] text-ink-3">
-                  {IMAGING_TRIAGE.model} · delivered {formatTime(IMAGING_TRIAGE.deliveredAt)} · G3 confirm required
-                </p>
-                <Confidence band="HIGH" score={0.94} className="mt-2" />
-              </Card>
+                  <span className="font-semibold">LVO · {lvo.value.replace('LEFT ', '')}</span>
+                  <span className="text-ink-3">·</span>
+                  <span className={ich.emphasisNegative ? 'font-semibold text-normal' : ''}>
+                    ICH {ich.value.toLowerCase()}
+                  </span>
+                  <span className="text-[0.86em] text-ink-3">· G3 confirm required</span>
+                </span>
+                <PillLink to={`/stroke/case/${c.id}/imaging`}>Imaging</PillLink>
+              </li>
             )}
+            <li className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-4 py-2">
+              <span className="tabular flex items-center gap-2 text-[0.95em]">
+                <Icon name="Users" size={14} className="text-ink-3" />
+                <span className="font-semibold">
+                  {acked} of {PAGING_LOG.length} answered
+                </span>
+                {acked < PAGING_LOG.length && (
+                  <Chip tone="abnormal" icon="TriangleAlert">
+                    {PAGING_LOG.length - acked} no answer
+                  </Chip>
+                )}
+              </span>
+              <PillLink to={`/stroke/case/${c.id}/team`}>Team</PillLink>
+            </li>
+          </ul>
 
-            <Card className="p-4">
-              <h3 className="text-[0.86em] font-bold tracking-wider text-ink-3 uppercase">Team</h3>
-              <p className="tabular mt-1.5 text-[0.95em]">
-                {acked} of {PAGING_LOG.length} acknowledged
-              </p>
-              <ul className="mt-2 space-y-1.5">
-                {PAGING_LOG.map((x) => (
-                  <li key={x.role} className="flex flex-wrap items-center justify-between gap-2 text-[0.9em]">
-                    <span className="min-w-0 truncate">
-                      {x.role} · <span className="text-ink-3">{x.name}</span>
-                    </span>
-                    {x.ackAt ? (
-                      <Chip tone="normal" icon="Check">
-                        {formatTime(x.ackAt)}
-                      </Chip>
-                    ) : (
-                      <Chip tone="abnormal" icon="TriangleAlert">
-                        no answer
-                      </Chip>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </div>
-
-          <Card className="mt-4 p-4">
-            <h3 className="text-[0.86em] font-bold tracking-wider text-ink-3 uppercase">In progress</h3>
-            <ul className="mt-2 space-y-1.5">
-              {STROKE_TASKS.filter((t) => t.column === 'In progress' || t.column === 'Blocked').map((t) => (
-                <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 text-[0.92em]">
+          {/* What is moving right now. */}
+          <section className="mt-5">
+            <h3 className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">In progress</h3>
+            <ul className="mt-2 divide-y divide-glass-hairline">
+              {inProgress.map((t) => (
+                <li key={t.id} className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-2 text-[0.92em]">
                   <span className="min-w-0 truncate">
                     {t.label} · <span className="text-ink-3">{t.owner}</span>
                   </span>
-                  <Chip tone={t.column === 'Blocked' ? 'abnormal' : 'caution'}>
+                  <Chip
+                    tone={t.column === 'Blocked' ? 'abnormal' : 'caution'}
+                    icon={t.column === 'Blocked' ? 'Ban' : 'Timer'}
+                  >
                     {t.column}
                     {t.dueInMin !== null && ` · ${t.dueInMin}m`}
                   </Chip>
                 </li>
               ))}
             </ul>
-          </Card>
+          </section>
 
           <footer className="mt-5 flex flex-wrap gap-2">
             <Button tone="primary" icon="Clock" onClick={() => navigate(`/stroke/case/${c.id}/clock`)}>
@@ -170,9 +173,7 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
             <Button icon="Ambulance" onClick={() => navigate(`/stroke/case/${c.id}/transfer`)}>
               Transfer
             </Button>
-            <span className="tabular ml-auto self-center text-[0.84em] text-ink-3">
-              server {formatTime(caseNow)}
-            </span>
+            <span className="tabular ml-auto self-center text-[0.84em] text-ink-3">server {formatTime(caseNow)}</span>
           </footer>
         </div>
       </div>

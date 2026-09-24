@@ -14,12 +14,20 @@
  *
  * Break-glass is the normal path here: a remote on-call has no care
  * relationship with a patient at another site.
+ *
+ * Calm pass: model@version is named once, on the findings footer; the four
+ * limits are named once, in the explain payload behind Why?; the provenance
+ * rationale and the image caption fold behind one Why. The phone-first column,
+ * the explicit ICH NO, the single G3 statement, break-glass and the AI-OFF
+ * fallback are untouched.
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { AIActionBar, Confidence, Diamond } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
+import { ConfirmDialog } from '@/components/overlays'
 import { Alert, Button, Card, Chip, Icon, KeyValue, Toggle, cx } from '@/components/primitives'
 import { BreakGlassBanner } from '@/components/states'
 import { formatTime } from '@/data/format'
@@ -45,6 +53,7 @@ export function S1814({ id }: { id?: string }) {
   const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
   const [overlay, setOverlay] = useState(true)
+  const [calling, setCalling] = useState<'neuro-interventionist' | 'radiologist' | null>(null)
 
   const confirmed = dispositions[`imaging:${c.id}:lvo`]
   const glass = breakGlass[p.id]
@@ -58,13 +67,23 @@ export function S1814({ id }: { id?: string }) {
       bannerExtra={<CaseClockStrip caseId={c.id} />}
       loadingShape="tiles"
       states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN', 'AI-LOW']}
-      chips={
+      heading="Imaging triage"
+      subheading={
         <>
-          <Chip tone="neutral">{IMAGING_TRIAGE.study}</Chip>
-          <Chip tone="caution" icon="ShieldAlert">
-            G3 · confirm required
-          </Chip>
+          {IMAGING_TRIAGE.study} · delivered {formatTime(IMAGING_TRIAGE.deliveredAt)}, {minsFromRecon} min after
+          reconstruction
         </>
+      }
+      chips={
+        confirmed ? (
+          <Chip tone="normal" icon="Check">
+            confirmed
+          </Chip>
+        ) : (
+          <Chip tone="caution" icon="ShieldAlert">
+            confirm required
+          </Chip>
+        )
       }
       actions={
         <>
@@ -78,12 +97,8 @@ export function S1814({ id }: { id?: string }) {
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Provenance</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
-              <KeyValue label="Model">
-                <span className="tabular">{IMAGING_TRIAGE.model}</span>
-              </KeyValue>
+          <SectionCard title="Provenance" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <dl className="divide-y divide-glass-hairline">
               <KeyValue label="Study">
                 <span className="tabular">{IMAGING_TRIAGE.studyId}</span>
               </KeyValue>
@@ -93,40 +108,32 @@ export function S1814({ id }: { id?: string }) {
               <KeyValue label="Reconstructed">
                 <span className="tabular">{formatTime(IMAGING_TRIAGE.reconstructedAt)}</span>
               </KeyValue>
-              <KeyValue label="Delivered to you">
-                <span className="tabular">
-                  {formatTime(IMAGING_TRIAGE.deliveredAt)} · {minsFromRecon} min later
-                </span>
-              </KeyValue>
-              <KeyValue label="Gate">G3 — attest before it counts</KeyValue>
             </dl>
-            <p className="mt-3 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.86em] text-ink-2">
-              A finding with no model and no version is not actionable, clinically or legally. That is why the card
-              names both on its face rather than in a drawer.
-            </p>
-          </Card>
+          </SectionCard>
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">What it does not do</h3>
-            <ul className="mt-2 space-y-1.5 text-[0.9em] text-ink-2">
-              {IMAGING_TRIAGE.limits.map((l) => (
-                <li key={l} className="flex gap-2">
-                  <Icon name="Minus" size={13} className="mt-1 shrink-0 text-ink-muted" />
-                  {l}
-                </li>
-              ))}
-            </ul>
-          </Card>
+          <Why label="How to read this card">
+            <p className="text-ink-2">
+              A finding with no model and no version is not actionable, clinically or legally. That is why the card
+              names both on its face rather than in a drawer, and why what the model does not do is listed in full
+              behind Why? on the finding itself.
+            </p>
+            <p className="text-ink-2">
+              The overlay is drawn on a copy. The unmarked image is always one tap away, and nothing the model draws is
+              burned into the study.
+            </p>
+          </Why>
         </div>
       }
-      railTitle="Model"
+      railTitle="Provenance"
       actionBar={
         <>
           <span className="text-[0.88em] text-ink-3">
             {confirmed ? `Confirmed by ${confirmed.by}` : 'A G3 finding needs a named clinician to confirm it'}
           </span>
           <div className="ml-auto flex flex-wrap gap-2">
-            <Button icon="PhoneCall">Escalate to the neuro-interventionist</Button>
+            <Button icon="PhoneCall" onClick={() => setCalling('neuro-interventionist')}>
+              Escalate to the neuro-interventionist
+            </Button>
             <Button
               tone="primary"
               icon="Syringe"
@@ -230,9 +237,6 @@ export function S1814({ id }: { id?: string }) {
               <Button size="sm" onClick={() => setOverlay(true)} disabled={overlay}>
                 Show the overlay
               </Button>
-              <span className="ml-auto text-[0.84em] text-ink-3">
-                The unmarked image is always one tap away.
-              </span>
             </div>
           </Card>
 
@@ -270,12 +274,10 @@ export function S1814({ id }: { id?: string }) {
                     ))}
                   </dl>
 
+                  {/* The one place model@version is named. */}
                   <p className="tabular mt-3 flex flex-wrap items-center gap-2 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.88em]">
                     <Icon name="Cpu" size={13} className="shrink-0 text-ink-3" />
                     {IMAGING_TRIAGE.model}
-                    <span className="text-ink-3">
-                      · delivered {formatTime(IMAGING_TRIAGE.deliveredAt)}, {minsFromRecon} min after reconstruction
-                    </span>
                   </p>
 
                   <AIActionBar
@@ -321,7 +323,7 @@ export function S1814({ id }: { id?: string }) {
                     That is the documented fallback for AI-404: a radiologist or neurologist read. The clock keeps
                     running either way.
                   </p>
-                  <Button className="mt-3" icon="PhoneCall">
+                  <Button className="mt-3" icon="PhoneCall" onClick={() => setCalling('radiologist')}>
                     Call the radiologist on call
                   </Button>
                 </>
@@ -337,6 +339,22 @@ export function S1814({ id }: { id?: string }) {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={calling !== null}
+        title={calling === 'radiologist' ? 'Call the radiologist on call?' : 'Escalate to the neuro-interventionist?'}
+        consequence={
+          calling === 'radiologist'
+            ? 'Rings the on-call radiologist for an immediate read. The request and the time are logged against the case.'
+            : 'Rings Dr Samir Kulkarni and pages the cath lab. The escalation and the time are logged against the case.'
+        }
+        confirmLabel="Call now"
+        onConfirm={() => {
+          const who = calling === 'radiologist' ? 'the radiologist on call' : 'Dr Samir Kulkarni'
+          setCalling(null)
+          toast({ tone: 'info', title: `Calling ${who}`, detail: `Logged against case ${c.caseNo}.` })
+        }}
+        onCancel={() => setCalling(null)}
+      />
     </Screen>
   )
 }

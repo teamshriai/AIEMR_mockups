@@ -118,6 +118,12 @@ export const PERSONA_SPECS: Record<PersonaId, PersonaSpec> = {
       'order.sign',
       'order.cancel',
       'result.read',
+      /*
+       * READ ONLY. A hub consultant receives stroke transfers and is asked to
+       * look at the console; activating a code stroke, dosing thrombolysis and
+       * selecting for thrombectomy all stay with the stroke personas.
+       */
+      'stroke.case.read',
       'result.approve',
       'problem.write',
       'discharge.write',

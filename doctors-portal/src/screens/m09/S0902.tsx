@@ -6,15 +6,21 @@
  * AI-303 monitors adherence at G1 — it notices, you may ignore it, and the
  * printed protocol remains the fallback. It reports where care diverged from
  * the pathway; it does not enforce the pathway.
+ *
+ * Calm pass: the surface opens on the set that is due for review; the whole
+ * catalogue is one tap away, and a set's items show only when its row is
+ * opened. The adherence report is folded, and the two explanations are one
+ * `Why`.
  */
 
 import { useNavigate } from 'react-router-dom'
 
-import { Diamond } from '@/components/ai'
-import { Alert, Button, Card, Chip, Icon, Table, Td, Th, Tr } from '@/components/primitives'
+import { Disclosure, ScopeTabs, SectionCard, Why, useScope } from '@/components/calm'
+import { Button, Chip } from '@/components/primitives'
 import { ORDER_SETS } from '@/data/clinical'
-import { Screen, ScreenSection } from '@/shell/Screen'
+import { NOW } from '@/data/format'
 import { selectAiActive, useAI } from '@/store/ai'
+import { Screen } from '@/shell/Screen'
 
 const PATHWAY_ADHERENCE = [
   {
@@ -39,100 +45,137 @@ const PATHWAY_ADHERENCE = [
   },
 ]
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** `30-Sep-2026` → a Date; `—` → null. */
+function parseDue(s: string): Date | null {
+  const m = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/.exec(s)
+  if (!m) return null
+  const month = MONTHS.indexOf(m[2])
+  if (month < 0) return null
+  return new Date(Number(m[3]), month, Number(m[1]))
+}
+
+const DAY_MS = 86_400_000
+
+type Scope = 'due' | 'all'
+const SCOPES: readonly Scope[] = ['due', 'all']
+
 export function S0902() {
   const navigate = useNavigate()
   const aiActive = useAI(selectAiActive)
+  const [scope, setScope] = useScope(SCOPES, 'due')
+
+  const daysUntil = (s: (typeof ORDER_SETS)[number]) => {
+    const d = parseDue(s.reviewDue)
+    return d ? Math.round((d.getTime() - NOW.getTime()) / DAY_MS) : null
+  }
+
+  /** Due for review: the soonest review date, plus anything else inside 90 days. */
+  const dated = ORDER_SETS.filter((s) => daysUntil(s) !== null).sort((a, b) => daysUntil(a)! - daysUntil(b)!)
+  const due = dated.filter((s, i) => i === 0 || daysUntil(s)! <= 90)
+  const rows = scope === 'due' ? due : ORDER_SETS
+  const used = ORDER_SETS.reduce((n, s) => n + s.usedThisMonth, 0)
+
+  const apply = () => navigate('/encounter/E-118366/orders/new')
 
   return (
     <Screen
       screenId="S-09-02"
       loadingShape="list"
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'OFFLINE', 'STALE', 'AI-OFF']}
-      chips={<Chip tone="neutral">{ORDER_SETS.length} sets</Chip>}
+      heading="Order sets"
+      subheading={
+        <>
+          {due.length} due for review · {ORDER_SETS.length} sets · used {used} times this month
+        </>
+      }
       actions={
         <Button icon="Settings" onClick={() => navigate('/clinician/templates')}>
           Manage sets
         </Button>
       }
-      rail={
-        <Card className="p-4">
-          <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">What adherence means here</h3>
-          <p className="mt-1.5 text-[0.9em] text-ink-2">
-            A pathway is a default, not a rule. Divergence is often the right call — a patient who cannot produce
-            sputum cannot have a sputum culture. What the monitoring gives you is the pattern, so a systematic
-            constraint can be told apart from a habit.
-          </p>
-          <p className="mt-2.5 text-[0.86em] text-ink-3">
-            AI-303 · G1, and the printed protocol remains the fallback.
-          </p>
-        </Card>
-      }
-      railTitle="Adherence"
     >
-      <div className="space-y-5">
-        <Alert tone="info" title="A set is applied to an encounter, not to a patient">
-          Applying a set places its orders against the encounter you are in. It does not create a standing instruction,
-          and changing the set later does not change orders already placed.
-        </Alert>
-
-        <ScreenSection title="Available sets">
-          <Card className="overflow-hidden">
-            <Table
-              caption="Order sets and pathways"
-              rowCount={`${ORDER_SETS.length} sets`}
-              head={
-                <>
-                  <Th>Set</Th>
-                  <Th>Scope</Th>
-                  <Th className="hidden md:table-cell">Owner</Th>
-                  <Th className="hidden md:table-cell">Review due</Th>
-                  <Th>Used</Th>
-                </>
-              }
-            >
-              {ORDER_SETS.map((s) => (
-                <Tr key={s.id} onClick={() => navigate('/encounter/E-118366/orders/new')}>
-                  <Td>
-                    <span className="block font-medium">{s.name}</span>
-                    <span className="mt-1 flex flex-wrap gap-1">
-                      {s.items.map((i) => (
-                        <Chip key={i} tone="neutral">
-                          {i}
-                        </Chip>
-                      ))}
-                    </span>
-                  </Td>
-                  <Td>
-                    <Chip tone={s.scope === 'Facility-wide' ? 'brand' : 'neutral'}>{s.scope}</Chip>
-                  </Td>
-                  <Td className="hidden md:table-cell">{s.owner}</Td>
-                  <Td className="tabular hidden md:table-cell">{s.reviewDue}</Td>
-                  <Td className="tabular">{s.usedThisMonth}</Td>
-                </Tr>
-              ))}
-            </Table>
-          </Card>
-        </ScreenSection>
+      <div className="max-w-4xl space-y-5">
+        <SectionCard
+          title="Sets and pathways"
+          meta={<span className="tabular text-[0.88em] text-ink-3">{rows.length} shown</span>}
+          action={
+            <ScopeTabs
+              value={scope}
+              onChange={setScope}
+              options={[
+                { key: 'due', label: 'Due for review', count: due.length },
+                { key: 'all', label: 'All', count: ORDER_SETS.length },
+              ]}
+            />
+          }
+        >
+          {rows.length === 0 ? (
+            <p className="px-3 py-6 text-center text-ink-2">No set is due for review. The whole catalogue is one tap away.</p>
+          ) : (
+            <ul aria-label="Order sets and pathways" className="divide-y divide-glass-hairline">
+              {rows.map((s) => {
+                const days = daysUntil(s)
+                const soon = days !== null && days <= 90
+                return (
+                  <li key={s.id} className="py-1">
+                    <button
+                      type="button"
+                      onClick={apply}
+                      className="grid min-h-16 w-full grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 rounded-panel px-3 py-2.5 text-left transition-colors duration-150 hover:bg-glass-fill-hover"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[1.02em] font-semibold tracking-tight">{s.name}</span>
+                        <span className="mt-0.5 block text-[0.88em] text-ink-3">
+                          <span className="tabular">{s.items.length} items</span> · {s.scope} · {s.owner} ·{' '}
+                          <span className="tabular">used {s.usedThisMonth} times this month</span>
+                        </span>
+                      </span>
+                      <span className="flex flex-col items-end gap-1.5">
+                        {days !== null ? (
+                          <Chip tone={soon ? 'caution' : 'neutral'} icon={soon ? 'TriangleAlert' : 'Check'} className="tabular">
+                            {soon ? `review due ${s.reviewDue}` : `reviewed to ${s.reviewDue}`}
+                          </Chip>
+                        ) : (
+                          <Chip tone="neutral" icon="Check">
+                            personal · no review
+                          </Chip>
+                        )}
+                      </span>
+                    </button>
+                    <Disclosure label="items" count={s.items.length}>
+                      <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                        {s.items.map((i) => (
+                          <Chip key={i} tone="neutral">
+                            {i}
+                          </Chip>
+                        ))}
+                      </div>
+                    </Disclosure>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </SectionCard>
 
         {aiActive && (
-          <ScreenSection
-            title="Pathway adherence"
-            subtitle="Where care diverged from the pathway this month, and how often"
-          >
+          <Disclosure label="pathway adherence" count={PATHWAY_ADHERENCE.length}>
             <div className="grid gap-4 lg:grid-cols-2">
               {PATHWAY_ADHERENCE.map((pw) => (
-                <Card key={pw.pathway} className="p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold">{pw.pathway}</h3>
-                      <p className="tabular text-[0.86em] text-ink-3">{pw.cases} cases this month</p>
-                    </div>
+                <SectionCard
+                  key={pw.pathway}
+                  title={pw.pathway}
+                  meta={<span className="tabular text-[0.88em] text-ink-3">{pw.cases} cases this month</span>}
+                  action={
                     <Chip tone={pw.adherence >= 0.85 ? 'normal' : 'caution'} icon={pw.adherence >= 0.85 ? 'Check' : 'TriangleAlert'}>
                       {Math.round(pw.adherence * 100)}% overall
                     </Chip>
-                  </div>
-
-                  <ul className="mt-3 space-y-3">
+                  }
+                  bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+                >
+                  <ul className="space-y-3">
                     {pw.divergences.map((d) => (
                       <li key={d.step}>
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -148,26 +191,30 @@ export function S0902() {
                             }}
                           />
                         </div>
-                        {d.note && (
-                          <p className="mt-1 flex items-start gap-1.5 text-[0.86em] text-ink-3">
-                            <Diamond size={9} className="mt-1" />
-                            {d.note}
-                          </p>
-                        )}
+                        {d.note && <p className="mt-1 text-[0.86em] text-ink-3">{d.note}</p>}
                       </li>
                     ))}
                   </ul>
-
-                  <p className="mt-3 flex items-start gap-2 text-[0.86em] text-ink-3">
-                    <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-                    Percentages are of cases where the step was clinically applicable, so an inapplicable step does not
-                    count as a miss.
-                  </p>
-                </Card>
+                </SectionCard>
               ))}
             </div>
-          </ScreenSection>
+          </Disclosure>
         )}
+
+        <Why label="Why a set is applied, not remembered — and what adherence means">
+          <p className="text-ink-2">
+            A set is applied to an encounter, not to a patient. Applying it places its orders against the encounter you
+            are in; it does not create a standing instruction, and changing the set later does not change orders
+            already placed.
+          </p>
+          <p className="text-ink-2">
+            A pathway is a default, not a rule. Divergence is often the right call — a patient who cannot produce sputum
+            cannot have a sputum culture. What the monitoring gives you is the pattern, so a systematic constraint can
+            be told apart from a habit. Percentages are of cases where the step was clinically applicable, so an
+            inapplicable step does not count as a miss.
+          </p>
+          <p className="text-ink-3">AI-303 · G1, and the printed protocol remains the fallback.</p>
+        </Why>
       </div>
     </Screen>
   )

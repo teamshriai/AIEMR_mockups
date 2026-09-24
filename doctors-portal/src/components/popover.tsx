@@ -51,8 +51,8 @@ export function Popover({
           aria-label={label}
           style={{ width }}
           className={cx(
-            'glass-strong absolute top-[calc(100%+8px)] z-70 max-w-[calc(100vw-2rem)]',
-            'overflow-hidden rounded-panel shadow-glass-lg',
+            'menu-surface absolute top-[calc(100%+8px)] z-70 max-w-[calc(100vw-2rem)]',
+            'overflow-hidden rounded-panel',
             align === 'right' ? 'right-0' : 'left-0',
           )}
         >
@@ -84,7 +84,7 @@ export function MenuItem({
       onClick={onClick}
       className={cx(
         'flex w-full min-h-11 items-center gap-3 px-4 py-2.5 text-left',
-        'transition-colors duration-150 hover:bg-glass-fill-hover',
+        'transition-colors duration-150 hover:bg-brand-soft',
         selected && 'bg-brand-soft',
         tone === 'critical' && 'text-critical',
       )}

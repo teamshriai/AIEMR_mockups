@@ -2,11 +2,14 @@
  * Who is calling, where from, in what language, and how the surface looks.
  *
  * On the theme: §5.3 makes night mandatory on the ICU, discharge, stroke and
- * radiology-reading screens. The brief for this build is "switchable theme with
- * a toggle on top and light theme as default", so light is the default and the
- * toggle is explicit — and a night-mandatory screen surfaces a dismissible
- * prompt in Z4 rather than switching the theme underneath the user. The rule
- * stays visible and one click away; it never overrides the person.
+ * radiology-reading screens. Night is the DEFAULT for this build, and light is
+ * the explicit alternative behind the Z1 toggle. Where a clinician has switched
+ * to light, a night-mandatory screen surfaces a dismissible prompt in Z4 rather
+ * than switching the theme underneath them. The rule stays visible and one
+ * click away; it never overrides the person.
+ *
+ * On notes: voice is the default way into every note field (`notesInput`), and
+ * typing is always one tap away. The preference is per person and persists.
  */
 
 import { create } from 'zustand'
@@ -19,6 +22,8 @@ import { STAFF_FOR_PERSONA, staff } from '@/data/kit'
 
 export type Theme = 'light' | 'night'
 export type Density = 'compact' | 'comfortable'
+/** How a clinician prefers to fill a note field. Voice first; typing always available. */
+export type NotesInput = 'voice' | 'type'
 
 interface SessionState {
   /**
@@ -39,6 +44,8 @@ interface SessionState {
   theme: Theme
   /** §5.4 — density is a typographic token, defaulted per persona. */
   density: Density
+  /** The default input for every note field. */
+  notesInput: NotesInput
   /** True once the user has dismissed the night-theme prompt this session. */
   nightPromptDismissed: boolean
   /** Z2 collapsed to the 64px icon rail. */
@@ -58,6 +65,7 @@ interface SessionState {
   setTheme: (t: Theme) => void
   toggleTheme: () => void
   setDensity: (d: Density) => void
+  setNotesInput: (m: NotesInput) => void
   dismissNightPrompt: () => void
   toggleNav: () => void
   grantBreakGlass: (patientId: string, reason: string) => void
@@ -71,10 +79,11 @@ export const useSession = create<SessionState>()(
       failedAttempts: 0,
       lockedUntil: null,
       persona: 'P-04',
-      facilityCode: 'AWF',
+      facilityCode: 'ICH',
       language: 'EN',
-      theme: 'light',
+      theme: 'night',
       density: 'compact',
+      notesInput: 'voice',
       nightPromptDismissed: false,
       navCollapsed: false,
       breakGlassPatients: {},
@@ -121,6 +130,7 @@ export const useSession = create<SessionState>()(
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set({ theme: get().theme === 'light' ? 'night' : 'light' }),
       setDensity: (density) => set({ density }),
+      setNotesInput: (notesInput) => set({ notesInput }),
       dismissNightPrompt: () => set({ nightPromptDismissed: true }),
       toggleNav: () => set({ navCollapsed: !get().navCollapsed }),
 
@@ -137,7 +147,26 @@ export const useSession = create<SessionState>()(
         set({ breakGlassPatients: next })
       },
     }),
-    { name: 'indostates.session' },
+    {
+      name: 'indostates.session',
+      /**
+       * v1: night became the default and the hub moved to Coimbatore. v2: a
+       * device that had `theme: 'light'` persisted from BEFORE v1 shipped — the
+       * local dev server and the LAN `Network:` URL are separate browser
+       * origins, each with its own `localStorage`, so a device that only ever
+       * opened the LAN link kept its pre-v1 light default even after v1 landed
+       * everywhere else. Forcing the reset again at v2 catches that origin too.
+       * A toggle after this point is a real choice and stays untouched.
+       */
+      version: 2,
+      migrate: (persisted, version) => {
+        const s = (persisted ?? {}) as Partial<SessionState>
+        if (version < 2) {
+          return { ...s, theme: 'night', facilityCode: 'ICH', notesInput: 'voice' } as SessionState
+        }
+        return s as SessionState
+      },
+    },
   ),
 )
 

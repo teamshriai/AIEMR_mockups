@@ -12,9 +12,10 @@
  * bar, which is what the phone-first personas actually use.
  */
 
+import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
-import { navFor } from '@/atlas/nav'
+import { navFor, navGroupsFor } from '@/atlas/nav'
 import { screenForPath } from '@/atlas/registry'
 import { Icon, cx } from '@/components/primitives'
 import { useSession } from '@/store/session'
@@ -22,9 +23,13 @@ import { useSession } from '@/store/session'
 export function NavRail() {
   const persona = useSession((s) => s.persona)
   const collapsed = useSession((s) => s.navCollapsed)
-  const items = navFor(persona)
+  const { primary, secondary } = navGroupsFor(persona)
   const { pathname } = useLocation()
   const current = screenForPath(pathname)
+  /** Opens itself when the current screen lives behind it, never stranding you. */
+  const [moreOpen, setMoreOpen] = useState(false)
+  const inSecondary = secondary.some((i) => i.section === current?.navSection)
+  const showMore = moreOpen || inSecondary
 
   return (
     <nav
@@ -37,7 +42,7 @@ export function NavRail() {
       )}
     >
       <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-        {items.map((item) => {
+        {primary.map((item) => {
           const active = current?.navSection === item.section
           return (
             <li key={item.section}>
@@ -60,6 +65,52 @@ export function NavRail() {
             </li>
           )
         })}
+
+        {/* More — present, capability-scoped, just not surfaced by default. */}
+        {secondary.length > 0 && (
+          <li>
+            <button
+              type="button"
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-expanded={showMore}
+              title="More"
+              className={cx(
+                'flex min-h-11 w-full items-center gap-3 rounded-pill px-3 py-2.5',
+                'text-ink-3 transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover hover:text-ink',
+                collapsed && 'md:justify-center md:px-2',
+                'justify-center md:justify-start',
+              )}
+            >
+              <Icon name="Ellipsis" size={18} className="shrink-0" />
+              <span className={cx('hidden truncate', !collapsed && 'md:inline')}>More</span>
+            </button>
+          </li>
+        )}
+
+        {showMore &&
+          secondary.map((item) => {
+            const active = current?.navSection === item.section
+            return (
+              <li key={item.section}>
+                <NavLink
+                  to={item.to}
+                  title={item.label}
+                  className={cx(
+                    'flex min-h-11 items-center gap-3 rounded-pill px-3 py-2.5 text-[0.95em]',
+                    'transition-colors duration-150 ease-out-clinical',
+                    active
+                      ? 'bg-brand-soft font-semibold text-brand'
+                      : 'text-ink-3 hover:bg-glass-fill-hover hover:text-ink',
+                    collapsed && 'md:justify-center md:px-2',
+                    'justify-center md:justify-start md:pl-6',
+                  )}
+                >
+                  <Icon name={item.icon} size={16} className="shrink-0" />
+                  <span className={cx('hidden truncate', !collapsed && 'md:inline')}>{item.label}</span>
+                </NavLink>
+              </li>
+            )
+          })}
       </ul>
 
       <p
@@ -77,14 +128,15 @@ export function NavRail() {
 /** <768px — Z2 becomes a bottom tab bar. The assistant bubble sits above it. */
 export function NavTabBar() {
   const persona = useSession((s) => s.persona)
-  const items = navFor(persona)
+  /** Primary only: a bottom bar has room for five targets, not ten. */
+  const items = navFor(persona).filter((i) => !i.secondary)
   const { pathname } = useLocation()
   const current = screenForPath(pathname)
 
   return (
     <nav
       aria-label="Modules"
-      className="glass-strong fixed inset-x-0 bottom-0 z-60 border-t border-glass-hairline sm:hidden"
+      className="chrome-bar fixed inset-x-0 bottom-0 z-60 border-t border-glass-hairline sm:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="no-scrollbar flex overflow-x-auto">

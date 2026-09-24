@@ -267,6 +267,60 @@ function formatTick(v: number): string {
 }
 
 /**
+ * A sparkline — the shape of a trend, at a glance, inside a panel.
+ *
+ * A sparkline has no axes, so the latest value is DIRECTLY LABELLED beside it.
+ * Without that label the mark says "rising" but not "rising to what", and in a
+ * clinical panel that is the part that matters. The whole series is still in
+ * the accessible name, so nothing is available only as a picture.
+ */
+export function Sparkline({
+  points,
+  unit,
+  label,
+}: {
+  points: TrendPoint[]
+  unit: string
+  /** What the series is, for the accessible name. */
+  label: string
+}) {
+  if (points.length < 2) return null
+
+  const w = 96
+  const h = 26
+  const values = points.map((p) => p.value)
+  const lo = Math.min(...values)
+  const hi = Math.max(...values)
+  const span = hi - lo || 1
+  const x = (i: number) => (i / (points.length - 1)) * (w - 2) + 1
+  const y = (v: number) => h - 3 - ((v - lo) / span) * (h - 6)
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
+  const last = points[points.length - 1]
+  const rising = last.value > points[0].value
+
+  return (
+    <span className="flex shrink-0 items-center gap-2">
+      <svg
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label={`${label}: ${values.map((v) => formatTick(v)).join(', ')} ${unit}`}
+        className="overflow-visible"
+      >
+        <path d={path} fill="none" stroke="var(--color-viz-1)" strokeWidth="1.5" strokeLinejoin="round" />
+        <circle cx={x(points.length - 1)} cy={y(last.value)} r="2.6" fill="var(--color-viz-1)" />
+      </svg>
+      <span className="tabular flex items-center gap-1 text-[0.86em] font-semibold whitespace-nowrap">
+        {formatTick(last.value)}
+        <span className="font-normal text-ink-3">{unit}</span>
+        <Icon name={rising ? 'ArrowUp' : 'ArrowDown'} size={11} className="text-ink-3" />
+      </span>
+    </span>
+  )
+}
+
+/**
  * Two parts of a whole, side by side — for the perfusion core/penumbra split.
  * Both segments are directly labelled, which is what the light-mode contrast
  * warning on slot 2 obliges.

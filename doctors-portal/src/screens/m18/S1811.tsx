@@ -6,17 +6,25 @@
  * ARC-22 puts video in Z5 and the live transcript plus the drafted note in Z6.
  * The reason the three are on one surface is practical: a neurologist who has
  * to switch windows to see the CT loses the examination.
+ *
+ * Calm pass: the imaging panel is one line and a link to the screen that owns
+ * the read, rather than a second copy of the findings table; the two "why this
+ * is here" notes fold behind Why. The recording indicator, the extracted-NIHSS
+ * suggestion, the transcript, the note and the Z7a bar are untouched.
  */
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { Diamond, SuggestionCard } from '@/components/ai'
+import { SuggestionCard } from '@/components/ai'
+import { PillLink, SectionCard, Why } from '@/components/calm'
+import { ConfirmDialog } from '@/components/overlays'
 import { Button, Card, Chip, Icon, TextArea, cx } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient, staff } from '@/data/kit'
 import { IMAGING_TRIAGE, NIHSS_TOTAL, strokeCase } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
+import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
 import { CaseClockStrip, useCaseClock } from './CaseClock'
@@ -38,6 +46,10 @@ export function S1811({ id }: { id?: string }) {
   const caseNow = useCaseClock()
   const [elapsed, setElapsed] = useState(0)
   const [notes, setNotes] = useState('')
+  const [muted, setMuted] = useState(false)
+  const [cameraOff, setCameraOff] = useState(false)
+  const [ending, setEnding] = useState(false)
+  const toast = useUI((s) => s.toast)
 
   const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
@@ -59,6 +71,12 @@ export function S1811({ id }: { id?: string }) {
       loadingShape="thread"
       states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'AI-OFF', 'AI-LOW']}
       wide
+      heading="Telestroke session"
+      subheading={
+        <>
+          {hub.name} at the hub · {spoke.name} at {c.originFacility}
+        </>
+      }
       chips={
         <>
           <Chip tone="normal" icon="Video">
@@ -81,7 +99,7 @@ export function S1811({ id }: { id?: string }) {
       }
       actionBar={
         <>
-          <Button icon="PhoneOff" tone="destructive">
+          <Button icon="PhoneOff" tone="destructive" onClick={() => setEnding(true)}>
             End the session
           </Button>
           <span className="text-[0.88em] text-ink-3">
@@ -99,7 +117,7 @@ export function S1811({ id }: { id?: string }) {
       }
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        {/* Z5 — video and imaging side by side. */}
+        {/* Z5 — the examination itself. */}
         <div className="space-y-4">
           <Card className="overflow-hidden">
             <div className="relative aspect-video w-full bg-[#0a0d14]">
@@ -119,62 +137,62 @@ export function S1811({ id }: { id?: string }) {
                 <Icon name="User" size={18} className="text-[#6b7690]" />
                 <p className="mt-1 px-1 text-[10px] leading-tight text-[#8b94a8]">{spoke.name}</p>
               </div>
+              {/* Recording is visible to everyone on the call, always. */}
               <div className="absolute top-3 left-3 flex items-center gap-2 rounded-pill bg-[rgb(0_0_0/0.5)] px-2.5 py-1">
                 <span className="size-2 rounded-pill bg-abnormal" />
-                <span className="text-[0.78em] font-semibold text-white">RECORDING</span>
+                <span className="text-[0.78em] font-semibold text-white">RECORDING · with consent</span>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-              <Button size="sm" icon="Mic">
-                Mute
+              <Button size="sm" icon={muted ? 'MicOff' : 'Mic'} aria-pressed={muted} tone={muted ? 'primary' : 'secondary'} onClick={() => setMuted((m) => !m)}>
+                {muted ? 'Unmute' : 'Mute'}
               </Button>
-              <Button size="sm" icon="Video">
-                Camera
+              <Button size="sm" icon="Video" aria-pressed={cameraOff} tone={cameraOff ? 'primary' : 'secondary'} onClick={() => setCameraOff((v) => !v)}>
+                {cameraOff ? 'Camera off' : 'Camera'}
               </Button>
-              <Button size="sm" icon="MonitorSmartphone">
+              <Button
+                size="sm"
+                icon="MonitorSmartphone"
+                onClick={() => toast({ tone: 'info', title: 'CT shared to the call', detail: `${spoke.name} now sees the same slice you do.` })}
+              >
                 Share the CT
               </Button>
-              <span className="ml-auto text-[0.84em] text-ink-3">
-                {hub.name} · hub · {formatTime(caseNow)}
-              </span>
             </div>
           </Card>
 
           {aiActive && (
-            <Card className="p-4">
-              <h3 className="flex items-center gap-2 text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-                <Diamond size={10} />
-                Imaging alongside the examination
-              </h3>
-              <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-                {IMAGING_TRIAGE.findings.map((f) => (
-                  <div key={f.label} className="flex items-center justify-between gap-2 rounded-panel bg-glass-fill-muted px-3 py-2">
-                    <dt className="text-[0.9em] text-ink-2">{f.label}</dt>
-                    <dd className={cx('tabular font-semibold', f.emphasisNegative && 'text-normal')}>{f.value}</dd>
-                  </div>
+            <SectionCard
+              title="Imaging"
+              action={<PillLink to={`/stroke/case/${c.id}/imaging`}>Open the read</PillLink>}
+              bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+            >
+              <p className="text-[0.95em]">
+                {IMAGING_TRIAGE.findings.map((f, i) => (
+                  <span key={f.label}>
+                    {i > 0 && <span className="text-ink-3"> · </span>}
+                    <span className="text-ink-3">{f.label} </span>
+                    <span className={cx('tabular font-semibold', f.emphasisNegative && 'text-normal')}>{f.value}</span>
+                  </span>
                 ))}
-              </dl>
-              <p className="mt-2 text-[0.84em] text-ink-3">
-                Shown here so the examination and the scan are read together. Confirming the finding still happens on
-                the imaging screen, under its own G3 gate.
               </p>
-            </Card>
+              <Why label="Why the scan sits beside the examination" className="mt-2">
+                <p className="text-ink-2">
+                  Shown here so the examination and the scan are read together. Confirming the finding still happens on
+                  the imaging screen, under its own G3 gate — this line is a reminder, not the read.
+                </p>
+              </Why>
+            </SectionCard>
           )}
         </div>
 
         {/* Z6 — live transcript and the drafted note. */}
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="flex items-center justify-between gap-2 text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              <span>Live transcript</span>
-              {aiActive && (
-                <span className="flex items-center gap-1.5 font-normal normal-case">
-                  <Diamond size={9} />
-                  AI-101
-                </span>
-              )}
-            </h3>
-            <div className="thin-scroll mt-2 max-h-72 space-y-2.5 overflow-y-auto">
+          <SectionCard
+            title="Live transcript"
+            meta={<span className="text-[0.88em] text-ink-3">speech to text</span>}
+            bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+          >
+            <div className="thin-scroll max-h-72 space-y-2.5 overflow-y-auto">
               {heard.length === 0 && <p className="py-6 text-center text-[0.9em] text-ink-3">Waiting for speech…</p>}
               {heard.map((l) => (
                 <div key={l.at} className="flex gap-2.5">
@@ -195,11 +213,13 @@ export function S1811({ id }: { id?: string }) {
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[0.84em] text-ink-3">
-              The raw transcript is retained verbatim. If the speech service drops, the video continues and this
-              becomes plain typing.
-            </p>
-          </Card>
+            <Why label="What is kept, and what happens if the service drops" className="mt-2">
+              <p className="text-ink-2">
+                The raw transcript is retained verbatim. If the speech service drops, the video continues and this
+                becomes plain typing.
+              </p>
+            </Why>
+          </SectionCard>
 
           {aiActive && elapsed >= 124 && (
             <SuggestionCard
@@ -236,18 +256,29 @@ export function S1811({ id }: { id?: string }) {
             />
           )}
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Your note</h3>
+          <SectionCard title="Your note" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
             <TextArea
-              className="mt-2"
               rows={5}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Anything the transcript will not capture — what you saw rather than what was said…"
             />
-          </Card>
+          </SectionCard>
         </div>
       </div>
+      <ConfirmDialog
+        open={ending}
+        title="End the telestroke session?"
+        consequence="The call closes for everyone on it. The recording and the transcript are kept with the case; the note you have written stays a draft."
+        confirmLabel="End the session"
+        tone="destructive"
+        onConfirm={() => {
+          setEnding(false)
+          toast({ tone: 'info', title: 'Session ended', detail: `${Math.floor(elapsed / 60)} min ${String(elapsed % 60).padStart(2, '0')} s · recording kept with case ${c.caseNo}.` })
+          navigate('/stroke/telestroke/queue')
+        }}
+        onCancel={() => setEnding(false)}
+      />
     </Screen>
   )
 }

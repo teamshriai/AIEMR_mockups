@@ -44,7 +44,13 @@
     background:
       radial-gradient(60rem 40rem at 12% -10%, var(--color-bloom-a), transparent 60%),
       radial-gradient(50rem 38rem at 105% 15%, var(--color-bloom-b), transparent 62%),
-      linear-gradient(145deg, var(--color-page-from), var(--color-page-via) 45%, var(--color-page-to));
+      linear-gradient(
+        135deg,
+        var(--color-page-from) 0%,
+        var(--color-page-via) 40%,
+        var(--color-page-via-2, var(--color-page-via)) 70%,
+        var(--color-page-to) 100%
+      );
     transition: background 200ms var(--ease-out-clinical);
   }
 
@@ -113,6 +119,24 @@
     border: 1px solid var(--color-glass-hairline);
   }
 
+  /* Sticky chrome — see --color-chrome. Opaque enough that its text contrast
+     is a property of the bar rather than of the page scrolling under it. */
+  .chrome-bar {
+    background-color: var(--color-chrome);
+    backdrop-filter: blur(var(--blur-glass));
+    -webkit-backdrop-filter: blur(var(--blur-glass));
+  }
+
+  /* Floating menus and dropdown lists. Contrast is a property of the menu,
+     not of whatever the page has under it; the blur keeps it reading as glass. */
+  .menu-surface {
+    background-color: var(--color-menu);
+    border: 1px solid var(--color-menu-border);
+    box-shadow: var(--shadow-menu);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+
   .glass-card {
     border-radius: var(--radius-card);
   }
@@ -126,6 +150,18 @@
 
   .glass-hover:hover {
     background-color: var(--color-glass-fill-hover);
+    box-shadow: var(--shadow-glass-lg);
+  }
+
+  /* The brief's hover: the card lifts 2px over .25s. For CARDS and TILES a
+     pointer can rest on — never for list rows, which must not move under a
+     reader mid-scan. Reduced motion zeroes the duration globally (above). */
+  .lift {
+    transition: all var(--duration-lift) var(--ease-lift);
+  }
+
+  .lift:hover {
+    transform: translateY(-2px);
     box-shadow: var(--shadow-glass-lg);
   }
 
@@ -186,6 +222,15 @@
   .thin-scroll::-webkit-scrollbar-track {
     background: transparent;
   }
+}
+
+/* The brief's `.voice-active`: an AI-accent border and glow while the
+   microphone is live. The one place the accent is allowed. Declared as a
+   utility — in the components layer it lost to the element's own
+   `border-transparent`, and the glow never rendered. */
+@utility voice-active {
+  border-color: var(--color-ai-accent);
+  box-shadow: 0 0 12px var(--color-ai-glow);
 }
 
 @layer utilities {

@@ -8,6 +8,12 @@
  * the disagreement is recorded rather than resolved silently. A decision that
  * looks unanimous in the record when it was not is the version nobody can
  * learn from.
+ *
+ * Calm pass: the perfusion split bar belongs to the perfusion screen and is no
+ * longer redrawn here; the outcome card carries one caveat rather than two; the
+ * rationale folds behind Why. The disagreement dialogue, its ten-character
+ * reason and its trip to the registry export are unchanged, and cost still
+ * never blocks.
  */
 
 import { useState } from 'react'
@@ -15,12 +21,12 @@ import { useNavigate } from 'react-router-dom'
 
 import { Checklist } from '@/archetypes'
 import { Confidence, Diamond } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Alert, Button, Card, Chip, Icon, KeyValue, Select, TextArea } from '@/components/primitives'
-import { SplitBar } from '@/components/charts'
+import { Alert, Button, Chip, Icon, KeyValue, Select, TextArea } from '@/components/primitives'
 import { formatRupees, formatTime } from '@/data/format'
 import { STAFF, patient, tariff } from '@/data/kit'
-import { EVT_CRITERIA, EVT_OUTCOME_PREDICTION, PERFUSION, strokeCase } from '@/data/stroke'
+import { EVT_CRITERIA, EVT_OUTCOME_PREDICTION, strokeCase } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff } from '@/store/session'
 import { useStroke } from '@/store/stroke'
@@ -63,17 +69,19 @@ export function S1818({ id }: { id?: string }) {
       bannerExtra={<CaseClockStrip caseId={c.id} />}
       loadingShape="list"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-LOW']}
-      chips={
+      heading="EVT selection"
+      subheading={
         <>
-          <Chip tone={blocking.length === 0 ? 'normal' : 'abnormal'} icon={blocking.length === 0 ? 'Check' : 'Ban'}>
-            {items.length - blocking.length} of {items.length} clear
-          </Chip>
-          {evtDisagreement && (
-            <Chip tone="caution" icon="MessageSquareWarning">
-              disagreement recorded
-            </Chip>
-          )}
+          {items.length - blocking.length} of {items.length} criteria clear ·{' '}
+          {blocking.length > 0 ? `${blocking.length} outstanding` : 'ready to select'}
         </>
+      }
+      chips={
+        evtDisagreement && (
+          <Chip tone="caution" icon="MessageSquareWarning">
+            disagreement recorded
+          </Chip>
+        )
       }
       actions={
         <Button icon="Activity" onClick={() => navigate(`/stroke/case/${c.id}/perfusion`)}>
@@ -82,21 +90,16 @@ export function S1818({ id }: { id?: string }) {
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Imaging selection</h3>
-            <SplitBar
-              unit="mL"
-              parts={[
-                { label: 'Core', value: PERFUSION.coreMl, slot: 1 },
-                { label: 'Penumbra', value: PERFUSION.penumbraMl, slot: 2 },
-              ]}
-              caption={`ratio ${PERFUSION.mismatchRatio}`}
-            />
-          </Card>
-
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Cost</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
+          <SectionCard
+            title="Cost"
+            meta={
+              <Chip tone="normal" icon="Check">
+                never blocking
+              </Chip>
+            }
+            bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+          >
+            <dl className="divide-y divide-glass-hairline">
               <KeyValue label="Self-pay">
                 <span className="tabular">{formatRupees(evtTariff.selfPay)}</span>
               </KeyValue>
@@ -107,22 +110,20 @@ export function S1818({ id }: { id?: string }) {
                 <span className="tabular">{formatRupees(evtTariff.tpa)}</span>
               </KeyValue>
             </dl>
-            <p className="mt-2.5 rounded-panel bg-normal-soft px-3 py-2 text-[0.88em] font-medium text-normal">
-              <Icon name="Check" size={13} className="mr-1 inline" />
-              Shown, never blocking. The pre-authorisation runs in parallel.
-            </p>
-          </Card>
+            <p className="mt-2.5 text-[0.88em] text-ink-3">The pre-authorisation runs in parallel.</p>
+          </SectionCard>
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              Why disagreement is recorded
-            </h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
+          <Why label="Why a disagreement is recorded, and what the prediction is for">
+            <p className="text-ink-2">
               A neurologist and an interventionist can read the same perfusion map differently, and both can be
               reasonable. Recording the disagreement is how the registry learns which reading was right — a record that
               shows unanimity it did not have teaches nobody anything.
             </p>
-          </Card>
+            <p className="text-ink-2">
+              The predicted outcome is a statement about a population, applied to one person. It informs the
+              conversation with the family; it does not make the decision.
+            </p>
+          </Why>
         </div>
       }
       railTitle="Decision"
@@ -167,8 +168,12 @@ export function S1818({ id }: { id?: string }) {
         </ScreenSection>
 
         {aiActive && (
-          <ScreenSection title="Predicted outcome" subtitle="With and without thrombectomy, on the same scale">
-            <Card className="p-5">
+          <SectionCard
+            title="Predicted outcome"
+            meta={<span className="text-[0.88em] text-ink-3">with and without thrombectomy, on one scale</span>}
+            bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+          >
+            <div className="min-w-0">
               <div className="grid gap-4 sm:grid-cols-2">
                 {[
                   { label: 'With thrombectomy', v: EVT_OUTCOME_PREDICTION.withEvt.goodOutcome, slot: 1 },
@@ -202,16 +207,13 @@ export function S1818({ id }: { id?: string }) {
                 <span className="tabular text-[0.84em] text-ink-3">{EVT_OUTCOME_PREDICTION.model}</span>
               </div>
 
+              {/* The one caveat on this card. */}
               <p className="mt-2.5 rounded-panel bg-caution-soft px-3 py-2.5 text-[0.9em] font-medium text-caution">
                 <Icon name="TriangleAlert" size={13} className="mr-1 inline" />
                 {EVT_OUTCOME_PREDICTION.limits}
               </p>
-              <p className="mt-2 text-[0.88em] text-ink-2">
-                This is a prediction about a population, applied to one person. It informs the conversation with the
-                family; it does not make the decision.
-              </p>
-            </Card>
-          </ScreenSection>
+            </div>
+          </SectionCard>
         )}
       </div>
 

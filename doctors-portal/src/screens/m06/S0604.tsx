@@ -10,11 +10,22 @@
  *   AI-101 — "RAW TRANSCRIPT RETAINED VERBATIM; typing always available."
  *   AI-104 — dictation cleanup, with the raw text preserved beside the cleaned
  *   version so the clinician can see what was changed.
+ *
+ * Calm pass: the provenance is the transcript's own structure. Lines sit under
+ * the section they fed, so no line needs a chip saying so; drafting progress
+ * is one line; the retention rationale is behind a Why.
+ *
+ * It is opened ON REQUEST — "Draft with AI" on S-06-03 and S-08-04 — and hands back the section keys it drafted, which the
+ * note marks as scribe drafts needing a disposition. The transcript is keyed
+ * by patient; where no rich capture exists, one line per section is
+ * synthesised from that section's own transcript span, so a round on the
+ * pneumonia patient never streams the thyroid consultation.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Confidence, Diamond } from '@/components/ai'
+import { Why } from '@/components/calm'
 import { Modal } from '@/components/overlays'
 import { Button, Chip, Icon, Toggle, cx } from '@/components/primitives'
 import type { NoteSectionSeed } from '@/data/clinical'
@@ -32,7 +43,7 @@ interface TranscriptLine {
 }
 
 /** The consultation behind SD-P-01's drafted note. */
-const TRANSCRIPT: TranscriptLine[] = [
+const TRANSCRIPT_SD_P_01: TranscriptLine[] = [
   { speaker: 'Clinician', atSec: 4, raw: 'right so meera how have you been since march', feeds: 'subjective', cleaned: 'Right, so Meera — how have you been since March?' },
   {
     speaker: 'Patient',
@@ -78,28 +89,48 @@ const TRANSCRIPT: TranscriptLine[] = [
   },
 ]
 
+const TRANSCRIPTS: Record<string, TranscriptLine[]> = { 'SD-P-01': TRANSCRIPT_SD_P_01 }
+
+/** One clinician line per section, from the seed's own span, where no rich capture exists. */
+function synthesise(sections: NoteSectionSeed[]): TranscriptLine[] {
+  return sections.map((s, i) => ({
+    speaker: 'Clinician' as const,
+    atSec: 12 * (i + 1),
+    raw: s.transcriptSpan.toLowerCase().replace(/[.,;:—-]/g, ''),
+    cleaned: s.transcriptSpan,
+    feeds: s.key,
+  }))
+}
+
 const SECTION_LABELS: Record<NoteSectionSeed['key'], string> = {
   subjective: 'Subjective',
   objective: 'Objective',
   assessment: 'Assessment',
   plan: 'Plan',
 }
+const SECTION_KEYS = Object.keys(SECTION_LABELS) as NoteSectionSeed['key'][]
+
+const BAND_RANK = { HIGH: 0, MED: 1, LOW: 2 } as const
 
 export function S0604({
   open,
   onClose,
   onFinish,
+  patientId,
   patientName,
   sections,
 }: {
   open: boolean
   onClose: () => void
-  /** Hands the drafted sections back to the note. */
-  onFinish: () => void
+  /** Hands the drafted section keys back to the note. */
+  onFinish: (keys: NoteSectionSeed['key'][]) => void
+  patientId: string
   patientName: string
   sections: NoteSectionSeed[]
 }) {
   const language = useSession((s) => s.language)
+  const transcript = useMemo(() => TRANSCRIPTS[patientId] ?? synthesise(sections), [patientId, sections])
+  const total = transcript[transcript.length - 1]?.atSec ?? 0
   const [elapsed, setElapsed] = useState(0)
   const [recording, setRecording] = useState(true)
   const [showRaw, setShowRaw] = useState(false)
@@ -108,9 +139,9 @@ export function S0604({
   /** The session streams — which is the point of showing it at all. */
   useEffect(() => {
     if (!open || !recording) return
-    const t = window.setInterval(() => setElapsed((e) => Math.min(e + 2, 132)), 220)
+    const t = window.setInterval(() => setElapsed((e) => Math.min(e + 2, total)), 220)
     return () => window.clearInterval(t)
-  }, [open, recording])
+  }, [open, recording, total])
 
   useEffect(() => {
     if (open) {
@@ -123,16 +154,21 @@ export function S0604({
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }, [elapsed])
 
-  const heard = TRANSCRIPT.filter((l) => l.atSec <= elapsed)
-  const done = elapsed >= 132
+  const heard = transcript.filter((l) => l.atSec <= elapsed)
+  const done = elapsed >= total
 
-  /** A section starts drafting once its first contributing line has been heard. */
-  const sectionProgress = (key: NoteSectionSeed['key']) => {
-    const lines = TRANSCRIPT.filter((l) => l.feeds === key)
-    if (lines.length === 0) return 0
-    const got = lines.filter((l) => l.atSec <= elapsed).length
-    return got / lines.length
-  }
+  /** A section counts as drafted once every contributing line has been heard. */
+  const drafted = SECTION_KEYS.filter((key) => {
+    const lines = transcript.filter((l) => l.feeds === key)
+    return lines.length > 0 && lines.every((l) => l.atSec <= elapsed)
+  })
+  /** The weakest band among the drafted sections — the one that will need the most reading. */
+  const overallBand = drafted
+    .map((key) => sections.find((s) => s.key === key)?.band)
+    .filter((b): b is NoteSectionSeed['band'] => b !== undefined)
+    .sort((a, b) => BAND_RANK[b] - BAND_RANK[a])[0]
+
+  const clock = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
 
   return (
     <Modal
@@ -144,7 +180,7 @@ export function S0604({
           Ambient scribe
         </span>
       }
-      subtitle={`${patientName} · AI-101 · the raw transcript is retained verbatim`}
+      subtitle={`${patientName} · the raw transcript is retained verbatim`}
       onClose={onClose}
       footer={
         <>
@@ -161,7 +197,7 @@ export function S0604({
             disabled={heard.length === 0}
             onClick={() => {
               setRecording(false)
-              onFinish()
+              onFinish(drafted)
             }}
           >
             {done ? 'Use this draft' : 'Stop and use what is drafted'}
@@ -183,12 +219,17 @@ export function S0604({
           <div className="min-w-0 flex-1">
             <p className="font-medium">
               {done ? 'Consultation captured' : recording ? 'Listening' : 'Paused'}
-              <span className="tabular ml-2 text-ink-3">
-                {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
-              </span>
+              <span className="tabular ml-2 text-ink-3">{clock(elapsed)}</span>
             </p>
-            <p className="text-[0.88em] text-ink-3">
-              Speech is transcribed and the note drafts as you talk. You can type at any point instead.
+            {/* Progress, in one line. */}
+            <p className="tabular flex flex-wrap items-center gap-x-2 text-[0.88em] text-ink-3">
+              {drafted.length} of {SECTION_KEYS.length} sections drafted
+              {overallBand && (
+                <>
+                  <span aria-hidden>·</span>
+                  <Confidence band={overallBand} />
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -201,76 +242,56 @@ export function S0604({
           </div>
         </div>
 
-        {/* Which section each line is feeding — the provenance, live. */}
-        <div className="grid gap-2 sm:grid-cols-4">
-          {(Object.keys(SECTION_LABELS) as NoteSectionSeed['key'][]).map((key) => {
-            const pct = sectionProgress(key)
-            const seed = sections.find((s) => s.key === key)
-            return (
-              <div key={key} className="glass rounded-panel p-3">
-                <p className="flex items-center justify-between gap-2 text-[0.84em] font-semibold">
-                  {SECTION_LABELS[key]}
-                  {pct >= 1 && <Icon name="Check" size={13} className="text-normal" />}
-                </p>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-pill bg-glass-fill-muted">
-                  <div
-                    className="h-full rounded-pill bg-ai transition-[width] duration-200 ease-out-clinical"
-                    style={{ width: `${pct * 100}%` }}
-                  />
-                </div>
-                {pct >= 1 && seed && <Confidence band={seed.band} className="mt-2" />}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* The transcript. AI-104 cleans it; the raw capture stays available. */}
+        {/* The transcript, grouped under the section each run of lines fed. AI-104 cleans it; the raw capture stays available. */}
         <div>
-          <h3 className="mb-2 flex items-center justify-between gap-2 text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
+          <h3 className="mb-2 flex items-center justify-between gap-2 text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">
             <span>Transcript</span>
-            <span className="font-normal normal-case">
-              {showRaw ? 'raw capture, as recognised' : 'AI-104 cleaned · punctuation and formatting'}
+            <span className="font-normal tracking-normal text-ink-3 normal-case">
+              {showRaw ? 'raw capture, as recognised' : 'cleaned · punctuation and formatting'}
             </span>
           </h3>
           <div className="thin-scroll max-h-72 space-y-2.5 overflow-y-auto rounded-panel bg-glass-fill-muted p-3">
             {heard.length === 0 && <p className="py-6 text-center text-[0.9em] text-ink-3">Waiting for speech…</p>}
-            {heard.map((line) => (
-              <div key={`${line.atSec}-${line.speaker}`} className="flex gap-3">
-                <span className="tabular w-10 shrink-0 pt-0.5 text-[0.8em] text-ink-muted">
-                  {String(Math.floor(line.atSec / 60)).padStart(2, '0')}:{String(line.atSec % 60).padStart(2, '0')}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={cx(
-                      'mr-2 text-[0.82em] font-semibold',
-                      line.speaker === 'Clinician' ? 'text-brand' : 'text-ink-3',
-                    )}
-                  >
-                    {line.speaker}
-                  </span>
-                  <span className={cx(showRaw && 'font-mono text-[0.9em] text-ink-2')}>
-                    {showRaw ? line.raw : (line.cleaned ?? line.raw)}
-                  </span>
-                  {line.feeds && (
-                    <Chip tone="ai" className="ml-2 align-middle">
-                      → {SECTION_LABELS[line.feeds]}
-                    </Chip>
+            {heard.map((line, i) => {
+              const prev = heard[i - 1]
+              const newSection = line.feeds !== undefined && line.feeds !== prev?.feeds
+              return (
+                <div key={`${line.atSec}-${line.speaker}`}>
+                  {newSection && (
+                    <p className={cx('text-[0.74em] font-semibold tracking-[0.08em] text-ink-3 uppercase', i > 0 && 'mt-3')}>
+                      {SECTION_LABELS[line.feeds!]}
+                    </p>
                   )}
-                </span>
-              </div>
-            ))}
+                  <div className="flex gap-3">
+                    <span className="tabular w-10 shrink-0 pt-0.5 text-[0.8em] text-ink-muted">{clock(line.atSec)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cx(
+                          'mr-2 text-[0.82em] font-semibold',
+                          line.speaker === 'Clinician' ? 'text-brand' : 'text-ink-3',
+                        )}
+                      >
+                        {line.speaker}
+                      </span>
+                      <span className={cx(showRaw && 'font-mono text-[0.9em] text-ink-2')}>
+                        {showRaw ? line.raw : (line.cleaned ?? line.raw)}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
             <div ref={endRef} />
           </div>
         </div>
 
-        <p className="flex items-start gap-2 rounded-panel bg-glass-fill-muted px-3 py-2.5 text-[0.88em] text-ink-2">
-          <Icon name="ShieldCheck" size={15} className="mt-0.5 shrink-0 text-brand" />
-          <span>
+        <Why label="What is kept, and what happens if the speech service drops">
+          <p className="text-ink-2">
             The raw transcript is kept verbatim and every drafted sentence links back to the span it came from. If the
-            speech service drops, the ◆ affordances disappear and this becomes plain typing — nothing already captured
-            is lost.
-          </span>
-        </p>
+            speech service drops, the AI affordances disappear and this becomes plain typing — nothing already captured
+            is lost. Speech is transcribed and the note drafts as you talk; you can type at any point instead.
+          </p>
+        </Why>
       </div>
     </Modal>
   )

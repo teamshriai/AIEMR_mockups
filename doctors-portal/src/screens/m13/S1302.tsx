@@ -12,68 +12,39 @@
  * "the handover that decides whether the patient comes back" is M-13's
  * one-liner, which is why the follow-up and the red-flag sections are required
  * rather than optional.
+ *
+ * The six sections open EMPTY. Each is a `VoiceField` — spoken first, typed
+ * always. "Draft with AI" is the one AI path: it fills all six as
+ * AI-106 ghost drafts, and those carry the G3 bar until each has a decision.
+ * The draft text lives in the shared clinical store, so leaving and returning
+ * does not lose it.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { FieldGroup, FormGroups } from '@/archetypes'
 import { AIActionBar, Diamond } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Alert, Button, Card, Checkbox, Chip, Field, Icon, Select, TextArea } from '@/components/primitives'
+import { PrintPreview } from '@/components/print'
+import { Button, Checkbox, Chip, Icon, Select, cx } from '@/components/primitives'
 import { LockedBanner, ValidationSummary } from '@/components/states'
-import { encounter, problemsFor } from '@/data/clinical'
+import { InputModeSwitch, VoiceField } from '@/components/voicefield'
+import { DISCHARGE_DRAFT_SD_P_03, encounter, problemsFor } from '@/data/clinical'
 import { formatDate, formatDateTime, formatTime, NOW } from '@/data/format'
 import { LANGUAGES, patient } from '@/data/kit'
-import { selectAiActive, useAI } from '@/store/ai'
+import { decided, selectAiActive, useAI } from '@/store/ai'
 import { useClinical } from '@/store/clinical'
+import type { SectionProvenance } from '@/store/clinical'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
-const SECTIONS = [
-  {
-    key: 'reason',
-    label: 'Reason for admission',
-    required: true,
-    draft:
-      'Admitted on 17-Sep-2026 with a four-day history of productive cough, fever and progressive breathlessness. Chest imaging confirmed right lower lobe consolidation. Treated as community-acquired pneumonia.',
-  },
-  {
-    key: 'course',
-    label: 'Course in hospital',
-    required: true,
-    draft:
-      'Started on piperacillin-tazobactam 4.5g IV 8-hourly on admission. Blood cultures were taken before antibiotics and showed no growth at 48 hours. Oxygen requirement rose from 2 L to 4 L overnight on 20/21-Sep with a NEWS2 of 7; CRP rose from 96 to 184 mg/L. Antibiotic cover was escalated after review of the documented penicillin allergy. Creatinine rose to 212 µmol/L, meeting stage 2 acute kidney injury, and the enoxaparin dose was renally adjusted. He improved from 22-Sep with weaning of oxygen to room air by 24-Sep.',
-  },
-  {
-    key: 'diagnosis',
-    label: 'Discharge diagnosis',
-    required: true,
-    draft: 'Community-acquired pneumonia, right lower lobe (J18.9). Acute kidney injury, stage 2, resolved. Type 2 diabetes (E11.9), pre-existing.',
-  },
-  {
-    key: 'meds',
-    label: 'Medication on discharge',
-    required: true,
-    draft:
-      'Levofloxacin 750 mg orally once daily for a further 3 days. Atorvastatin 40 mg at night, continued. Metformin 500 mg twice daily, restarted 23-Sep after renal function recovered. Enoxaparin stopped on discharge.',
-  },
-  {
-    key: 'followup',
-    label: 'Follow-up',
-    required: true,
-    draft:
-      'Chest clinic in 6 weeks with a repeat chest X-ray beforehand. Serum creatinine and electrolytes in 1 week at the local laboratory. General medicine review with Dr Iyer in 4 weeks.',
-  },
-  {
-    key: 'redflags',
-    label: 'When to come back',
-    required: true,
-    draft:
-      'Return immediately if breathlessness worsens, fever returns above 38 °C, you cough up blood, or you become confused or unusually drowsy. Attend the emergency department rather than waiting for the clinic appointment.',
-  },
-] as const
+const SECTIONS = DISCHARGE_DRAFT_SD_P_03
+
+/** A draft short enough to fit two lines needs no "Read more". */
+const CLAMP_FROM = 170
 
 export function S1302({ id }: { id?: string }) {
   const navigate = useNavigate()
@@ -85,10 +56,12 @@ export function S1302({ id }: { id?: string }) {
 
   const enc = encounter(id ?? 'E-118366')
   const p = patient(enc.patientId)
-  const { note, signNote } = useClinical()
-  const record = note(`${enc.id}:discharge`)
+  const { note, setSectionText, applyScribeDraft, signNote, saveDraft } = useClinical()
+  const noteId = `${enc.id}:discharge`
+  const record = note(noteId)
+  const [printOpen, setPrintOpen] = useState(false)
 
-  const [text, setText] = useState<Record<string, string>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [attested, setAttested] = useState(false)
   const [language, setLanguage] = useState('KN')
   const [confirmSign, setConfirmSign] = useState(false)
@@ -96,23 +69,35 @@ export function S1302({ id }: { id?: string }) {
 
   const locked = record.status === 'signed' || forced === 'LOCKED'
 
-  const g2 = SECTIONS.map((s) => `${enc.id}:disch:${s.key}`)
-  const outstanding = g2.filter((k) => !dispositions[k]).length
+  // ARC-15: autosave every 20s, silently.
+  useEffect(() => {
+    if (locked) return
+    const t = window.setInterval(() => saveDraft(noteId, 'auto'), 20_000)
+    return () => window.clearInterval(t)
+  }, [noteId, locked, saveDraft])
+
+  const isScribe = (key: string) => aiActive && record.provenance[key] === 'scribe'
+  const scribeKeys = SECTIONS.filter((s) => isScribe(s.key)).map((s) => `${enc.id}:disch:${s.key}`)
+  // Deferred is undecided: it must never let a blank section through to attestation.
+  const outstanding = scribeKeys.filter((k) => !decided(dispositions[k])).length
+  /** The stored text is the only text that counts — never the draft on its own. */
+  const valueOf = (s: (typeof SECTIONS)[number]) => record.text[s.key] ?? ''
+  const written = SECTIONS.filter((s) => valueOf(s).trim().length >= 20).length
 
   const problems = useMemo(() => {
     const out: { field: string; message: string }[] = []
     for (const s of SECTIONS) {
-      const d = dispositions[`${enc.id}:disch:${s.key}`]
-      const value = text[s.key] ?? (d && d.disposition !== 'Rejected' ? s.draft : '')
-      if (s.required && value.trim().length < 20) {
-        out.push({ field: s.label, message: 'required, and at least 20 characters' })
+      if (s.required && valueOf(s).trim().length < 20) {
+        out.push({ field: s.label, message: 'required — dictate or type at least 20 characters' })
       }
     }
     if (!attested) out.push({ field: 'Attestation', message: 'a G3 touchpoint needs your signature, not just a click' })
     return out
-  }, [dispositions, enc.id, text, attested])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record.text, attested])
 
   const canSign = problems.length === 0 && outstanding === 0 && !locked
+  const languageLabel = LANGUAGES.find((l) => l.code === language)?.label ?? language
 
   return (
     <Screen
@@ -120,27 +105,70 @@ export function S1302({ id }: { id?: string }) {
       patient={p}
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-LOW']}
+      subheading={
+        locked ? (
+          <>Signed · prints in English and {languageLabel}</>
+        ) : (
+          <>
+            {written} of {SECTIONS.length} sections written · prints in English and {languageLabel}
+          </>
+        )
+      }
       chips={
-        <>
-          <Chip tone={locked ? 'inactive' : 'caution'} icon={locked ? 'Lock' : 'PenLine'}>
-            {locked ? 'Signed' : 'Draft'}
-          </Chip>
-          <Chip tone="caution">G3 · attest</Chip>
-          <Chip tone="neutral" icon="Globe">
-            bilingual
-          </Chip>
-        </>
+        <Chip tone={locked ? 'inactive' : 'caution'} icon={locked ? 'Lock' : 'PenLine'}>
+          {locked ? 'Signed' : 'Draft'}
+        </Chip>
       }
       actions={
-        <Button icon="Pill" onClick={() => navigate(`/encounter/${enc.id}/med-rec`)}>
-          Medication reconciliation
-        </Button>
+        <>
+          {!locked && <InputModeSwitch />}
+          {!locked && aiActive && (
+            <Button
+              tone="ai"
+              icon="Sparkles"
+              onClick={() => {
+                const drafted = applyScribeDraft(
+                  noteId,
+                  SECTIONS.map((s) => s.key),
+                )
+                toast({
+                  tone: 'info',
+                  title:
+                    drafted.length === 0
+                      ? 'Nothing to draft — every section already has your words'
+                      : `${drafted.length} of 6 sections drafted from the record`,
+                  detail:
+                    drafted.length === 0
+                      ? 'The scribe never overwrites what you dictated or typed.'
+                      : 'AI-106 read signed entries only. Each drafted section needs a decision, then you attest by name.',
+                })
+              }}
+            >
+              Draft with AI
+            </Button>
+          )}
+          <Button tone="tertiary" icon="Pill" onClick={() => navigate(`/encounter/${enc.id}/med-rec`)}>
+            Medication reconciliation
+          </Button>
+        </>
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">On signing</h3>
-            <ul className="mt-2 space-y-2 text-[0.9em] text-ink-2">
+          <SectionCard title="Patient's language" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <Select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Patient's language">
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-2 text-[0.86em] text-ink-3">
+              The summary prints in English plus this language, following the patient&rsquo;s preference.
+            </p>
+          </SectionCard>
+
+          <Why label="What happens on signing">
+            <ul className="space-y-2 text-ink-2">
               {[
                 'Printed A4, 2–4 pages, bilingual',
                 'Published to ABDM as a DischargeSummary',
@@ -154,34 +182,12 @@ export function S1302({ id }: { id?: string }) {
                 </li>
               ))}
             </ul>
-          </Card>
-
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              Patient&rsquo;s language
-            </h3>
-            <Select className="mt-2" value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Patient's language">
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.label}
-                </option>
-              ))}
-            </Select>
-            <p className="mt-2 text-[0.86em] text-ink-3">
-              The summary prints in English plus this language. It follows the patient&rsquo;s preference, not yours.
+            <p className="text-[0.92em] text-ink-3">
+              On request, AI-106 drafts the six sections from the admission note, the course of treatment, the results
+              and the medication record, from signed entries only. Dictating or typing each section yourself is the
+              default.
             </p>
-          </Card>
-
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              AI-106 · drafted from the admission
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              Six sections drafted from the admission note, the course of treatment, the results and the medication
-              record. The fallback is a structured template you complete manually.
-            </p>
-          </Card>
+          </Why>
         </div>
       }
       railTitle="Discharge"
@@ -193,7 +199,9 @@ export function S1302({ id }: { id?: string }) {
               Signed by {record.signedBy} · {formatDateTime(record.signedAt ?? NOW)}
             </span>
             <div className="ml-auto flex gap-2">
-              <Button icon="Printer">Print A4, bilingual</Button>
+              <Button icon="Printer" onClick={() => setPrintOpen(true)}>
+                Print A4, bilingual
+              </Button>
               <Button tone="primary" icon="ArrowRight" onClick={() => navigate('/discharge/board')}>
                 Back to the board
               </Button>
@@ -201,13 +209,26 @@ export function S1302({ id }: { id?: string }) {
           </>
         ) : (
           <>
-            <Button icon="Save">Save draft</Button>
+            <Button
+              icon="Save"
+              onClick={() => {
+                saveDraft(noteId, 'manual')
+                toast({ tone: 'info', title: 'Draft saved', detail: 'Nothing is signed. The summary stays a draft until you attest and sign it.' })
+              }}
+            >
+              Save draft
+            </Button>
+            <span className="tabular text-[0.86em] text-ink-3">
+              {record.savedAt ? `${record.savedHow === 'auto' ? 'Autosaved' : 'Saved'} ${formatTime(record.savedAt)}` : 'Autosave on'}
+            </span>
             <span className="text-[0.88em] text-ink-3">
               {outstanding > 0
                 ? `${outstanding} drafted ${outstanding === 1 ? 'section needs' : 'sections need'} a decision`
-                : problems.length > 0
-                  ? `${problems.length} outstanding`
-                  : 'Ready to attest'}
+                : written < SECTIONS.length
+                  ? `${written} of ${SECTIONS.length} sections written`
+                  : problems.length > 0
+                    ? `${problems.length} outstanding`
+                    : 'Ready to attest'}
             </span>
             <Button
               tone="primary"
@@ -222,7 +243,7 @@ export function S1302({ id }: { id?: string }) {
                 setConfirmSign(true)
               }}
             >
-              Attest &amp; publish
+              Attest and sign
             </Button>
           </>
         )
@@ -233,40 +254,80 @@ export function S1302({ id }: { id?: string }) {
           <LockedBanner by={record.signedBy ?? me.name} at={formatDateTime(record.signedAt ?? NOW)} reason="signed" />
         )}
 
-        <Alert tone="caution" title="This is a G3 touchpoint — attest, not confirm">
-          A discharge summary enters the legal medical record and is published to ABDM. Accepting the drafted sections
-          is not enough: the primary action requires a signature and a fixed-wording attestation that you have reviewed
-          the content.
-        </Alert>
-
         {(showValidation || forced === 'VALIDATION') && problems.length > 0 && (
           <ValidationSummary problems={problems} />
         )}
 
         <FormGroups columns={1}>
+          <FieldGroup title="Summary" hint="Six sections, all required · dictate or type, or Draft with AI">
+          <div className="space-y-5">
           {SECTIONS.map((s) => {
             const key = `${enc.id}:disch:${s.key}`
             const d = dispositions[key]
-            const accepted = d && d.disposition !== 'Rejected'
+            const scribe = isScribe(s.key)
+            const accepted = d?.disposition === 'Accepted' || d?.disposition === 'Accepted with edits'
+            const clampable = s.draft.length > CLAMP_FROM
+            const open = expanded[s.key] ?? false
+            /** Accepted text stays the AI's; words typed into an empty or rejected section are the clinician's. */
+            const provenanceFor = (v: string): SectionProvenance | undefined =>
+              !scribe ? undefined : accepted || v.trim() === '' ? 'scribe' : 'typed'
+            const field = (
+              <VoiceField
+                id={key}
+                label={s.label}
+                required={s.required}
+                rows={s.key === 'course' ? 6 : 3}
+                value={valueOf(s)}
+                onChange={(v) => setSectionText(noteId, s.key, v, provenanceFor(v))}
+                onDictated={(meta) => setSectionText(noteId, s.key, meta.text, 'dictated')}
+                patientId={p.id}
+                sample={s.draft}
+                disabled={locked}
+                placeholder={d?.disposition === 'Rejected' ? `Draft rejected. Dictate or type the ${s.label.toLowerCase()}…` : undefined}
+              />
+            )
+            // The ghost shows only while there is nothing of the clinician's to show: undecided AND empty.
+            const showGhost = scribe && !decided(d) && valueOf(s).trim() === ''
             return (
-              <FieldGroup key={s.key} title={s.label}>
-                {aiActive && !accepted && !locked ? (
+              <div key={s.key} className="min-w-0">
+                {showGhost ? (
                   <>
+                    <p className="mb-1.5 flex items-center gap-2 text-[0.92em] font-medium text-ink-2">
+                      {s.label} <span className="text-abnormal">*</span>
+                      <Diamond size={10} />
+                      <span className="text-[0.86em] font-normal text-ink-3">AI-106 draft</span>
+                    </p>
                     <div className="ai-ghost rounded-field px-3.5 py-3">
-                      <p className="mb-2 flex items-center gap-2 text-[0.8em] font-semibold tracking-wide text-ai uppercase">
-                        <Diamond size={10} />
-                        AI-106 draft
-                      </p>
-                      <p className="leading-relaxed">{s.draft}</p>
+                      <p className={cx('leading-relaxed', clampable && !open && 'line-clamp-2')}>{s.draft}</p>
+                      {clampable && (
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => setExpanded((x) => ({ ...x, [s.key]: !open }))}
+                          className="mt-1 inline-flex min-h-9 items-center gap-1 rounded-pill px-1.5 text-[0.86em] font-medium text-ink-3 hover:bg-glass-fill-hover hover:text-ink-2"
+                        >
+                          {open ? 'Show less' : 'Read more'}
+                          <Icon name={open ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                        </button>
+                      )}
                     </div>
+                  </>
+                ) : (
+                  field
+                )}
+                {scribe && (
                     <AIActionBar
+                      className="mt-2"
                       touchpointId={key}
                       capabilityId="AI-106"
                       gate="G3"
                       band="MED"
                       score={0.81}
-                      onAccept={() => setText((t) => ({ ...t, [s.key]: s.draft }))}
-                      onEdit={() => setText((t) => ({ ...t, [s.key]: s.draft }))}
+                      locked={locked}
+                      onAccept={() => setSectionText(noteId, s.key, s.draft, 'scribe')}
+                      onEdit={() => setSectionText(noteId, s.key, s.draft, 'scribe')}
+                      onReject={() => setSectionText(noteId, s.key, '', 'scribe')}
+                      onUndo={() => setSectionText(noteId, s.key, '', 'scribe')}
                       explain={{
                         touchpointId: key,
                         capabilityId: 'AI-106',
@@ -275,7 +336,7 @@ export function S1302({ id }: { id?: string }) {
                         band: 'MED',
                         computedAt: formatTime(NOW),
                         inputs: [
-                          { label: 'Admission note', source: `Encounter ${enc.encounterNo}` },
+                          { label: 'Admission note', source: `IP number ${enc.encounterNo.split('/').slice(1).join('/')}` },
                           { label: 'Signed progress notes', source: 'Notes, whole admission' },
                           { label: 'Results across the admission', source: `Results for ${p.id}` },
                           ...problemsFor(p.id).map((pr) => ({
@@ -288,26 +349,16 @@ export function S1302({ id }: { id?: string }) {
                         limits: [
                           'Drafts from what was charted. A conversation with the family that was not documented is not in it.',
                           'At G3 it does not enter the record until you attest to it by name.',
-                          'The fallback is a structured template, completed manually.',
+                          'Dictating or typing the section yourself is always available.',
                         ],
                       }}
                     />
-                  </>
-                ) : (
-                  <Field label={s.label} required={s.required} htmlFor={key}>
-                    <TextArea
-                      id={key}
-                      rows={s.key === 'course' ? 6 : 3}
-                      disabled={locked}
-                      value={text[s.key] ?? (accepted ? s.draft : '')}
-                      onChange={(e) => setText((t) => ({ ...t, [s.key]: e.target.value }))}
-                      placeholder={`Write the ${s.label.toLowerCase()}…`}
-                    />
-                  </Field>
                 )}
-              </FieldGroup>
+              </div>
             )
           })}
+          </div>
+          </FieldGroup>
 
           <FieldGroup
             title="Attestation"
@@ -326,17 +377,24 @@ export function S1302({ id }: { id?: string }) {
                 </>
               }
             />
+            <Why label="Why attest rather than confirm">
+              <p className="text-ink-2">
+                A discharge summary enters the legal medical record and is published to ABDM, so AI-106 sits at G3.
+                Accepting the drafted sections is not enough: the primary action requires a signature and this
+                fixed-wording attestation that you have reviewed the content.
+              </p>
+            </Why>
           </FieldGroup>
         </FormGroups>
       </div>
 
       <ConfirmDialog
         open={confirmSign}
-        title="Attest and publish this discharge summary?"
+        title="Attest and sign this discharge summary?"
         consequence="Attesting is irreversible. The summary is committed to the legal record with your name and registration number, printed bilingually, published to ABDM, pushed to the patient app and copied to the referring doctor. After this it can only be amended."
-        confirmLabel="Attest & publish"
+        confirmLabel="Attest and sign"
         onConfirm={() => {
-          signNote({ encounterId: `${enc.id}:discharge`, by: me.name, registrationNo: me.identifier, canSign: true })
+          signNote({ encounterId: noteId, by: me.name, registrationNo: me.identifier, canSign: true })
           setConfirmSign(false)
           toast({
             tone: 'success',
@@ -345,6 +403,16 @@ export function S1302({ id }: { id?: string }) {
           })
         }}
         onCancel={() => setConfirmSign(false)}
+      />
+
+      <PrintPreview
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Discharge summary"
+        patient={p}
+        meta={`${enc.encounterNo} · signed by ${record.signedBy ?? me.name} · ${formatDateTime(record.signedAt ?? NOW)} · English and ${languageLabel}`}
+        sections={SECTIONS.map((s) => ({ heading: s.label, body: valueOf(s) }))}
+        paper="A4"
       />
     </Screen>
   )

@@ -7,97 +7,61 @@
  * the recommendation is AI-304's at G2. Disagreeing needs a reason from the
  * fixed five — which is the mechanism by which a wrong rule gets found, so the
  * screen says so rather than treating rejection as noise.
+ *
+ * Calm pass: there is one list, not two. The table that summarised the flags
+ * and the cards that carried them were the same rows twice, so the cards — the
+ * only place a decision can actually be made — are the list. The surface opens
+ * on what is still awaiting a decision; what has been reviewed is one tap away.
  */
 
 import { useState } from 'react'
 
-import { Worklist } from '@/archetypes'
-import type { WorklistColumn } from '@/archetypes'
-import { AIActionBar, Diamond } from '@/components/ai'
-import { Alert, Card, Chip, Icon, KeyValue } from '@/components/primitives'
+import { AIActionBar, RankedSortControl } from '@/components/ai'
+import { ScopeTabs, SectionTitle, Why, useScope } from '@/components/calm'
+import { Card, Chip, Icon, KeyValue } from '@/components/primitives'
 import { ORDERS } from '@/data/clinical'
-import type { OrderRow } from '@/data/clinical'
-import { formatDateTime, formatTime, NOW } from '@/data/format'
-import { formatRupees } from '@/data/format'
+import { formatDateTime, formatRupees, formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
 import { useAI } from '@/store/ai'
-import { Screen, ScreenSection } from '@/shell/Screen'
+import { Screen } from '@/shell/Screen'
 
 /** What a repeat costs, from the §8.4 tariff card. */
 const UNIT_COST: Record<string, number> = { CRP: 480, CBC: 350, 'Serum creatinine': 320, 'Blood culture': 1200 }
 
+type Scope = 'awaiting' | 'reviewed'
+const SCOPES: readonly Scope[] = ['awaiting', 'reviewed']
+
 export function S0908() {
-  const [aiSort, setAiSort] = useState(true)
   const dispositions = useAI((s) => s.dispositions)
+  const [scope, setScope] = useScope(SCOPES, 'awaiting')
+  /**
+   * AIP-07's guardrail survives the table's removal: a ranked list always keeps
+   * the deterministic order one click away, whatever shape the rows take.
+   */
+  const [aiSort, setAiSort] = useState(true)
 
-  const flagged = ORDERS.filter((o) => o.duplicateReason)
-  const rows = aiSort
-    ? [...flagged].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
-    : [...flagged].sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime())
+  const flaggedRaw = ORDERS.filter((o) => o.duplicateReason)
+  const flagged = aiSort
+    ? [...flaggedRaw].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    : [...flaggedRaw].sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime())
 
-  const actioned = flagged.filter((o) => dispositions[`stewardship:${o.id}`])
-  const avoided = actioned
+  const reviewed = flagged.filter((o) => dispositions[`stewardship:${o.id}`])
+  const awaiting = flagged.filter((o) => !dispositions[`stewardship:${o.id}`])
+  const rows = scope === 'awaiting' ? awaiting : reviewed
+
+  const avoided = reviewed
     .filter((o) => dispositions[`stewardship:${o.id}`].disposition !== 'Rejected')
     .reduce((sum, o) => sum + (UNIT_COST[o.item] ?? 400), 0)
-
-  const columns: WorklistColumn<OrderRow>[] = [
-    {
-      key: 'patient',
-      label: 'Patient',
-      cell: (o) => {
-        const p = patient(o.patientId)
-        return (
-          <span className="block min-w-0">
-            <span className="block truncate font-medium">{p.name}</span>
-            <span className="tabular block text-[0.86em] text-ink-3">{p.bed ?? 'outpatient'}</span>
-          </span>
-        )
-      },
-    },
-    { key: 'item', label: 'Test', cell: (o) => <span className="font-medium">{o.item}</span> },
-    {
-      key: 'placed',
-      label: 'Placed',
-      cell: (o) => <span className="tabular text-[0.9em]">{formatDateTime(o.placedAt)}</span>,
-    },
-    {
-      key: 'cost',
-      label: 'If avoided',
-      secondary: true,
-      cell: (o) => <span className="tabular">{formatRupees(UNIT_COST[o.item] ?? 400)}</span>,
-    },
-    {
-      key: 'disposition',
-      label: 'Your decision',
-      cell: (o) => {
-        const d = dispositions[`stewardship:${o.id}`]
-        return d ? (
-          <Chip tone={d.disposition === 'Rejected' ? 'caution' : 'normal'} icon={d.disposition === 'Rejected' ? 'X' : 'Check'}>
-            {d.disposition}
-          </Chip>
-        ) : (
-          <Chip tone="ai">
-            <Diamond size={9} />
-            awaiting
-          </Chip>
-        )
-      },
-    },
-  ]
 
   return (
     <Screen
       screenId="S-09-08"
       loadingShape="list"
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-LOW']}
-      chips={
+      heading="Test stewardship"
+      subheading={
         <>
-          <Chip tone="neutral">{flagged.length} flagged</Chip>
-          {avoided > 0 && (
-            <Chip tone="normal" icon="Check">
-              {formatRupees(avoided)} avoided
-            </Chip>
-          )}
+          {awaiting.length} awaiting your decision · {flagged.length} flagged in the last 7 days
         </>
       }
       empty={
@@ -110,60 +74,54 @@ export function S0908() {
         </Card>
       }
       rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              Why rejecting matters more than accepting
-            </h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              Rejecting a flag requires a reason from the fixed five. Those reasons are the only signal that tells
-              stewardship the rule is wrong rather than the clinician. An accept teaches nothing.
-            </p>
-          </Card>
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">This session</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
-              <KeyValue label="Reviewed">
-                {actioned.length} of {flagged.length}
-              </KeyValue>
-              <KeyValue label="Cost avoided">{formatRupees(avoided)}</KeyValue>
-              <KeyValue label="Fallback">Retrospective review</KeyValue>
-            </dl>
-          </Card>
-        </div>
+        <Card className="p-4">
+          <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">This session</h3>
+          <dl className="mt-2 divide-y divide-glass-hairline">
+            <KeyValue label="Reviewed">
+              <span className="tabular">
+                {reviewed.length} of {flagged.length}
+              </span>
+            </KeyValue>
+            <KeyValue label="Cost avoided">
+              <span className="tabular">{formatRupees(avoided)}</span>
+            </KeyValue>
+          </dl>
+        </Card>
       }
       railTitle="Stewardship"
     >
-      <div className="space-y-5">
-        <Alert tone="info" title="This is a queue of suggestions, not a queue of errors">
-          A flagged test may be exactly right. The screen exists so the decision is recorded either way — and so a rule
-          that keeps being overruled gets noticed.
-        </Alert>
-
-        <Worklist
-          rows={rows}
-          columns={columns}
-          rowKey={(o) => o.id}
-          aiSort={aiSort}
-          onSortChange={setAiSort}
-          sortCapability="AI-304"
-          aiSortLabel="Strongest signal first"
-          deterministicLabel="Most recent first"
-          caption="Tests flagged as duplicate or low-value"
-          emptyWhy="Nothing has been flagged this week. A repeat test inside its useful interval would appear here."
-          filters={
-            <>
-              <Chip tone="neutral" icon="Building2">
-                AWF
-              </Chip>
-              <Chip tone="neutral" icon="Clock">
-                last 7 days
-              </Chip>
-            </>
+      <div className="max-w-4xl space-y-5">
+        <SectionTitle
+          title="Flagged tests"
+          meta={<span className="tabular text-[0.88em] text-ink-3">{rows.length} shown</span>}
+          action={
+            <div className="flex flex-wrap items-center gap-3">
+              <ScopeTabs
+                value={scope}
+                onChange={setScope}
+                options={[
+                  { key: 'awaiting', label: 'Awaiting', count: awaiting.length },
+                  { key: 'reviewed', label: 'Reviewed', count: reviewed.length },
+                ]}
+              />
+              <RankedSortControl
+                aiSort={aiSort}
+                onChange={setAiSort}
+                aiLabel="Strongest signal"
+                deterministicLabel="Most recent first"
+                capabilityId="AI-304"
+              />
+            </div>
           }
         />
 
-        <ScreenSection title="Each flag, with its evidence and your decision">
+        {rows.length === 0 ? (
+          <Card className="p-8 text-center text-ink-2">
+            {scope === 'awaiting'
+              ? 'Every flagged test has a decision recorded against it. The reviewed ones are one tap away.'
+              : 'Nothing has been dispositioned yet this session.'}
+          </Card>
+        ) : (
           <div className="space-y-4">
             {rows.map((o) => {
               const p = patient(o.patientId)
@@ -175,7 +133,7 @@ export function S0908() {
                         {o.item} · {p.name}
                       </h3>
                       <p className="tabular text-[0.86em] text-ink-3">
-                        Order {o.id} · placed {formatDateTime(o.placedAt)} by {o.placedBy}
+                        {p.bed ?? 'outpatient'} · order {o.id} · placed {formatDateTime(o.placedAt)} by {o.placedBy}
                       </p>
                     </div>
                     <Chip tone="neutral" icon="IndianRupee">
@@ -226,7 +184,21 @@ export function S0908() {
               )
             })}
           </div>
-        </ScreenSection>
+        )}
+
+        <Why label="Why rejecting matters more than accepting">
+          <p className="text-ink-2">
+            Rejecting a flag requires a reason from the fixed five. Those reasons are the only signal that tells
+            stewardship the rule is wrong rather than the clinician. An accept teaches nothing.
+          </p>
+          <p className="text-ink-2">
+            A flagged test may be exactly right. This is a queue of suggestions, not a queue of errors — it exists so
+            the decision is recorded either way, and so a rule that keeps being overruled gets noticed.
+          </p>
+          <p className="text-ink-3">
+            AI-304 · G2, strongest signal first. The retrospective stewardship round remains the fallback.
+          </p>
+        </Why>
       </div>
     </Screen>
   )

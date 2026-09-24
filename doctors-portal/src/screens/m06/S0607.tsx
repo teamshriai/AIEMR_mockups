@@ -21,7 +21,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { canPrescribe } from '@/atlas/personas'
-import { Confidence, Diamond, DualSignatureGate, FieldChip, HardStopGate, SuggestionCard } from '@/components/ai'
+import { Diamond, DualSignatureGate, FieldChip, HardStopGate, SuggestionCard } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
 import {
   Alert,
@@ -50,8 +51,7 @@ import {
 import type { RxLine } from '@/data/clinical'
 import { formatDateTime, formatRupees, formatTime, NOW } from '@/data/format'
 import { STAFF, patient } from '@/data/kit'
-import { selectAiActive, useAI } from '@/store/ai'
-import { allDispositioned, outstandingCount } from '@/store/ai'
+import { selectAiActive, useAI, useOutstanding } from '@/store/ai'
 import { useClinical } from '@/store/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
@@ -118,8 +118,9 @@ export function S0607({ id }: { id?: string }) {
   const outstandingStop = blocked.length > 0 && !record.override
 
   const g2Touchpoints = basket.filter((l) => l.doseAdjustment).map((l) => `${enc.id}:dose:${l.id}`)
-  const outstanding = outstandingCount(g2Touchpoints)
-  const dosesDispositioned = allDispositioned(g2Touchpoints)
+  // Subscribed, so accepting the last dose suggestion enables Sign without an unrelated re-render.
+  const outstanding = useOutstanding(g2Touchpoints)
+  const dosesDispositioned = outstanding === 0
 
   const completenessGaps = basket.filter((l) => l.completenessGap)
   const canSign =
@@ -178,6 +179,13 @@ export function S0607({ id }: { id?: string }) {
         'AI-ABSTAIN',
         'AI-LOW',
       ]}
+      heading="Prescription"
+      subheading={
+        <>
+          {basket.length} {basket.length === 1 ? 'item' : 'items'} · {p.payer}
+          {completenessGaps.length > 0 && ` · ${completenessGaps.length} incomplete`}
+        </>
+      }
       chips={
         <>
           <Chip tone={locked ? 'inactive' : 'caution'} icon={locked ? 'Lock' : 'Pill'}>
@@ -202,6 +210,7 @@ export function S0607({ id }: { id?: string }) {
       }
       rail={<Rail encounterId={enc.id} basket={basket} />}
       railTitle="Checks & suggestions"
+      railBadge={basket.some((l) => l.doseAdjustment) ? 1 : undefined}
       actionBar={
         locked ? (
           <>
@@ -261,8 +270,9 @@ export function S0607({ id }: { id?: string }) {
           />
         )}
 
-        {/* The blocked line, surfaced on the page and not only in the modal, so
-            the state is legible without reopening the gate. */}
+        {/* The one place the block is stated on the page. The modal carries the
+            finding, the rule and the alternatives; this line carries the state
+            and the way back into the modal. */}
         {outstandingStop && (
           <Alert
             tone="critical"
@@ -274,8 +284,7 @@ export function S0607({ id }: { id?: string }) {
               </Button>
             }
           >
-            {PENICILLIN_HARD_STOP.finding} This is a static allergy-class rule, not a model output —{' '}
-            {aiActive ? 'it would fire identically with the AI switched off.' : 'and the AI is currently off.'}
+            Documented allergy. A rule, not a model output{aiActive ? '' : ' — the AI is currently off and it fired anyway'}.
           </Alert>
         )}
 
@@ -320,15 +329,12 @@ export function S0607({ id }: { id?: string }) {
                         type="button"
                         disabled={locked}
                         onClick={() => addDrug(f.drug)}
+                        /* The NLEM status and DPCO ceiling live on hover; the toast repeats them on add. */
+                        title={`${f.nlem ? 'NLEM-listed' : 'Not on the NLEM'} · DPCO ceiling ${formatRupees(f.ceilingPrice)}`}
                         className="flex w-full min-h-11 items-center gap-2.5 rounded-panel px-3 py-2 text-left hover:bg-glass-fill-hover disabled:opacity-50"
                       >
                         <Icon name="Pill" size={15} className="shrink-0 text-ink-3" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{f.drug}</span>
-                          <span className="tabular block text-[0.84em] text-ink-3">
-                            {f.nlem ? 'NLEM' : 'non-NLEM'} · ceiling {formatRupees(f.ceilingPrice)}
-                          </span>
-                        </span>
+                        <span className="min-w-0 flex-1 truncate font-medium">{f.drug}</span>
                         {wouldBlock && (
                           <Chip tone="critical" icon="OctagonAlert" title="Contraindicated by a documented allergy">
                             blocked
@@ -339,10 +345,12 @@ export function S0607({ id }: { id?: string }) {
                   )
                 })}
               </ul>
-              <p className="mt-3 text-[0.84em] text-ink-3">
-                CMP-DRUG-03 · an NLEM-listed equivalent is prompted as a substitution, and the DPCO ceiling is shown
-                rather than the sticker price.
-              </p>
+              <Why label="Pricing and substitution" className="mt-2">
+                <p className="text-ink-2">
+                  An NLEM-listed equivalent is prompted as a substitution, and the DPCO ceiling is shown rather than the
+                  sticker price (CMP-DRUG-03). Hover a drug for its listing and ceiling.
+                </p>
+              </Why>
             </Card>
           </ScreenSection>
 
@@ -366,10 +374,17 @@ export function S0607({ id }: { id?: string }) {
                     locked={locked}
                     hardStop={hardStopFor(line.drug, p.allergies)}
                     overridden={record.override?.lineId === line.id}
-                    onOpenGate={() => setGateOpen(true)}
                     onRemove={() => removeRxLine(enc.id, line.id)}
                   />
                 ))}
+                {/* AI-305's caveat, once for the basket rather than once per line. */}
+                {completenessGaps.length > 0 && (
+                  <p className="flex items-start gap-2 px-1 text-[0.86em] text-ink-3">
+                    <Diamond size={10} className="mt-1 shrink-0" />
+                    Completeness checks come from static dose tables and run with the model off. Sign enables once every
+                    line is complete.
+                  </p>
+                )}
               </div>
             )}
           </ScreenSection>
@@ -493,7 +508,6 @@ function RxLineCard({
   locked,
   hardStop,
   overridden,
-  onOpenGate,
   onRemove,
 }: {
   line: RxLine
@@ -502,7 +516,6 @@ function RxLineCard({
   locked: boolean
   hardStop?: typeof PENICILLIN_HARD_STOP
   overridden?: boolean
-  onOpenGate: () => void
   onRemove: () => void
 }) {
   const [substitution, setSubstitution] = useState(line.substitutionAllowed)
@@ -538,11 +551,7 @@ function RxLineCard({
           {line.indication && <p className="mt-0.5 text-[0.88em] text-ink-3">for {line.indication}</p>}
         </div>
         <div className="flex items-center gap-1">
-          {blockedNow && (
-            <Button tone="destructive" size="sm" onClick={onOpenGate}>
-              Resolve
-            </Button>
-          )}
+          {/* Resolve lives on the page alert above — one way in, not two. */}
           <Button tone="tertiary" size="sm" icon="Trash2" disabled={locked} onClick={onRemove}>
             Remove
           </Button>
@@ -616,17 +625,12 @@ function RxLineCard({
         </Field>
       </div>
 
-      {/* AI-305 completeness, as an AIP-05 strip on the line it concerns. */}
+      {/* AI-305 completeness — the gap on the line it concerns; the caveat once, under the basket. */}
       {line.completenessGap && (
-        <div className="mt-3 flex items-start gap-2 rounded-panel bg-caution-soft px-3 py-2">
-          <Diamond size={10} className="mt-1 shrink-0" />
-          <p className="text-[0.9em] font-medium text-caution">
-            AI-305 · {line.completenessGap}
-            <span className="ml-1 font-normal opacity-80">
-              Static dose tables produce this even with the model off.
-            </span>
-          </p>
-        </div>
+        <p className="mt-3 flex items-start gap-2 rounded-panel bg-caution-soft px-3 py-2 text-[0.9em] font-medium text-caution">
+          <Icon name="CircleAlert" size={14} className="mt-0.5 shrink-0" />
+          {line.completenessGap}
+        </p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -640,7 +644,7 @@ function RxLineCard({
       <Field
         label="Instructions for the patient"
         className="mt-3"
-        hint="Printed bilingually — English plus the patient's preferred language (CMP-DPDP-02)"
+        hint="Printed bilingually — English plus the patient's language"
       >
         <TextArea
           rows={2}
@@ -660,9 +664,8 @@ function Rail({ encounterId, basket }: { encounterId: string; basket: RxLine[] }
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Safety checks</h3>
-        <dl className="mt-2 divide-y divide-glass-hairline">
+      <SectionCard title="Safety checks" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+        <dl className="divide-y divide-glass-hairline">
           <KeyValue label="Allergy & interaction">
             <span className="flex items-center gap-1.5 text-normal">
               <Icon name="ShieldCheck" size={14} />
@@ -678,15 +681,37 @@ function Rail({ encounterId, basket }: { encounterId: string; basket: RxLine[] }
           <KeyValue label="Renal adjustment">
             <span className={cx('flex items-center gap-1.5', aiActive ? 'text-ai' : 'text-inactive')}>
               {aiActive ? <Diamond size={10} /> : <Icon name="CircleDot" size={14} />}
-              {aiActive ? 'AI-206 live' : 'printed reference'}
+              {aiActive ? 'Model live' : 'Printed reference'}
             </span>
           </KeyValue>
         </dl>
-        <p className="mt-3 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.88em] text-ink-2">
-          The first two never switch off. Safety on this screen does not depend on a model being up — which is why the
-          block still fires in the AI-OFF state.
-        </p>
-      </Card>
+        <Why className="mt-2">
+          <p className="text-ink-2">
+            The first two never switch off. Safety on this screen does not depend on a model being up — which is why
+            the block still fires with the AI off.
+          </p>
+          <p className="text-ink-2">
+            A hard stop has no confidence band, because it is not a prediction. It is the allergy record and the drug
+            class, and nothing else.
+          </p>
+          <div>
+            <p className="font-medium text-ink-2">On signing</p>
+            <ul className="mt-1 space-y-1 text-ink-2">
+              {[
+                'Printed A5, bilingual, with your HPR number on it',
+                'Sent to the pharmacy dispensing queue',
+                'Queued to publish to ABDM as a Prescription record',
+                'No PHI goes out in any SMS — only a pointer back in',
+              ].map((t) => (
+                <li key={t} className="flex gap-2">
+                  <Icon name="Check" size={13} className="mt-1 shrink-0 text-normal" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Why>
+      </SectionCard>
 
       {basket.some((l) => l.doseAdjustment) && (
         <SuggestionCard
@@ -704,7 +729,7 @@ function Rail({ encounterId, basket }: { encounterId: string; basket: RxLine[] }
             confidence: 0.91,
             band: 'HIGH',
             computedAt: formatTime(NOW),
-            inputs: [{ label: 'Prescription lines in the basket', source: `Encounter ${encounterId}` }],
+            inputs: [{ label: 'Prescription lines in the basket', source: `Note ${encounterId}` }],
             evidence: ['CMP-NABH-05 requires orders to be legible and complete.'],
             model: 'rx-complete v1.8.0',
             limits: [
@@ -714,35 +739,6 @@ function Rail({ encounterId, basket }: { encounterId: string; basket: RxLine[] }
           }}
         />
       )}
-
-      <Card className="p-4">
-        <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">On signing</h3>
-        <ul className="mt-2 space-y-2 text-[0.9em] text-ink-2">
-          {[
-            'Printed A5, bilingual, with your HPR number on it',
-            'Sent to the pharmacy dispensing queue',
-            'Queued to publish to ABDM as a Prescription record',
-            'No PHI goes out in any SMS — only a pointer back in',
-          ].map((t) => (
-            <li key={t} className="flex gap-2">
-              <Icon name="Check" size={13} className="mt-1 shrink-0 text-normal" />
-              {t}
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      <Card className="p-4">
-        <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-          <Diamond size={10} />
-          Confidence is not the point here
-        </p>
-        <Confidence band="HIGH" score={0.96} className="mt-2" />
-        <p className="mt-2 text-[0.9em] text-ink-2">
-          A hard stop has no confidence band, because it is not a prediction. It is the allergy record and the drug
-          class, and nothing else.
-        </p>
-      </Card>
     </div>
   )
 }

@@ -7,14 +7,17 @@
  * ARC-04's rule about refused drags earns its place here: a task that cannot
  * legitimately move is refused with the reason on the target column, because
  * "load the ambulance before the bolus" is a clinical error, not a UI mistake.
+ *
+ * Calm pass: Done folds behind its count; the prioritisation reason is quiet
+ * text rather than a chip; the rationale is one Why.
  */
 
 import { useNavigate } from 'react-router-dom'
 
 import { Board } from '@/archetypes'
 import type { BoardColumn } from '@/archetypes'
-import { Diamond } from '@/components/ai'
-import { Alert, Button, Card, Chip, Icon, cx } from '@/components/primitives'
+import { Why } from '@/components/calm'
+import { Alert, Button, Icon, cx } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { STROKE_TASKS, strokeCase } from '@/data/stroke'
@@ -72,10 +75,11 @@ export function S1807({ id }: { id?: string }) {
       loadingShape="board"
       states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF']}
       wide
-      chips={
+      heading="Task board"
+      subheading={
         <>
-          <Chip tone="normal">{inColumn('Done').length} done</Chip>
-          {blocked.length > 0 && <Chip tone="abnormal">{blocked.length} blocked</Chip>}
+          {inColumn('To do').length} to do · {inColumn('In progress').length} in progress · {blocked.length} blocked ·{' '}
+          {inColumn('Done').length} done
         </>
       }
       actions={
@@ -83,43 +87,17 @@ export function S1807({ id }: { id?: string }) {
           Case clock
         </Button>
       }
-      rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Why parallel</h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              Consent, imaging, blood pressure and pre-authorisation all run at the same time. Sequenced, they add up
-              to more than the window. The board exists so nobody waits for a step they are not blocking.
-            </p>
-          </Card>
-
-          {aiActive && (
-            <Card className="p-4">
-              <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-                <Diamond size={10} />
-                AI-619 · which to do next
-              </p>
-              <p className="mt-1.5 text-[0.9em] text-ink-2">
-                Tasks are ordered by how much clock they free, not by when they were created. The reason chip on each
-                card says why it sits where it does.
-              </p>
-              <p className="mt-2 text-[0.84em] text-ink-3">Fallback: due-time order.</p>
-            </Card>
-          )}
-        </div>
-      }
-      railTitle="Coordination"
     >
       <div className="space-y-5">
         {blocked.length > 0 && (
           <Alert tone="abnormal" title={`${blocked.length} task blocked`}>
-            {blocked[0].blockedBy} Dragging it out of Blocked is refused with that reason on the target column, because
-            the ordering is clinical rather than administrative.
+            {blocked[0].label} cannot move until the needle is stamped — the card says why.
           </Alert>
         )}
 
         <Board
           columns={columns}
+          hiddenColumns={['Done']}
           rowKey={(t) => t.id}
           canDrop={canDrop}
           onDrop={(t, k) => {
@@ -127,13 +105,9 @@ export function S1807({ id }: { id?: string }) {
             toast({ tone: 'info', title: `${t.label} → ${k}`, detail: `owner ${t.owner}` })
           }}
           legend={
-            <>
-              <Chip tone="caution">In progress</Chip>
-              <Chip tone="abnormal">Blocked</Chip>
-              <span className="text-[0.86em] text-ink-3">
-                Drag a card. A refusal names the clinical reason on the column you tried to drop onto.
-              </span>
-            </>
+            <span className="text-[0.86em] text-ink-3">
+              Drag a card · a refused drop names the clinical reason on the column
+            </span>
           }
           asOf={
             <span className="tabular text-[0.86em] text-ink-3">
@@ -142,38 +116,58 @@ export function S1807({ id }: { id?: string }) {
             </span>
           }
           renderCard={(t) => (
-            <Card className={cx('cursor-grab p-3.5 active:cursor-grabbing', columnOf(t) === 'Blocked' && 'border-abnormal/40')}>
+            /* A plain panel, not a glass card — the column is already glass. */
+            <div
+              className={cx(
+                'cursor-grab rounded-panel bg-glass-fill-strong p-3.5 active:cursor-grabbing',
+                columnOf(t) === 'Blocked' && 'ring-1 ring-abnormal/40',
+              )}
+            >
               <p className="font-medium">{t.label}</p>
-              <p className="mt-1 flex items-center gap-1.5 text-[0.86em] text-ink-3">
-                <Icon name="User" size={12} />
-                {t.owner}
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.86em] text-ink-3">
+                <span className="flex items-center gap-1.5">
+                  <Icon name="User" size={12} />
+                  {t.owner}
+                </span>
+                {t.dueInMin !== null && (
+                  <span
+                    className={cx(
+                      'tabular flex items-center gap-1 font-semibold',
+                      t.dueInMin <= 10 ? 'text-abnormal' : 'text-caution',
+                    )}
+                  >
+                    · {t.dueInMin} min
+                  </span>
+                )}
               </p>
-              {t.dueInMin !== null && (
-                <p
-                  className={cx(
-                    'tabular mt-1.5 flex items-center gap-1.5 text-[0.86em] font-semibold',
-                    t.dueInMin <= 10 ? 'text-abnormal' : 'text-caution',
-                  )}
-                >
-                  <Icon name="Timer" size={12} />
-                  {t.dueInMin} min
-                </p>
-              )}
-              {t.reason && aiActive && (
-                <p className="mt-2 flex items-start gap-1.5 rounded-panel bg-glass-fill-muted px-2.5 py-1.5 text-[0.84em] text-ink-2">
-                  <Diamond size={8} className="mt-1 shrink-0" />
-                  {t.reason}
-                </p>
-              )}
+              {/* The prioritisation reason, as quiet text. Provenance lives in the Why. */}
+              {t.reason && aiActive && <p className="mt-1.5 text-[0.84em] text-ink-3">{t.reason}</p>}
               {t.blockedBy && (
                 <p className="mt-2 flex items-start gap-1.5 rounded-panel bg-abnormal-soft px-2.5 py-1.5 text-[0.84em] font-medium text-abnormal">
                   <Icon name="Ban" size={12} className="mt-0.5 shrink-0" />
                   {t.blockedBy}
                 </p>
               )}
-            </Card>
+            </div>
           )}
         />
+
+        <Why label="Why the board is parallel, and how the cards are ordered">
+          <p className="text-ink-2">
+            Consent, imaging, blood pressure and pre-authorisation all run at the same time. Sequenced, they add up to
+            more than the window. The board exists so nobody waits for a step they are not blocking.
+          </p>
+          {aiActive && (
+            <p className="text-ink-2">
+              AI-619 orders the cards by how much clock they free, not by when they were created; the quiet line on
+              each card says why it sits where it does. Fallback: due-time order.
+            </p>
+          )}
+          <p className="text-ink-3">
+            A drag that violates a hard rule is refused with the reason on the target column, because the ordering is
+            clinical rather than administrative.
+          </p>
+        </Why>
       </div>
     </Screen>
   )

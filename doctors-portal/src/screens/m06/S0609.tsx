@@ -13,9 +13,9 @@ import { useNavigate } from 'react-router-dom'
 
 import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
-import { Diamond } from '@/components/ai'
 import { ConfirmDialog } from '@/components/overlays'
-import { Alert, Button, Card, Chip, Icon, TextArea } from '@/components/primitives'
+import { Card, Chip, Icon } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import { COSIGN_QUEUE } from '@/data/clinical'
 import type { CoSignRow } from '@/data/clinical'
 import { formatDateTime, formatElapsed, NOW } from '@/data/format'
@@ -56,52 +56,43 @@ export function S0609() {
 
   const columns: WorklistColumn<CoSignRow>[] = [
     {
-      key: 'patient',
-      label: 'Patient',
-      cell: (row) => {
-        const p = patient(row.patientId)
-        return (
-          <span className="block min-w-0">
-            <span className="block truncate font-medium">{p.name}</span>
-            <span className="tabular block text-[0.86em] text-ink-3">
-              {p.uhid} · {p.bed ?? 'outpatient'}
-            </span>
-          </span>
-        )
-      },
-    },
-    { key: 'kind', label: 'Document', cell: (row) => <Chip tone="neutral">{row.documentKind}</Chip> },
-    {
-      key: 'author',
-      label: 'Authored by',
-      secondary: true,
-      cell: (row) => (
-        <span className="block min-w-0">
-          <span className="block truncate">{row.authoredBy}</span>
-          <span className="block text-[0.86em] text-ink-3">{row.authoredByPersona}</span>
-        </span>
-      ),
-    },
-    {
       key: 'waiting',
       label: 'Waiting',
-      cell: (row) => (
-        <span className="tabular">{formatElapsed((NOW.getTime() - row.authoredAt.getTime()) / 60000)}</span>
-      ),
+      role: 'lead',
+      cell: (row) => formatElapsed((NOW.getTime() - row.authoredAt.getTime()) / 60000),
     },
     {
+      key: 'patient',
+      label: 'Patient',
+      role: 'primary',
+      cell: (row) => patient(row.patientId).name,
+    },
+    { key: 'kind', label: 'Document', role: 'context', cell: (row) => row.documentKind },
+    {
+      /* Who wrote it. Their grade and the bed are on the note itself. */
+      key: 'author',
+      label: 'Authored by',
+      role: 'context',
+      cell: (row) => row.authoredBy,
+    },
+    {
+      /*
+       * One chip per flag, the flag's words, no ◆. AI-114's provenance is on
+       * the chip's title and on the note; a flag the consultant has to READ
+       * before signing does not need a second marker in front of it.
+       */
       key: 'quality',
       label: 'Quality check',
+      role: 'status',
       cell: (row) =>
         row.qualityFlags.length === 0 ? (
           <Chip tone="normal" icon="Check">
             Clean
           </Chip>
         ) : (
-          <span className="flex flex-col gap-1">
+          <span className="flex flex-col items-end gap-1">
             {row.qualityFlags.map((f) => (
               <Chip key={f} tone="caution" icon="TriangleAlert" title="AI-114 · CMP-NABH-05">
-                <Diamond size={9} />
                 {f}
               </Chip>
             ))}
@@ -111,29 +102,33 @@ export function S0609() {
     {
       key: 'actions',
       label: '',
+      role: 'status',
       className: 'text-right',
       cell: (row) => (
         <span className="flex justify-end gap-1.5">
-          <Button
-            size="sm"
+          <span
+            role="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation()
               setActing({ row, outcome: 'returned' })
             }}
+            className="inline-flex min-h-9 cursor-pointer items-center rounded-pill px-3 py-1 text-[0.86em] font-medium text-ink-3 hover:bg-glass-fill"
           >
             Return
-          </Button>
-          <Button
-            size="sm"
-            tone="primary"
-            icon="Signature"
+          </span>
+          <span
+            role="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation()
               setActing({ row, outcome: 'co-signed' })
             }}
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-pill bg-brand px-3 py-1 text-[0.86em] font-semibold text-brand-on"
           >
+            <Icon name="Signature" size={13} />
             Co-sign
-          </Button>
+          </span>
         </span>
       ),
     },
@@ -143,8 +138,13 @@ export function S0609() {
     <Screen
       screenId="S-06-09"
       loadingShape="list"
+      heading="Co-sign"
+      subheading={
+        <>
+          {rows.length} awaiting your signature · 24h target · CMP-NABH-03
+        </>
+      }
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'OFFLINE', 'STALE', 'SAVING', 'AI-OFF']}
-      chips={<Chip tone={rows.length ? 'caution' : 'normal'}>{rows.length} pending</Chip>}
       empty={
         <Card className="p-10 text-center">
           <p className="text-lg font-medium">Nothing is waiting for your signature.</p>
@@ -154,14 +154,9 @@ export function S0609() {
         </Card>
       }
     >
-      <div className="space-y-5">
-        <Alert tone="info" title="Co-signing is an accreditation requirement, not a courtesy">
-          A registrar holds <code className="font-mono text-[0.9em]">note.write</code> but not{' '}
-          <code className="font-mono text-[0.9em]">note.sign</code> for these classes. If you disagree with an entry you
-          do not edit it — you append your own addendum, and both remain visible and separately attributed.
-        </Alert>
-
+      <div className="max-w-4xl space-y-6">
         <Worklist
+          variant="calm"
           rows={rows}
           columns={columns}
           rowKey={(r) => r.id}
@@ -172,18 +167,22 @@ export function S0609() {
           aiSortLabel="Quality flags first"
           deterministicLabel="Oldest first"
           caption="Entries awaiting a consultant co-signature"
+          noun="entries"
           emptyWhy="Nothing is waiting for your signature. A registrar saving a note that requires a consultant would appear here."
           filters={
             <>
               <Chip tone="neutral" icon="Users">
                 Your registrars
               </Chip>
-              <Chip tone="neutral" icon="Clock">
-                24h target
-              </Chip>
             </>
           }
         />
+
+        {/* CMP-NABH-10, in one line rather than a paragraph. */}
+        <p className="flex items-start gap-2 px-1 text-[0.86em] text-ink-3">
+          <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
+          Disagreeing with an entry means appending your own addendum, never editing theirs.
+        </p>
 
         {Object.keys(coSigned).length > 0 && (
           <Card className="p-5">
@@ -240,11 +239,13 @@ export function S0609() {
         }}
       >
         {acting?.outcome === 'returned' && (
-          <TextArea
+          <VoiceField
+            id="return-note"
+            label="What needs changing"
             rows={3}
-            autoFocus
             value={returnNote}
-            onChange={(e) => setReturnNote(e.target.value)}
+            onChange={setReturnNote}
+            patientId={acting.row.patientId}
             placeholder="What needs changing before you will sign it…"
           />
         )}

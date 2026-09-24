@@ -10,6 +10,7 @@
 import type { ComponentType } from 'react'
 
 import { overlayEntry } from './Placeholder'
+import { S0201 } from './m02/S0201'
 import { S0601 } from './m06/S0601'
 import { S0603 } from './m06/S0603'
 import { S0607 } from './m06/S0607'
@@ -55,6 +56,7 @@ import { S1817 } from './m18/S1817'
 import { S1818 } from './m18/S1818'
 import { S1819 } from './m18/S1819'
 import { S1820 } from './m18/S1820'
+import { S1821 } from './m18/S1821'
 import { S2802, S2809 } from './m28/AssistantScreen'
 import { S1504 } from './m15/S1504'
 import { S2702, S2703, S2704 } from './m27/Telehealth'
@@ -107,7 +109,8 @@ export const SCREEN_COMPONENTS: Record<string, ScreenComponent> = {
   'S-05-05': S0505,
   'S-05-06': S0506,
 
-  // ── M-02 · Break-glass
+  // ── M-02 · Access
+  'S-02-01': S0201,
   'S-02-05': overlayEntry('S-02-05', 'opening a patient you have no care relationship with'),
 
   // ── M-18 · Stroke-AI Command Centre
@@ -131,6 +134,7 @@ export const SCREEN_COMPONENTS: Record<string, ScreenComponent> = {
   'S-18-18': S1818,
   'S-18-19': S1819,
   'S-18-20': S1820,
+  'S-18-21': S1821,
 
   // ── M-28 · Assistants
   'S-28-02': S2802,

@@ -13,6 +13,7 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { capability } from '@/atlas/capabilities'
 import type { ConfidenceBand } from '@/atlas/confidence'
@@ -21,6 +22,7 @@ import type { Disposition, RejectionReason } from '@/atlas/dispositions'
 import { REJECTION_REASONS } from '@/atlas/dispositions'
 import type { Gate } from '@/atlas/gates'
 import { GATE_SPECS, gateShowsConfidence } from '@/atlas/gates'
+import { routeForSource } from '@/atlas/registry'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
@@ -141,6 +143,8 @@ export function AIActionBar({
   onReject,
   /** LOW arrives collapsed; acceptance is blocked until it is expanded. */
   expanded = true,
+  onUndo,
+  locked = false,
   className,
 }: {
   touchpointId: string
@@ -152,6 +156,10 @@ export function AIActionBar({
   onAccept?: () => void
   onEdit?: () => void
   onReject?: (reason: RejectionReason, text?: string) => void
+  /** Called after Undo clears the disposition, so the caller can restore its field. */
+  onUndo?: () => void
+  /** A signed record: decisions are frozen. Buttons stay visible, disabled, never hidden. */
+  locked?: boolean
   expanded?: boolean
   className?: string
 }) {
@@ -161,8 +169,9 @@ export function AIActionBar({
   const disposition = useAI((s) => s.dispositions[touchpointId])
   const toast = useUI((s) => s.toast)
 
-  const blocked = acceptanceBlocked(band, expanded)
+  const blocked = acceptanceBlocked(band, expanded) || locked
   const spec = capability(capabilityId)
+  const lockedTitle = locked ? 'Signed — the note is locked' : undefined
 
   function apply(d: Disposition, reason?: RejectionReason, reasonText?: string) {
     record({
@@ -198,13 +207,19 @@ export function AIActionBar({
           by {disposition.by} · {spec.id}
         </span>
         <WhyLink target={explain} />
-        <button
-          type="button"
-          onClick={() => useAI.getState().clearDisposition(touchpointId)}
-          className="ml-auto text-[0.86em] text-ink-3 underline decoration-dotted underline-offset-2 hover:text-ink"
-        >
-          Undo
-        </button>
+        {!locked && (
+          <button
+            type="button"
+            title="Undo the decision and return to the draft. Words typed since are discarded."
+            onClick={() => {
+              useAI.getState().clearDisposition(touchpointId)
+              onUndo?.()
+            }}
+            className="ml-auto text-[0.86em] text-ink-3 underline decoration-dotted underline-offset-2 hover:text-ink"
+          >
+            Undo
+          </button>
+        )}
       </div>
     )
   }
@@ -220,7 +235,7 @@ export function AIActionBar({
             size="sm"
             icon="Check"
             disabled={blocked}
-            title={blocked ? 'Expand the suggestion before accepting — low confidence' : undefined}
+            title={lockedTitle ?? (blocked ? 'Expand the suggestion before accepting — low confidence' : undefined)}
             onClick={() => {
               apply('Accepted')
               onAccept?.()
@@ -232,6 +247,8 @@ export function AIActionBar({
             tone="secondary"
             size="sm"
             icon="Pencil"
+            disabled={locked}
+            title={lockedTitle}
             onClick={() => {
               apply('Accepted with edits')
               onEdit?.()
@@ -239,7 +256,7 @@ export function AIActionBar({
           >
             Edit
           </Button>
-          <Button tone="tertiary" size="sm" icon="X" onClick={() => setRejecting(true)}>
+          <Button tone="tertiary" size="sm" icon="X" disabled={locked} title={lockedTitle} onClick={() => setRejecting(true)}>
             Reject
           </Button>
           {gate === 'G2' && (
@@ -247,7 +264,8 @@ export function AIActionBar({
               tone="tertiary"
               size="sm"
               icon="Clock"
-              title="Leave undecided — the item persists in a queue"
+              disabled={locked}
+              title={lockedTitle ?? 'Leave undecided for now — the section cannot be signed until you decide'}
               onClick={() => apply('Deferred')}
             >
               Defer
@@ -259,7 +277,7 @@ export function AIActionBar({
         <WhyLink target={explain} className="ml-auto" />
       </div>
 
-      {blocked && (
+      {blocked && !locked && (
         <p className="mt-2 flex items-center gap-1.5 text-[0.86em] font-medium text-caution">
           <Icon name="TriangleAlert" size={13} />
           Low confidence — expand and read it before accepting.
@@ -358,6 +376,21 @@ export function RejectDialog({
  */
 export function ExplainPanels({ target }: { target: ExplainTarget }) {
   const spec = capability(target.capabilityId)
+  const navigate = useNavigate()
+  const toast = useUI((s) => s.toast)
+  const closeExplain = useUI((s) => s.closeExplain)
+  const staff = useCurrentStaff()
+
+  /** Panel 2's promise: every input opens its source record where this build has one. */
+  function openSource(label: string, source: string) {
+    const route = routeForSource(source)
+    if (route) {
+      closeExplain()
+      navigate(route)
+    } else {
+      toast({ tone: 'info', title: label, detail: `${source} — the source record is not part of this build.` })
+    }
+  }
 
   return (
     <div className="space-y-4 px-5 py-4">
@@ -385,6 +418,7 @@ export function ExplainPanels({ target }: { target: ExplainTarget }) {
             <li key={`${i.label}-${i.source}`}>
               <button
                 type="button"
+                onClick={() => openSource(i.label, i.source)}
                 className="flex w-full items-start gap-2 rounded-chip px-2 py-1.5 text-left hover:bg-glass-fill-hover"
               >
                 <Icon name="CornerDownRight" size={14} className="mt-0.5 shrink-0 text-ink-muted" />
@@ -471,7 +505,20 @@ export function ExplainPanels({ target }: { target: ExplainTarget }) {
         <p className="mt-3 rounded-panel bg-caution-soft px-3 py-2 text-[0.9em] font-medium text-caution">
           This is decision support. It is not a diagnosis.
         </p>
-        <Button tone="tertiary" size="sm" icon="Flag" className="mt-3">
+        <Button
+          tone="tertiary"
+          size="sm"
+          icon="Flag"
+          className="mt-3"
+          onClick={() => {
+            toast({
+              tone: 'success',
+              title: 'Reported to model governance',
+              detail: `${spec.id} · ${target.model} · by ${staff.name}. The output stays on screen; nothing is changed by reporting it.`,
+            })
+            closeExplain()
+          }}
+        >
           Report a problem with this output
         </Button>
       </Card>
@@ -498,7 +545,11 @@ export function GhostSection({
   gate,
   explain,
   value,
-  onChange,
+  field,
+  onAccept,
+  onEdit,
+  onReject,
+  onUndo,
   /** A LOW section arrives collapsed. */
   defaultExpanded,
   locked,
@@ -506,13 +557,21 @@ export function GhostSection({
   touchpointId: string
   capabilityId: string
   label: string
-  draft: string
+  /** The AI draft. ABSENT means nothing has been drafted: the section is the clinician's `field`. */
+  draft?: string
   band: ConfidenceBand
   score: number
   gate: Gate
   explain: ExplainTarget
-  value?: string
-  onChange: (v: string) => void
+  /** The stored text — THE truth of what will be signed. '' when empty. */
+  value: string
+  /** The one editing surface (a `VoiceField`), rendered in every state but the undecided ghost. */
+  field: ReactNode
+  /** Accept / Edit write the draft into the store; Reject and Undo write ''. The caller owns the store. */
+  onAccept: () => void
+  onEdit: () => void
+  onReject: () => void
+  onUndo: () => void
   defaultExpanded?: boolean
   locked?: boolean
 }) {
@@ -523,86 +582,52 @@ export function GhostSection({
 
   const startsExpanded = defaultExpanded ?? band !== 'LOW'
   const isExpanded = expandedMap[touchpointId] ?? startsExpanded
-  const [editing, setEditing] = useState(false)
 
-  const text = value ?? (disposition && disposition.disposition !== 'Rejected' ? draft : '')
-  const accepted = disposition?.disposition === 'Accepted' || disposition?.disposition === 'Accepted with edits'
-  const rejected = disposition?.disposition === 'Rejected'
+  // AI-OFF (§1.5) or nothing drafted: the section is the clinician's field.
+  if (!aiEnabled || draft === undefined) return <>{field}</>
 
-  // AI-OFF: the affordance is hidden entirely, not greyed, and the section
-  // collapses to plain typing. Nothing about the screen stops working.
-  if (!aiEnabled) {
-    return (
-      <div className="min-w-0">
-        <div className="mb-1.5 flex items-center justify-between">
-          <label htmlFor={touchpointId} className="text-[0.92em] font-medium text-ink-2">
-            {label} <span className="text-abnormal">*</span>
-          </label>
-        </div>
-        <TextArea
-          id={touchpointId}
-          rows={4}
-          disabled={locked}
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={`Type the ${label.toLowerCase()}…`}
-        />
-      </div>
-    )
-  }
+  /**
+   * The ghost shows only while there is nothing of the clinician's to show:
+   * undecided (or deferred) AND empty. Once text exists — accepted, edited,
+   * dictated or typed — the field is the surface and the draft never returns
+   * over it. Clearing an accepted section leaves it empty; it does not resurrect.
+   */
+  const undecided = disposition === undefined || disposition.disposition === 'Deferred'
+  const showGhost = undecided && value.trim() === ''
 
   return (
     <div className="min-w-0">
-      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <label htmlFor={touchpointId} className="flex items-center gap-2 text-[0.92em] font-medium text-ink-2">
-          {label} <span className="text-abnormal">*</span>
-          <Diamond />
-          <span className="text-[0.86em] font-normal text-ink-3">{capabilityId} draft</span>
-        </label>
-        {band === 'LOW' && !isExpanded && (
-          <button
-            type="button"
-            onClick={() => expand(touchpointId)}
-            className="inline-flex items-center gap-1.5 rounded-chip bg-caution-soft px-2 py-1 text-[0.86em] font-medium text-caution"
+      {showGhost ? (
+        <>
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <label htmlFor={touchpointId} className="flex items-center gap-2 text-[0.92em] font-medium text-ink-2">
+              {label} <span className="text-abnormal">*</span>
+              <Diamond />
+              <span className="text-[0.86em] font-normal text-ink-3">AI draft</span>
+            </label>
+            {band === 'LOW' && !isExpanded && (
+              <button
+                type="button"
+                onClick={() => expand(touchpointId)}
+                className="inline-flex items-center gap-1.5 rounded-chip bg-caution-soft px-2 py-1 text-[0.86em] font-medium text-caution"
+              >
+                <Icon name="ChevronDown" size={13} />
+                Expand to review
+              </button>
+            )}
+          </div>
+          <div
+            id={touchpointId}
+            role="region"
+            /* Every ◆ region carries the confidence band in its accessible name. */
+            aria-label={`${label} — AI draft, ${BAND_SPECS[band].label}`}
+            className={cx('ai-ghost rounded-field px-3.5 py-2.5 leading-relaxed', !isExpanded && 'max-h-14 overflow-hidden')}
           >
-            <Icon name="ChevronDown" size={13} />
-            Expand to review
-          </button>
-        )}
-      </div>
-
-      {/* The draft, in the field. */}
-      {editing || accepted ? (
-        <TextArea
-          id={touchpointId}
-          rows={5}
-          disabled={locked}
-          value={text}
-          onChange={(e) => onChange(e.target.value)}
-          className={accepted ? 'ai-ghost-accepted' : undefined}
-        />
-      ) : rejected ? (
-        <TextArea
-          id={touchpointId}
-          rows={4}
-          disabled={locked}
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={`Draft rejected. Type the ${label.toLowerCase()}…`}
-        />
+            {isExpanded ? draft : `${draft.slice(0, 92)}…`}
+          </div>
+        </>
       ) : (
-        <div
-          id={touchpointId}
-          role="region"
-          /* Every ◆ region carries the confidence band in its accessible name. */
-          aria-label={`${label} — AI draft, ${BAND_SPECS[band].label}`}
-          className={cx(
-            'ai-ghost rounded-field px-3.5 py-2.5 leading-relaxed',
-            !isExpanded && 'max-h-14 overflow-hidden',
-          )}
-        >
-          {isExpanded ? draft : `${draft.slice(0, 92)}…`}
-        </div>
+        field
       )}
 
       {/* C-41 beneath, never beside. */}
@@ -615,11 +640,11 @@ export function GhostSection({
         score={score}
         explain={explain}
         expanded={isExpanded}
-        onEdit={() => {
-          setEditing(true)
-          onChange(draft)
-        }}
-        onAccept={() => onChange(draft)}
+        locked={locked}
+        onAccept={onAccept}
+        onEdit={onEdit}
+        onReject={onReject}
+        onUndo={onUndo}
       />
     </div>
   )
@@ -637,7 +662,9 @@ export function FieldChip({
   gate,
   explain,
   onAccept,
+  onUndo,
   disabledReason,
+  locked = false,
 }: {
   touchpointId: string
   capabilityId: string
@@ -647,8 +674,11 @@ export function FieldChip({
   gate: Gate
   explain: ExplainTarget
   onAccept: () => void
+  /** Called after Undo clears the decision. */
+  onUndo?: () => void
   /** Where the suggestion is blocked by a rule — e.g. a parent-only code. */
   disabledReason?: string
+  locked?: boolean
 }) {
   const aiEnabled = useAI(selectAiActive)
   const staff = useCurrentStaff()
@@ -659,11 +689,28 @@ export function FieldChip({
 
   if (disposition) {
     return (
-      <Chip tone={disposition.disposition === 'Rejected' ? 'inactive' : 'normal'} icon="Check">
-        {disposition.disposition}
-      </Chip>
+      <span className="inline-flex items-center gap-1.5">
+        <Chip tone={disposition.disposition === 'Rejected' ? 'inactive' : 'normal'} icon={disposition.disposition === 'Rejected' ? 'X' : 'Check'}>
+          {disposition.disposition}
+        </Chip>
+        {!locked && (
+          <button
+            type="button"
+            title="Undo the decision"
+            onClick={() => {
+              useAI.getState().clearDisposition(touchpointId)
+              onUndo?.()
+            }}
+            className="text-[0.86em] text-ink-3 underline decoration-dotted underline-offset-2 hover:text-ink"
+          >
+            Undo
+          </button>
+        )}
+      </span>
     )
   }
+
+  if (locked) return null
 
   return (
     <span
@@ -1203,5 +1250,82 @@ export function DualSignatureGate({
         />
       </div>
     </Modal>
+  )
+}
+
+// ─────────────────────────── The assistant signing for a reading it gave
+
+/**
+ * An answer that READ something clinical ends here rather than in a full stop.
+ *
+ * The assistant is allowed to give a view — routing "what are your views on
+ * this result?" to a capability id is a non-answer, and clinicians stop asking.
+ * But a view is a claim, so it carries the same gate, the same disposition and
+ * the same audit event it would carry on the screen that owns it. Agreeing is
+ * a signature; disagreeing is recorded, because a disagreement is the artefact
+ * model governance actually needs.
+ *
+ * Shared by the Z7b panel and the full-page assistant so the two cannot drift.
+ */
+export function AttestStrip({
+  attest,
+}: {
+  attest: NonNullable<import('@/data/assistant').AssistantAnswer['attest']>
+}) {
+  const disposition = useAI((s) => s.dispositions[attest.touchpointId])
+  const record = useAI((s) => s.record)
+  const me = useCurrentStaff()
+  const toast = useUI((s) => s.toast)
+
+  if (disposition) {
+    const agreed = disposition.disposition === 'Accepted'
+    return (
+      <p
+        className={cx(
+          'mt-3 flex flex-wrap items-center gap-2 rounded-panel px-3 py-2 text-[0.88em]',
+          agreed ? 'bg-normal-soft text-normal' : 'bg-caution-soft text-caution',
+        )}
+      >
+        <Icon name={agreed ? 'Signature' : 'Undo2'} size={14} className="shrink-0" />
+        {agreed ? 'Signed' : 'Recorded as a disagreement'} by {disposition.by}
+      </p>
+    )
+  }
+
+  function act(kind: 'Accepted' | 'Rejected') {
+    record({
+      touchpointId: attest.touchpointId,
+      disposition: kind,
+      by: me.name,
+      modelVersion: attest.capabilityId,
+      confidence: 'HIGH',
+    })
+    toast({
+      tone: kind === 'Accepted' ? 'success' : 'caution',
+      title: kind === 'Accepted' ? 'Reading signed' : 'Disagreement recorded',
+      detail:
+        kind === 'Accepted'
+          ? `${attest.claim} — stamped ${me.name} · ${me.identifier}`
+          : 'The reading stays in the record with your disagreement beside it.',
+    })
+  }
+
+  return (
+    <div className="mt-3 rounded-panel border border-ai/30 bg-ai-ghost px-3 py-2.5">
+      <p className="flex flex-wrap items-center gap-2 text-[0.86em] font-medium text-ink-2">
+        <Diamond size={10} />
+        {attest.capabilityId} · <GateBadge gate={attest.gate} />
+        <span className="min-w-0">needs your signature, not just your click.</span>
+      </p>
+      <p className="mt-1 text-[0.88em] text-ink-2">{attest.claim}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" tone="primary" icon="Signature" onClick={() => act('Accepted')}>
+          Sign for this reading
+        </Button>
+        <Button size="sm" icon="Undo2" onClick={() => act('Rejected')}>
+          I disagree
+        </Button>
+      </div>
+    </div>
   )
 }

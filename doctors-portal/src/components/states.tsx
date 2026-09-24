@@ -14,11 +14,13 @@
  */
 
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { DeclaredState } from '@/atlas/states'
 import { STATE_SPECS } from '@/atlas/states'
 import { formatTime } from '@/data/format'
 import { useAI } from '@/store/ai'
+import { useUI } from '@/store/ui'
 
 import { Alert, Button, Card, Icon, Skeleton, cx } from './primitives'
 
@@ -206,6 +208,9 @@ export function DeniedPanel({
   capability: string
   grantedBy?: string
 }) {
+  const navigate = useNavigate()
+  const toast = useUI((s) => s.toast)
+  const forceState = useAI((s) => s.forceState)
   return (
     <Card className="mx-auto max-w-lg p-7 text-center">
       <div className="mx-auto flex size-12 items-center justify-center rounded-pill bg-inactive-soft">
@@ -221,10 +226,28 @@ export function DeniedPanel({
         them would reveal whether a record exists.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <Button tone="primary" icon="Send">
+        <Button
+          tone="primary"
+          icon="Send"
+          onClick={() =>
+            toast({
+              tone: 'info',
+              title: 'Access request sent',
+              detail: `${capability} requested from ${grantedBy}. You will be told when it is decided; nothing opens until then.`,
+            })
+          }
+        >
           Request access
         </Button>
-        <Button icon="Undo2">Go back</Button>
+        <Button
+          icon="Undo2"
+          onClick={() => {
+            forceState(null)
+            navigate(-1)
+          }}
+        >
+          Go back
+        </Button>
       </div>
       <p className="mt-4 text-[0.88em] text-ink-3">Granted by {grantedBy}.</p>
     </Card>
@@ -472,9 +495,10 @@ export function StateSwitcher({
         onChange={(e) => forceState(e.target.value === 'DEFAULT' ? null : (e.target.value as DeclaredState))}
         className={cx(
           'min-h-9 rounded-pill border px-3 py-1 text-[0.88em] font-medium',
+          compact && 'w-28',
           forced
             ? 'border-caution/40 bg-caution-soft text-caution'
-            : 'border-glass-hairline bg-glass-fill-strong text-ink-2',
+            : 'border-[var(--color-menu-border)] bg-[var(--color-menu)] text-ink-2',
         )}
       >
         <option value="DEFAULT">Default</option>

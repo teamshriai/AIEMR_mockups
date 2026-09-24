@@ -9,6 +9,11 @@
  *
  * AI-109 drafts the narrative at G3 — attest, not merely confirm — because a
  * released report enters the legal record.
+ *
+ * Calm pass: the trend and the numbers are the surface. The series table
+ * restates the chart point for point, so it is folded behind "values". The
+ * ranking rationale and the one-axis footnote are `Why`s, and the G3 signal is
+ * said once — on the action bar, where the act of attesting happens.
  */
 
 import { useNavigate } from 'react-router-dom'
@@ -16,7 +21,8 @@ import { useNavigate } from 'react-router-dom'
 import { AIActionBar, Confidence, Diamond } from '@/components/ai'
 import { TrendChart } from '@/components/charts'
 import type { TrendPoint } from '@/components/charts'
-import { Alert, Button, Card, Chip, ClinicalFlag, Icon, KeyValue, Table, Td, Th, Tr } from '@/components/primitives'
+import { Disclosure, Why } from '@/components/calm'
+import { Alert, Button, Card, Chip, ClinicalFlag, KeyValue, Table, Td, Th, Tr } from '@/components/primitives'
 import { RESULTS, RESULT_TRENDS, encounterForPatient, result as findResult } from '@/data/clinical'
 import { formatDateTime, formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
@@ -24,16 +30,23 @@ import { selectAiActive, useAI } from '@/store/ai'
 import { useClinical } from '@/store/clinical'
 import { Screen } from '@/shell/Screen'
 
-/** The narrative AI-109 drafts, per result. */
-const NARRATIVES: Record<string, string> = {
-  'R-88410':
-    'Severe hyperkalaemia at 6.8 mmol/L, risen from 5.4 nine hours earlier. In the context of acute kidney injury and a ventilated septic patient this is an immediate cardiac risk. Urgent ECG and treatment are indicated; a repeat sample to exclude haemolysis should not delay treatment at this level.',
-  'R-88402':
-    'CRP has risen from 96 to 184 mg/L over 48 hours on unchanged antibiotic cover. Taken with the increased oxygen requirement, this is a treatment-failure pattern rather than the expected downward trajectory at 72 hours.',
-  'R-88405':
-    'Creatinine has risen 64 µmol/L in 24 hours, meeting stage 2 acute kidney injury by the KDIGO creatinine criterion. Two active prescriptions require renal dose adjustment.',
-  'R-88210':
+/** The narrative AI-109 drafts, per result — the finding, then what follows from it. */
+const NARRATIVES: Record<string, string[]> = {
+  'R-88410': [
+    'Severe hyperkalaemia at 6.8 mmol/L, risen from 5.4 nine hours earlier. In the context of acute kidney injury and a ventilated septic patient this is an immediate cardiac risk.',
+    'Urgent ECG and treatment are indicated; a repeat sample to exclude haemolysis should not delay treatment at this level.',
+  ],
+  'R-88402': [
+    'CRP has risen from 96 to 184 mg/L over 48 hours on unchanged antibiotic cover.',
+    'Taken with the increased oxygen requirement, this is a treatment-failure pattern rather than the expected downward trajectory at 72 hours.',
+  ],
+  'R-88405': [
+    'Creatinine has risen 64 µmol/L in 24 hours, meeting stage 2 acute kidney injury by the KDIGO creatinine criterion.',
+    'Two active prescriptions require renal dose adjustment.',
+  ],
+  'R-88210': [
     'TSH is within the target range on unchanged replacement, consistent with adequate dosing. No change is indicated; repeat in six months.',
+  ],
 }
 
 const REF_BOUNDS: Record<string, { low: number; high: number }> = {
@@ -75,6 +88,15 @@ export function S0905({ id }: { id?: string }) {
       patient={p}
       loadingShape="list"
       states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'LOCKED', 'AI-OFF', 'AI-ABSTAIN', 'AI-LOW']}
+      heading={r.test}
+      subheading={
+        <>
+          <span className="tabular">
+            {r.value} {r.unit}
+          </span>{' '}
+          · reference <span className="tabular">{r.refRange}</span> · reported {formatTime(r.reportedAt)}
+        </>
+      }
       chips={
         <>
           <ClinicalFlag flag={r.flag} />
@@ -129,19 +151,18 @@ export function S0905({ id }: { id?: string }) {
               </KeyValue>
             </dl>
             <p className="mt-3 text-[0.86em] text-ink-3">
-              These are the fallback and the authority. If the interpretation below is unavailable, this panel is
-              sufficient to act on.
+              These are the fallback and the authority — enough to act on without the interpretation.
             </p>
           </Card>
 
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
+          <Why label="Why this result was ranked where it was">
+            <p className="text-ink-2">{r.aiReason}</p>
+            <p className="flex flex-wrap items-center gap-2 text-ink-3">
               <Diamond size={10} />
-              AI-212 · why it was ranked
+              AI-212 · ranks and shows the delta at G1. The chronological order in the inbox is one click away.
             </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">{r.aiReason}</p>
-            <Confidence band={r.band} className="mt-2" />
-          </Card>
+            <Confidence band={r.band} />
+          </Why>
         </div>
       }
       railTitle="Result"
@@ -181,9 +202,12 @@ export function S0905({ id }: { id?: string }) {
             <h2 className="flex items-center gap-2 font-semibold">
               <Diamond />
               Drafted interpretation
-              <Chip tone="caution">G3 · attest</Chip>
             </h2>
-            <p className="mt-2.5 leading-relaxed text-ink-2">{NARRATIVES[r.id]}</p>
+            <div className="mt-2.5 space-y-2 leading-relaxed text-ink-2">
+              {NARRATIVES[r.id].map((para) => (
+                <p key={para}>{para}</p>
+              ))}
+            </div>
             <AIActionBar
               className="mt-3"
               touchpointId={`result:${r.id}:narrative`}
@@ -214,57 +238,66 @@ export function S0905({ id }: { id?: string }) {
                 ],
               }}
             />
-            <p className="mt-2.5 rounded-panel bg-caution-soft px-3 py-2 text-[0.88em] font-medium text-caution">
-              A G3 touchpoint needs your signature, not just your click — anything entering the legal record does.
-            </p>
+            <Why label="What attesting to this means" className="mt-2.5">
+              <p className="text-ink-2">
+                A G3 touchpoint needs your signature, not just your click — anything entering the legal record does.
+                Until you attest, this draft is not in the record and nobody else can see it.
+              </p>
+            </Why>
           </Card>
         )}
 
-        <Card className="overflow-hidden">
-          <Table
-            caption={`All ${r.test} results for this patient`}
-            rowCount={`${series.length} results`}
-            head={
-              <>
-                <Th>When</Th>
-                <Th>Value</Th>
-                <Th>Reference</Th>
-                <Th>Range</Th>
-              </>
-            }
-          >
-            {[...points].reverse().map((pt) => (
-              <Tr key={pt.at.toISOString()}>
-                <Td className="tabular">{formatDateTime(pt.at)}</Td>
-                <Td className="tabular font-medium">
-                  {pt.value} {r.unit}
-                </Td>
-                <Td className="tabular">{r.refRange}</Td>
-                <Td>
-                  {pt.flag === 'critical' ? (
-                    <Chip tone="critical" icon="TriangleAlert">
-                      Critical
-                    </Chip>
-                  ) : pt.flag ? (
-                    <Chip tone="abnormal" icon={pt.flag === 'high' ? 'ArrowUp' : 'ArrowDown'}>
-                      {pt.flag === 'high' ? 'High' : 'Low'}
-                    </Chip>
-                  ) : (
-                    <Chip tone="normal" icon="Check">
-                      In range
-                    </Chip>
-                  )}
-                </Td>
-              </Tr>
-            ))}
-          </Table>
-        </Card>
+        {/* The same points the chart already draws — folded, not repeated. */}
+        {series.length > 0 && (
+          <Disclosure label="values" count={series.length}>
+            <Card className="overflow-hidden">
+              <Table
+                caption={`All ${r.test} results for this patient`}
+                rowCount={`${series.length} results`}
+                head={
+                  <>
+                    <Th>When</Th>
+                    <Th>Value</Th>
+                    <Th>Reference</Th>
+                    <Th>Range</Th>
+                  </>
+                }
+              >
+                {[...points].reverse().map((pt) => (
+                  <Tr key={pt.at.toISOString()}>
+                    <Td className="tabular">{formatDateTime(pt.at)}</Td>
+                    <Td className="tabular font-medium">
+                      {pt.value} {r.unit}
+                    </Td>
+                    <Td className="tabular">{r.refRange}</Td>
+                    <Td>
+                      {pt.flag === 'critical' ? (
+                        <Chip tone="critical" icon="TriangleAlert">
+                          Critical
+                        </Chip>
+                      ) : pt.flag ? (
+                        <Chip tone="abnormal" icon={pt.flag === 'high' ? 'ArrowUp' : 'ArrowDown'}>
+                          {pt.flag === 'high' ? 'High' : 'Low'}
+                        </Chip>
+                      ) : (
+                        <Chip tone="normal" icon="Check">
+                          In range
+                        </Chip>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </Table>
+            </Card>
+          </Disclosure>
+        )}
 
-        <p className="flex items-start gap-2 text-[0.86em] text-ink-3">
-          <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-          One measure, one axis. A second analyte on a second scale would be a separate chart — a dual axis makes two
-          unrelated trends look like they are tracking each other.
-        </p>
+        <Why label="Why there is one measure on this chart">
+          <p className="text-ink-2">
+            One measure, one axis. A second analyte on a second scale would be a separate chart — a dual axis makes two
+            unrelated trends look like they are tracking each other.
+          </p>
+        </Why>
       </div>
     </Screen>
   )

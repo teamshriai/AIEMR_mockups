@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:routes": "./scripts/walk-routes.sh",
+    "verify:accept": "node scripts/acceptance.mjs",
+    "verify:contrast": "node scripts/contrast.mjs",
+    "verify": "npm run verify:icons && npm run verify:vocab && npm run verify:routes && npm run verify:rag && npm run verify:accept && npm run verify:contrast",
+    "verify:icons": "node scripts/icon-audit.mjs",
+    "verify:vocab": "node scripts/vocabulary.mjs",
+    "verify:rag": "node scripts/rag-audit.mjs",
+    "ncct:import": "node scripts/ncct-import.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

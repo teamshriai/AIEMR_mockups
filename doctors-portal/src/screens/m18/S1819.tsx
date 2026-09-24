@@ -11,6 +11,12 @@
  *
  * So the reservation is all-or-nothing, and a partial failure names the
  * resource that failed rather than leaving you half-committed.
+ *
+ * Calm pass: the four resource cards carry what you act on, not which module
+ * owns them; the handover pack folds behind one line; the air-transport
+ * reasoning and "why all four or none" fold behind Why. The DIDO ring, the
+ * atomic hold, the partial-failure alert, the needle-before-loading rule and
+ * the one-way door-out stamp are unchanged.
  */
 
 import { useState } from 'react'
@@ -18,6 +24,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { ClockRing } from '@/archetypes'
 import { Diamond, WhyLink } from '@/components/ai'
+import { Disclosure, SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
 import { Alert, Button, Card, Chip, Icon, KeyValue, cx } from '@/components/primitives'
 import { formatElapsed, formatTime } from '@/data/format'
@@ -30,6 +37,16 @@ import { useUI } from '@/store/ui'
 import { Screen, ScreenSection } from '@/shell/Screen'
 
 import { CaseClockStrip, useCaseClock, useLiveIntervals } from './CaseClock'
+
+/** What travels ahead of the patient. Folded — it is a checklist, not a decision. */
+const HANDOVER_PACK = [
+  'Imaging, pushed ahead of the patient',
+  'NIHSS with the examiner named',
+  'Thrombolysis time, dose and second checker',
+  'Every stamped clock event',
+  'Allergies and the medication list',
+  'Next of kin and the consent discussion',
+]
 
 export function S1819({ id }: { id?: string }) {
   const navigate = useNavigate()
@@ -59,17 +76,23 @@ export function S1819({ id }: { id?: string }) {
       bannerExtra={<CaseClockStrip caseId={c.id} />}
       loadingShape="list"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-ABSTAIN']}
-      chips={
+      heading="Transfer"
+      subheading={
         <>
           {dido && (
-            <Chip tone={dido.state === 'BREACH' ? 'abnormal' : 'caution'} className="tabular">
-              DIDO {dido.elapsed}/{dido.targetMin} min
-            </Chip>
+            <span className="tabular">
+              DIDO {dido.elapsed}/{dido.targetMin} min ·{' '}
+            </span>
           )}
-          <Chip tone={reservationHeld ? 'normal' : 'neutral'} icon={reservationHeld ? 'Check' : 'Lock'}>
-            {reservationHeld ? 'four resources held' : 'nothing held'}
-          </Chip>
+          {reservationHeld ? 'four resources held' : 'nothing held yet'}
         </>
+      }
+      chips={
+        dido?.state === 'BREACH' && (
+          <Chip tone="abnormal" icon="TriangleAlert">
+            DIDO breached
+          </Chip>
+        )
       }
       actions={
         <Button icon="Clock" onClick={() => navigate(`/stroke/case/${c.id}/clock`)}>
@@ -78,9 +101,8 @@ export function S1819({ id }: { id?: string }) {
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">The DIDO clock</h3>
-            <div className="mt-3 flex justify-center">
+          <SectionCard title="The DIDO clock" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <div className="flex justify-center">
               {dido && (
                 <ClockRing
                   label={dido.label}
@@ -97,21 +119,18 @@ export function S1819({ id }: { id?: string }) {
                 {dido.blockingStep}
               </p>
             )}
-          </Card>
+          </SectionCard>
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              Why all four or none
-            </h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
+          <Why label="Why all four or none">
+            <p className="text-ink-2">
               An ambulance with no cath lab at the other end is a two-hour journey to a closed door. A cath lab with no
               anaesthetist is a team standing around. The reservation is atomic because a transfer with three of four
               resources is not a transfer.
             </p>
-            <p className="mt-2 text-[0.86em] text-ink-3">
+            <p className="text-ink-3">
               DD-012 · the one place the flagship reaches across module boundaries, and the reason it is allowed to.
             </p>
-          </Card>
+          </Why>
         </div>
       }
       railTitle="Transfer"
@@ -216,18 +235,14 @@ export function S1819({ id }: { id?: string }) {
                       {lost ? 'taken' : reservationHeld ? 'held' : r.status}
                     </Chip>
                   </div>
-                  <p className="mt-2 flex items-center gap-1.5 text-[0.84em] text-ink-3">
-                    <Icon name="Layers" size={12} />
-                    owned by {r.ownerModule}
-                  </p>
                 </Card>
               )
             })}
           </div>
         </ScreenSection>
 
-        <ScreenSection title="The journey">
-          <Card className="p-5">
+        <SectionCard title="The journey" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
               <span className="flex items-center gap-2 font-semibold">
                 <Icon name="Building2" size={16} className="text-ink-3" />
@@ -272,13 +287,13 @@ export function S1819({ id }: { id?: string }) {
                     band: TRANSFER_ROUTE.aiEta.band,
                     computedAt: formatTime(caseNow),
                     inputs: [
-                      { label: 'Ambulance GPS position', source: 'AMB-INS-03' },
-                      { label: 'Air ambulance availability', source: 'Transport desk' },
+                      { label: 'Ambulance GPS position', source: 'AMB-IPL-03' },
+                      { label: 'Ambulance crew and vehicle availability', source: 'Transport desk' },
                       { label: 'Historical transfer times on this route', source: 'Stroke registry' },
                     ],
                     evidence: [
-                      `${TRANSFER_ROUTE.distanceKm} km makes a road transfer implausible inside the window.`,
-                      'Air to HAL then road is the route the network uses for this pair.',
+                      `${TRANSFER_ROUTE.distanceKm} km by road keeps the transfer inside the treatment window.`,
+                      'Blue-light road transfer is the route the network uses for this pair.',
                     ],
                     model: TRANSFER_ROUTE.aiEta.model,
                     limits: [
@@ -291,37 +306,32 @@ export function S1819({ id }: { id?: string }) {
               </div>
             )}
 
-            <p className="mt-3 flex items-start gap-2 rounded-panel bg-caution-soft px-3 py-2.5 text-[0.9em] font-medium text-caution">
-              <Icon name="TriangleAlert" size={14} className="mt-0.5 shrink-0" />
-              {TRANSFER_ROUTE.distanceKm} km is too far for a road transfer inside any meaningful window. The network
-              topology forces air transport for this pair, and the screen says so rather than quoting a road ETA nobody
-              can meet.
-            </p>
-          </Card>
-        </ScreenSection>
+            <Why label="Why this one goes by air" className="mt-3">
+              <p className="text-ink-2">
+                {TRANSFER_ROUTE.distanceKm} km is too far for a road transfer inside any meaningful window. The network
+                topology forces air transport for this pair, and the screen says so rather than quoting a road ETA
+                nobody can meet.
+              </p>
+            </Why>
+          </div>
+        </SectionCard>
 
-        <Card className="p-4">
-          <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Handover pack</h3>
-          <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-            {[
-              'Imaging, pushed ahead of the patient',
-              'NIHSS with the examiner named',
-              'Thrombolysis time, dose and second checker',
-              'Every stamped clock event',
-              'Allergies and the medication list',
-              'Next of kin and the consent discussion',
-            ].map((t) => (
-              <li key={t} className="flex items-start gap-2 text-[0.92em] text-ink-2">
-                <Icon name="Check" size={13} className="mt-1 shrink-0 text-normal" />
-                {t}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2.5 text-[0.86em] text-ink-3">
-            The pack travels before the ambulance does, so the receiving team is reading it while the patient is in the
-            air.
-          </p>
-        </Card>
+        <Disclosure label="handover pack" count={HANDOVER_PACK.length}>
+          <div className="px-3 pt-1 pb-2">
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {HANDOVER_PACK.map((t) => (
+                <li key={t} className="flex items-start gap-2 text-[0.92em] text-ink-2">
+                  <Icon name="Check" size={13} className="mt-1 shrink-0 text-normal" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2.5 text-[0.86em] text-ink-3">
+              The pack travels before the ambulance does, so the receiving team is reading it while the patient is in
+              the air.
+            </p>
+          </div>
+        </Disclosure>
       </div>
 
       <ConfirmDialog

@@ -14,9 +14,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-import type { SectionKey } from '@/data/clinical'
-
 export type NoteStatus = 'draft' | 'signed' | 'cosign-pending'
+
+/**
+ * Where a section's text came from. Only `'scribe'` is an AI DRAFT that needs a
+ * C-41 disposition before the note can be signed; dictated text is the
+ * clinician's own words transcribed (AI-101), and signing is its confirmation.
+ */
+export type SectionProvenance = 'typed' | 'dictated' | 'scribe' | 'carried'
 
 export interface Addendum {
   id: string
@@ -28,8 +33,10 @@ export interface Addendum {
 
 export interface NoteRecord {
   encounterId: string
-  /** Edited section text, where the user has typed over the draft. */
-  text: Partial<Record<SectionKey, string>>
+  /** Section text, by section key. Empty until the clinician dictates, types or accepts a draft. */
+  text: Record<string, string>
+  /** Per-section provenance. Absent ⇒ the section is untouched. */
+  provenance: Record<string, SectionProvenance>
   status: NoteStatus
   signedBy?: string
   /** CMP-NABH-11 — stamped on sign, never typed. */
@@ -38,8 +45,11 @@ export interface NoteRecord {
   /** CMP-ABDM-03 — per-record publish status on the signed note. */
   publishStatus?: 'queued' | 'published' | 'failed'
   addenda: Addendum[]
-  /** A draft autosave timestamp, shown in the Z7a bar. */
+  /** A draft save timestamp, shown in the Z7a bar. */
   savedAt?: string
+  savedHow?: 'manual' | 'auto'
+  /** The chosen ICD-10 leaf code — the truth for the coding field, however it was picked. */
+  code?: string
 }
 
 export interface RxRecord {
@@ -92,8 +102,17 @@ interface ClinicalState {
   /** A free dictated note, per patient. `null` key holds an unattached one. */
   voiceNotes: Record<string, { body: string; at: string; by: string; model: string; band: string }[]>
 
-  setSectionText: (encounterId: string, key: SectionKey, text: string) => void
-  saveDraft: (encounterId: string) => void
+  setSectionText: (encounterId: string, key: string, text: string, provenance?: SectionProvenance) => void
+  /**
+   * Marks sections as AI-drafted by the scribe, so they need a disposition.
+   * Text lands on Accept/Edit. A section the clinician has already dictated or
+   * typed is LEFT ALONE — the scribe never overwrites the clinician's words.
+   * Returns the keys it actually drafted.
+   */
+  applyScribeDraft: (encounterId: string, keys: string[]) => string[]
+  clearSection: (encounterId: string, key: string) => void
+  setNoteCode: (encounterId: string, code: string | undefined) => void
+  saveDraft: (encounterId: string, how?: 'manual' | 'auto') => void
   signNote: (args: { encounterId: string; by: string; registrationNo: string; canSign: boolean }) => NoteStatus
   addendum: (args: { encounterId: string; body: string; by: string; registrationNo: string }) => void
   setPublishStatus: (encounterId: string, status: NoteRecord['publishStatus']) => void
@@ -138,7 +157,7 @@ interface ClinicalState {
 }
 
 function blankNote(encounterId: string): NoteRecord {
-  return { encounterId, text: {}, status: 'draft', addenda: [] }
+  return { encounterId, text: {}, provenance: {}, status: 'draft', addenda: [] }
 }
 
 function blankRx(encounterId: string): RxRecord {
@@ -160,29 +179,71 @@ export const useClinical = create<ClinicalState>()(
       pendingSeen: [],
       voiceNotes: {},
 
-      note: (encounterId) => get().notes[encounterId] ?? blankNote(encounterId),
+      // A record persisted before provenance existed is normalised on read.
+      note: (encounterId) => {
+        const stored = get().notes[encounterId]
+        return stored ? { ...blankNote(encounterId), ...stored, provenance: stored.provenance ?? {} } : blankNote(encounterId)
+      },
       rx: (encounterId) => get().prescriptions[encounterId] ?? blankRx(encounterId),
 
-      setSectionText: (encounterId, key, text) => {
+      setSectionText: (encounterId, key, text, provenance) => {
         const current = get().note(encounterId)
         // CMP-NABH-10 — a signed note is never edited. Silently refusing would
         // be worse than the UI simply not offering it, which it does not.
         if (current.status === 'signed') return
+        const prior = current.provenance[key]
+        // An explicit provenance wins; otherwise the section keeps what it had;
+        // text arriving in an untouched section was typed.
+        const next = provenance ?? prior ?? (text.trim() === '' ? undefined : 'typed')
+        const nextProvenance = { ...current.provenance }
+        if (next === undefined) delete nextProvenance[key]
+        else nextProvenance[key] = next
         set({
           notes: {
             ...get().notes,
-            [encounterId]: { ...current, text: { ...current.text, [key]: text } },
+            [encounterId]: { ...current, text: { ...current.text, [key]: text }, provenance: nextProvenance },
           },
         })
       },
 
-      saveDraft: (encounterId) => {
+      applyScribeDraft: (encounterId, keys) => {
+        const current = get().note(encounterId)
+        if (current.status === 'signed') return []
+        const provenance = { ...current.provenance }
+        const applied: string[] = []
+        for (const k of keys) {
+          const own = current.provenance[k]
+          if ((current.text[k] ?? '').trim() !== '' && own !== undefined && own !== 'scribe') continue
+          provenance[k] = 'scribe'
+          applied.push(k)
+        }
+        set({ notes: { ...get().notes, [encounterId]: { ...current, provenance } } })
+        return applied
+      },
+
+      clearSection: (encounterId, key) => {
+        const current = get().note(encounterId)
+        if (current.status === 'signed') return
+        const text = { ...current.text }
+        const provenance = { ...current.provenance }
+        delete text[key]
+        delete provenance[key]
+        set({ notes: { ...get().notes, [encounterId]: { ...current, text, provenance } } })
+      },
+
+      setNoteCode: (encounterId, code) => {
+        const current = get().note(encounterId)
+        if (current.status === 'signed') return
+        set({ notes: { ...get().notes, [encounterId]: { ...current, code } } })
+      },
+
+      saveDraft: (encounterId, how = 'manual') => {
         const current = get().note(encounterId)
         if (current.status === 'signed') return
         set({
           notes: {
             ...get().notes,
-            [encounterId]: { ...current, savedAt: new Date().toISOString() },
+            [encounterId]: { ...current, savedAt: new Date().toISOString(), savedHow: how },
           },
         })
       },

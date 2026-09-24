@@ -1,3 +1,7 @@
+// Must come first: it writes to localStorage before the persisted stores read
+// it. See the note in e2e.ts.
+import './e2e'
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 

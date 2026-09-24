@@ -1,31 +1,39 @@
 /**
  * S-08-04 · Inpatient Progress Note — `/ip/encounter/:id/note` · T1 · ARC-15
  *
- * "Where the consultant records the daily ward-round note, with an AI scribe
- * drafting from dictation."
+ * "Where the consultant dictates the daily ward-round note; the scribe drafts
+ * on request."
  *
  * Deck beat #12: "The ward round writes itself."
  *
- * The authoring surface is shared with S-06-03. What makes this the inpatient
- * screen is what surrounds it: AI-102 drafts from the ward round rather than a
- * consultation, AI-201's deterioration strip is the reason you are at the bed,
- * and AI-301 proposes the orders the note implies.
+ * The authoring surface is shared with S-06-03: four empty sections, spoken or
+ * typed. What makes this the inpatient screen is what surrounds it: AI-102
+ * drafts from the ward round rather than a consultation ("Draft with
+ * AI"), AI-201's deterioration strip is the reason you are at the bed, and
+ * AI-301 proposes the orders the note implies.
  */
 
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { Diamond, SuggestionCard } from '@/components/ai'
-import { Alert, Button, Card, Chip, Icon, KeyValue } from '@/components/primitives'
+import { SuggestionCard } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
+import { Alert, Button, Icon, KeyValue } from '@/components/primitives'
 import { NOTE_DRAFT_SD_P_03, ORDER_SUGGESTIONS, RISK_STRIPS, VITALS, encounter } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
 import { useClinical } from '@/store/clinical'
+import { useUI } from '@/store/ui'
 
-import { NoteAuthoring } from '../shared/NoteAuthoring'
+import { S0604 } from '../m06/S0604'
+import { NoteAuthoring, encounterLabel } from '../shared/NoteAuthoring'
 
 export function S0804({ id }: { id?: string }) {
   const navigate = useNavigate()
+  const toast = useUI((s) => s.toast)
   const placeOrders = useClinical((s) => s.placeOrders)
+  const applyScribeDraft = useClinical((s) => s.applyScribeDraft)
+  const [scribeOpen, setScribeOpen] = useState(false)
 
   const enc = encounter(id ?? 'E-118366')
   const p = patient(enc.patientId)
@@ -33,6 +41,7 @@ export function S0804({ id }: { id?: string }) {
   const vitals = VITALS[p.id] ?? []
 
   return (
+    <>
     <NoteAuthoring
       screenId="S-08-04"
       encounter={enc}
@@ -40,15 +49,13 @@ export function S0804({ id }: { id?: string }) {
       seeds={NOTE_DRAFT_SD_P_03}
       scribeModel="round-scribe v3.7.0"
       onSigned={() => navigate('/ip/patients')}
+      onDraftAll={() => setScribeOpen(true)}
       headerActions={
         <>
-          <Button icon="Mic" tone="ai" title="AI-102 drafts from the ward round, handover or intra-op dictation">
-            Dictate the round
-          </Button>
-          <Button icon="Pill" onClick={() => navigate(`/encounter/${enc.id}/rx`)}>
+          <Button tone="tertiary" icon="Pill" onClick={() => navigate(`/encounter/${enc.id}/rx`)}>
             Prescribe
           </Button>
-          <Button icon="ClipboardList" onClick={() => navigate(`/encounter/${enc.id}/orders/new`)}>
+          <Button tone="tertiary" icon="ClipboardList" onClick={() => navigate(`/encounter/${enc.id}/orders/new`)}>
             Order
           </Button>
         </>
@@ -65,12 +72,15 @@ export function S0804({ id }: { id?: string }) {
         <div className="space-y-4">
           {/* Why you are at this bed. */}
           {risk && risk.band !== 'ABSTAIN' && (
-            <Card className="border-l-[3px] border-l-abnormal p-4">
-              <p className="flex items-center gap-2 font-semibold text-abnormal">
-                <Icon name="TriangleAlert" size={16} />
-                Deterioration risk {risk.band}
-              </p>
-              <p className="tabular mt-1 text-[0.95em]">
+            <SectionCard
+              title={`Deterioration risk ${risk.band}`}
+              className="border-l-4 border-l-abnormal"
+              bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+            >
+              <p
+                className="tabular text-[0.95em]"
+                title={`${risk.modelVersion} · computed ${formatTime(risk.computedAt)}`}
+              >
                 {risk.score} · {risk.trend}
               </p>
               <ul className="mt-2.5 space-y-1">
@@ -85,15 +95,11 @@ export function S0804({ id }: { id?: string }) {
                   </li>
                 ))}
               </ul>
-              <p className="mt-2.5 text-[0.84em] text-ink-3">
-                {risk.modelVersion} · computed {formatTime(risk.computedAt)}
-              </p>
-            </Card>
+            </SectionCard>
           )}
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Latest observations</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
+          <SectionCard title="Latest observations" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <dl className="divide-y divide-glass-hairline">
               {vitals.map((v) => (
                 <KeyValue key={v.label} label={v.label}>
                   <span className="tabular">{v.value}</span>
@@ -103,11 +109,11 @@ export function S0804({ id }: { id?: string }) {
             {vitals[0] && (
               <p className="tabular mt-2 text-[0.84em] text-ink-3">charted {formatTime(vitals[0].at)}</p>
             )}
-          </Card>
+          </SectionCard>
 
           {/* AI-301 — the orders the plan implies, offered rather than placed. */}
           <div className="space-y-3">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
+            <h3 className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">
               Orders this plan implies
             </h3>
             {ORDER_SUGGESTIONS.slice(0, 3).map((s, i) => (
@@ -129,7 +135,7 @@ export function S0804({ id }: { id?: string }) {
                   band: s.band,
                   computedAt: formatTime(NOW),
                   inputs: [
-                    { label: 'Drafted plan section', source: `Encounter ${enc.encounterNo}` },
+                    { label: 'Drafted plan section', source: encounterLabel(enc) },
                     { label: 'Recent results', source: 'Results, last 72 hours' },
                     { label: 'Charted vitals', source: 'Flowsheet, most recent set' },
                   ],
@@ -145,21 +151,41 @@ export function S0804({ id }: { id?: string }) {
             ))}
           </div>
 
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              AI-102 · round scribe
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
+          <Why label="About the round scribe">
+            <p className="text-ink-2">
               The ward-round variant of the scribe. It listens at the bedside rather than in a consulting room, so it
-              expects a shorter, more telegraphic dictation and drafts accordingly.
+              expects a shorter, more telegraphic dictation and drafts accordingly. Fallback: type manually.
             </p>
-            <Chip tone="neutral" className="mt-2">
-              Fallback: type manually
-            </Chip>
-          </Card>
+          </Why>
         </div>
       }
+      railBadge={ORDER_SUGGESTIONS.slice(0, 3).length}
     />
+
+    {/* The round scribe, on request. Same overlay as the consultation; this patient's own lines. */}
+    <S0604
+      open={scribeOpen}
+      patientId={p.id}
+      patientName={p.name}
+      sections={NOTE_DRAFT_SD_P_03}
+      onClose={() => setScribeOpen(false)}
+      onFinish={(keys) => {
+        setScribeOpen(false)
+        const drafted = applyScribeDraft(enc.id, keys)
+        const kept = keys.length - drafted.length
+        toast({
+          tone: 'info',
+          title:
+            drafted.length === 0
+              ? 'Nothing to draft — every section already has your words'
+              : `${drafted.length} ${drafted.length === 1 ? 'section' : 'sections'} drafted from the round`,
+          detail:
+            drafted.length === 0
+              ? 'The scribe never overwrites what you dictated or typed.'
+              : `Each one needs Accept, Edit or Reject before Sign will enable.${kept > 0 ? ` ${kept} you had already written ${kept === 1 ? 'was' : 'were'} left as yours.` : ''}`,
+        })
+      }}
+    />
+    </>
   )
 }

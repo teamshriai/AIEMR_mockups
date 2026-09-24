@@ -22,17 +22,20 @@ import {
   COSIGN_QUEUE,
   DISCHARGE_BOARD,
   INPATIENTS,
+  REFERRALS,
   RESULTS,
   RISK_STRIPS,
   TIMELINE,
   VITALS,
   encounter,
+  encounterForPatient,
   ordersFor,
   timelineFor,
 } from './clinical'
+import type { DischargeRow } from './clinical'
 import { NOW, formatTime, minutesAgo } from './format'
 import { patient } from './kit'
-import { NETWORK_TODAY, STROKE_CASES } from './stroke'
+import { NETWORK_TODAY, PAGING_LOG, STROKE_CASES, STROKE_TASKS } from './stroke'
 
 // ═══════════════════════════════════════════════════════════ The day plan
 
@@ -59,17 +62,19 @@ export interface DayBlock {
   band?: ConfidenceBand
 }
 
+/** The session opened 70 minutes before the fixed moment — 07:30. */
+const SHIFT_START = minutesAgo(70)
+
 function at(hour: number, minute = 0): Date {
   return new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), hour, minute)
 }
 
 /** The clinical day — P-04 and P-05. */
 function clinicalDay(persona: PersonaId): DayBlock[] {
-  const unreviewed = RESULTS.filter((r) => !r.acknowledged)
-  const critical = unreviewed.filter((r) => r.critical)
-  const seen = CLINIC_LIST.filter((c) => c.status === 'Seen').length
-  const next = CLINIC_LIST.find((c) => c.status === 'Waiting')
+  const toReview = RESULTS.filter((r) => !r.acknowledged)
+  const critical = toReview.filter((r) => r.critical)
   const attention = INPATIENTS.filter((r) => r.risk === 'HIGH').length
+  const followUps = CLINIC_LIST.filter((c) => isFollowUp(c.patientId)).length
   const tele = encounter('E-118430')
   const dischargesToday = DISCHARGE_BOARD.filter((d) => d.likelihood === 'Today').length
   const canSign = persona === 'P-04'
@@ -77,11 +82,11 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
   const blocks: DayBlock[] = [
     {
       id: 'brief',
-      at: minutesAgo(70),
+      at: SHIFT_START,
       title: 'AI morning brief',
-      summary: `${unreviewed.length} results changed · ${critical.length} critical`,
+      summary: `${toReview.length} results changed · ${critical.length} critical`,
       emphasis: [
-        { text: `${unreviewed.length} results changed`, tone: 'warning' },
+        { text: `${toReview.length} results changed`, tone: 'warning' },
         { text: `${critical.length} critical`, tone: 'critical' },
       ],
       icon: 'Sunrise',
@@ -94,7 +99,12 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
       at: at(8, 0),
       until: at(9, 0),
       title: 'OPD',
-      summary: `${CLINIC_LIST.length} patients · ${seen} seen · next ${next?.token ?? '—'}`,
+      /*
+       * The brief's own format: "6 patients · 2 new · 4 follow-ups". Not the
+       * seen count, not the next token — the home screen says what the block
+       * IS; the OPD list says where it has got to.
+       */
+      summary: `${CLINIC_LIST.length} patients · ${CLINIC_LIST.length - followUps} new · ${followUps} follow-ups`,
       icon: 'Stethoscope',
       to: '/op-queue',
     },
@@ -120,7 +130,6 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
       at: at(12, 0),
       title: canSign ? 'Co-sign' : 'Awaiting co-sign',
       summary: `${COSIGN_QUEUE.length} pending`,
-      emphasis: [{ text: `${COSIGN_QUEUE.length} pending`, tone: 'pending' }],
       icon: 'PenLine',
       to: '/clinician/cosign',
     },
@@ -156,7 +165,7 @@ function strokeDay(): DayBlock[] {
   return [
     {
       id: 'brief',
-      at: minutesAgo(70),
+      at: SHIFT_START,
       title: 'Overnight brief',
       summary: `${NETWORK_TODAY.activations} activations · DTN median ${NETWORK_TODAY.dtnMedianMin} min`,
       icon: 'Sunrise',
@@ -222,6 +231,8 @@ export interface PatientCount {
   /** Where the count opens, already narrowed. */
   to: string
   icon: string
+  /** ONE quiet line under the number — what is pending in that place, or how far the clinic has got. */
+  sub?: string
 }
 
 /**
@@ -238,31 +249,139 @@ export function patientCounts(persona: PersonaId): PatientCount[] {
   if (STROKE_PERSONAS.includes(persona)) {
     const active = STROKE_CASES.filter((c) => c.status === 'active')
     return [
-      { key: 'active', label: 'Active', value: active.length, to: '/stroke/wall', icon: 'Brain' },
-      { key: 'transfer', label: 'Transfer', value: active.filter((c) => c.originFacility !== c.destinationFacility).length, to: '/stroke/wall', icon: 'Ambulance' },
-      { key: 'sites', label: 'Sites', value: 4, to: '/stroke/network/sites', icon: 'Network' },
-      { key: 'registry', label: 'Follow-up', value: NETWORK_TODAY.transfers, to: '/stroke/registry', icon: 'ClipboardList' },
+      { key: 'active', label: 'Active', value: active.length, to: '/stroke/wall', icon: 'Brain', sub: `${NETWORK_TODAY.activations} activations today` },
+      { key: 'transfer', label: 'Transfer', value: active.filter((c) => c.originFacility !== c.destinationFacility).length, to: '/stroke/wall', icon: 'Ambulance', sub: 'drip-and-ship in progress' },
+      { key: 'sites', label: 'Sites', value: 4, to: '/stroke/network/sites', icon: 'Network', sub: '1 without CT' },
+      { key: 'registry', label: 'Follow-up', value: NETWORK_TODAY.transfers, to: '/stroke/registry', icon: 'ClipboardList', sub: '90-day outcomes due' },
     ]
   }
 
-  const icu = INPATIENTS.filter((r) => (r.bed ?? '').startsWith('ICU'))
-  const ward = INPATIENTS.filter((r) => {
-    const bed = r.bed ?? ''
-    return bed !== '' && !bed.startsWith('ICU') && !bed.startsWith('ED')
-  })
+  /*
+   * A PARTITION, not a set of interesting numbers. Every patient this
+   * consultant holds appears in exactly one tile, so the four add up to the
+   * total and the total is true.
+   *
+   * What this replaced: OPD · Ward · ICU · Follow-up. `Follow-up` is a visit
+   * TYPE inside OPD, not a place, so it counted three patients twice and made
+   * the header read 15 for a consultant with 13. It is a filter on the OPD
+   * screen (`?type=follow-up`) and belongs there. `ED` takes its place because
+   * the ED patient is on the inpatient list and was in no tile at all.
+   *
+   * VOCABULARY.md: Inpatients is the whole; Ward, ICU and ED are its parts.
+   */
+  const bedOf = (r: (typeof INPATIENTS)[number]) => r.bed ?? ''
+  const icu = INPATIENTS.filter((r) => bedOf(r).startsWith('ICU'))
+  const ed = INPATIENTS.filter((r) => bedOf(r).startsWith('ED'))
+  const ward = INPATIENTS.filter(
+    (r) => bedOf(r) !== '' && !bedOf(r).startsWith('ICU') && !bedOf(r).startsWith('ED'),
+  )
+
+  const seen = CLINIC_LIST.filter((r) => r.status === 'Seen').length
+  const pendingIn = (rows: typeof INPATIENTS) => {
+    const n = rows.reduce((sum, r) => sum + r.pending.length, 0)
+    return n === 0 ? 'nothing pending' : `${n} pending`
+  }
 
   return [
-    { key: 'opd', label: 'OPD', value: CLINIC_LIST.length, to: '/op-queue', icon: 'Stethoscope' },
-    { key: 'ward', label: 'Ward', value: ward.length, to: '/ip/patients?location=ward', icon: 'BedDouble' },
-    { key: 'icu', label: 'ICU', value: icu.length, to: '/ip/patients?location=icu', icon: 'Activity' },
+    { key: 'opd', label: 'OPD', value: CLINIC_LIST.length, to: '/op-queue', icon: 'Stethoscope', sub: `${seen} seen · ${CLINIC_LIST.length - seen} to see` },
+    { key: 'ward', label: 'Ward', value: ward.length, to: '/ip/patients?location=ward', icon: 'BedDouble', sub: pendingIn(ward) },
+    { key: 'icu', label: 'ICU', value: icu.length, to: '/ip/patients?location=icu', icon: 'Activity', sub: pendingIn(icu) },
+    { key: 'ed', label: 'ED', value: ed.length, to: '/ip/patients?location=ed', icon: 'Siren', sub: pendingIn(ed) },
+  ]
+}
+
+// ═══════════════════════════════════════════════════ Pending today
+
+/**
+ * The third question the calm home now answers: what must I finish before I
+ * leave? Documentation and sign-offs only — the things that are the doctor's
+ * to close, not things to read. Results are deliberately absent: a critical
+ * one interrupts through "Needs my attention"; the rest live in Results.
+ */
+export interface FinishItem {
+  key: string
+  label: string
+  count: number
+  /** A second count worth naming — "1 urgent". */
+  detail?: string
+  icon: string
+  to: string
+  urgency?: Urgency
+}
+
+export function toFinishFor(
+  persona: PersonaId,
+  state: {
+    notes: Record<string, { status: string }>
+    coSigned: Record<string, unknown>
+    triagedReferrals: Record<string, unknown>
+    voiceNotes: Record<string, unknown[]>
+  },
+): FinishItem[] {
+  if (STROKE_PERSONAS.includes(persona)) {
+    const openTasks = STROKE_TASKS.filter((t) => t.column !== 'Done')
+    const blocked = STROKE_TASKS.filter((t) => t.column === 'Blocked').length
+    const unacked = PAGING_LOG.filter((p) => p.ackAt === null)
+    const stroke: FinishItem[] = [
+      {
+        key: 'tasks',
+        label: 'Case tasks open',
+        count: openTasks.length,
+        detail: blocked > 0 ? `${blocked} blocked` : undefined,
+        icon: 'ClipboardList',
+        to: '/stroke/case/0141/tasks',
+        urgency: blocked > 0 ? 'warning' : 'pending',
+      },
+      {
+        key: 'pages',
+        label: 'Pages unacknowledged',
+        count: unacked.length,
+        detail: unacked[0]?.role,
+        icon: 'Users',
+        to: '/stroke/case/0141/team',
+        urgency: unacked.length > 0 ? 'critical' : undefined,
+      },
+    ]
+    return stroke.filter((i) => i.count > 0)
+  }
+
+  /** A note is still to write until the record holds a signed note for that patient's encounter. */
+  const noteSigned = (patientId: string) => {
+    const enc = encounterForPatient(patientId)
+    return enc !== undefined && state.notes[enc.id]?.status === 'signed'
+  }
+  const roundNotes = INPATIENTS.filter(
+    (r) => r.pending.some((p) => /note/i.test(p)) && !noteSigned(r.patientId),
+  ).length
+  const cosign = COSIGN_QUEUE.filter((c) => state.coSigned[c.id] === undefined).length
+  const dictated = Object.values(state.voiceNotes).reduce((n, arr) => n + arr.length, 0)
+  const summaries = INPATIENTS.filter((r) => r.pending.includes('Discharge summary')).length
+  const referrals = REFERRALS.filter((r) => state.triagedReferrals[r.id] === undefined)
+  const urgentReferrals = referrals.filter((r) => r.triage === 'Urgent').length
+
+  const items: FinishItem[] = [
+    { key: 'notes', label: 'Ward round notes due', count: roundNotes, icon: 'PenLine', to: '/ip/patients', urgency: 'pending' },
+    { key: 'cosign', label: 'Notes to co-sign', count: cosign, icon: 'Signature', to: '/clinician/cosign', urgency: 'pending' },
+    { key: 'dictated', label: 'Dictated notes to sign', count: dictated, icon: 'Mic', to: '/ip/patients', urgency: 'pending' },
+    { key: 'summary', label: 'Discharge summary to sign', count: summaries, icon: 'FileText', to: '/discharge/board', urgency: 'warning' },
     {
-      key: 'followup',
-      label: 'Follow-up',
-      value: CLINIC_LIST.filter((c) => isFollowUp(c.patientId)).length,
-      to: '/op-queue?type=follow-up',
-      icon: 'RotateCcw',
+      key: 'referrals',
+      label: 'Referrals to review',
+      count: referrals.length,
+      detail: urgentReferrals > 0 ? `${urgentReferrals} urgent` : undefined,
+      icon: 'Inbox',
+      to: '/referrals',
+      urgency: urgentReferrals > 0 ? 'warning' : 'pending',
     },
   ]
+  return items.filter((i) => i.count > 0)
+}
+
+// ═══════════════════════════════════════════════════ Discharges today
+
+/** AI-610's "Today" rows, with the one thing standing in each one's way. */
+export function dischargesToday(): DischargeRow[] {
+  return DISCHARGE_BOARD.filter((r) => r.likelihood === 'Today')
 }
 
 // ══════════════════════════════════════════════ Needs my attention (3–5 max)
@@ -289,7 +408,7 @@ const URGENCY_ORDER: Record<Urgency, number> = { critical: 0, warning: 1, pendin
 
 /**
  * Derived, ranked, and capped at five — "List only 3–5 items max". Anything
- * that does not make the cut is still reachable through `Review all`.
+ * that does not make the cut is still reachable through `See all`.
  */
 export function attentionFor(persona: PersonaId, acknowledged: Record<string, unknown> = {}): AttentionItem[] {
   if (STROKE_PERSONAS.includes(persona)) {
@@ -538,11 +657,13 @@ export function deltasFor(patientId: string, since: Date): Delta[] {
     out.push({
       type: 'timer',
       shortLabel: 'Overdue',
-      label: chasing[0].item,
+      // Named for what it IS, not for the order — otherwise it reads as a
+      // duplicate of the imaging event sitting next to it.
+      label: `${chasing[0].category} order running late`,
       icon: 'Clock',
       ts: chasing[0].placedAt.toISOString(),
       priority: DELTA_PRIORITY.timer,
-      detail: chasing[0].chase,
+      detail: `${chasing[0].item} · ${chasing[0].chase}`,
       ai: 'AI-308',
     })
   }
@@ -600,5 +721,7 @@ export function cardFor(patientId: string, lastSeen: Date, urgency: Urgency): My
  */
 export function derivedLastSeen(patientId: string): Date {
   const mine = timelineFor(patientId).find((e) => e.by.startsWith('Dr Ananya'))
-  return mine?.at ?? minutesAgo(70)
+  // No entry of their own on this record means they have not seen this patient
+  // this admission, so the cut-off is the start of the shift.
+  return mine?.at ?? SHIFT_START
 }

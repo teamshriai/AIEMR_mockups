@@ -13,15 +13,21 @@
  *   Targets >= 64px, usable one-handed while holding a phone to the ear.
  *   The phone path is a first-class route and is never removed.
  *   OFFLINE is the EXPECTED state, not the exception.
+ *
+ * Calm pass: the six questions carry no paragraph of guidance each — the
+ * guidance is the placeholder and the field's title. Both rail explainers fold
+ * behind one Why. Nothing above is negotiable and nothing above moved.
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Diamond, SuggestionCard } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
+import { ConfirmDialog } from '@/components/overlays'
 import { Alert, Button, Card, Chip, Field, Icon, Select, TextInput, cx } from '@/components/primitives'
 import { formatTime } from '@/data/format'
-import { facility, patient } from '@/data/kit'
+import { facility } from '@/data/kit'
 import { ACTIVE_CASE } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff } from '@/store/session'
@@ -29,18 +35,22 @@ import { useUI } from '@/store/ui'
 import { useCaseNow } from './CaseClock'
 import { Screen } from '@/shell/Screen'
 
-/** The six questions that actually change the decision. */
+/**
+ * The six questions that actually change the decision. `help` is never rendered
+ * as a paragraph — it is the input's placeholder or its title, so the form is
+ * six lines rather than six essays.
+ */
 const SIX = [
   {
     key: 'lkw',
     label: 'When was the patient last known well?',
-    hint: 'Not when they were found — when they were last definitely normal. If nobody saw it, say unknown.',
+    help: 'Not when they were found — when they were last definitely normal. If nobody saw it, say unknown.',
     type: 'time' as const,
   },
   {
     key: 'deficit',
     label: 'What is the deficit?',
-    hint: 'In your own words. The hub scores the NIHSS over video.',
+    help: 'In your own words. The hub scores the NIHSS over video.',
     type: 'select' as const,
     options: [
       'Right-sided weakness with speech difficulty',
@@ -54,26 +64,29 @@ const SIX = [
   {
     key: 'anticoag',
     label: 'Is the patient on a blood thinner?',
-    hint: 'Warfarin, or any of the newer ones. Unknown is an acceptable answer and does not block.',
+    help: 'Warfarin, or any of the newer ones. Unknown is an acceptable answer and does not block.',
     type: 'select' as const,
     options: ['No', 'Yes — warfarin', 'Yes — a newer anticoagulant (DOAC)', 'Unknown'],
   },
   {
     key: 'bp',
     label: 'Blood pressure now',
-    hint: 'Systolic over diastolic. Above 185/110 needs treating before thrombolysis.',
+    help: 'Systolic over diastolic. Above 185/110 needs treating before thrombolysis.',
+    placeholder: 'e.g. 196/104',
     type: 'text' as const,
   },
   {
     key: 'glucose',
     label: 'Capillary glucose',
-    hint: 'Hypoglycaemia mimics a stroke. This is the one test that changes the diagnosis.',
+    help: 'Hypoglycaemia mimics a stroke. This is the one test that changes the diagnosis.',
+    placeholder: 'e.g. 7.2 mmol/L',
     type: 'text' as const,
   },
   {
     key: 'weight',
     label: 'Weight, measured or estimated',
-    hint: 'The thrombolytic dose is per kilogram, so an estimate is better than a blank.',
+    help: 'The thrombolytic dose is per kilogram, so an estimate is better than a blank.',
+    placeholder: 'kg — an estimate beats a blank',
     type: 'text' as const,
   },
 ]
@@ -87,13 +100,14 @@ export function S1813() {
   const caseNow = useCaseNow()
 
   const [activated, setActivated] = useState(false)
+  const [calling, setCalling] = useState(false)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [ctProgress, setCtProgress] = useState(0)
 
-  const site = facility(me.facilityCode === 'INS' ? 'INS' : 'INS')
-  const p = patient(ACTIVE_CASE.patientId)
+  const site = facility(me.facilityCode === 'IPL' ? 'IPL' : 'IPL')
   const offline = forced === 'OFFLINE'
   const answered = SIX.filter((f) => (answers[f.key] ?? '').trim()).length
+  const mimicCard = aiActive && activated
 
   function uploadCt() {
     setCtProgress(1)
@@ -113,6 +127,16 @@ export function S1813() {
       screenId="S-18-13"
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'AI-OFF', 'AI-ABSTAIN']}
+      heading="Spoke console"
+      subheading={
+        activated ? (
+          <>
+            STROKE/26-27/{ACTIVE_CASE.id} · clock running · {answered} of {SIX.length} answered
+          </>
+        ) : (
+          'No case activated · one tap starts the clock and pages the hub'
+        )
+      }
       chips={
         <>
           <Chip tone="isolation" icon="Building2">
@@ -128,30 +152,13 @@ export function S1813() {
       }
       actions={
         /* The phone is always a path. Never remove it. */
-        <Button tone="secondary" size="lg" icon="Phone">
+        <Button tone="secondary" size="lg" icon="Phone" onClick={() => setCalling(true)}>
           Call the hub
         </Button>
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Why six</h3>
-            <p className="mt-1.5 text-[0.95em] text-ink-2">
-              The hub needs sixty things. You need six. Everything else is collected at the hub from what you send and
-              from the video call, because a console that asks a lone physician sixty questions at 02:00 gets closed.
-            </p>
-          </Card>
-
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">If the network drops</h3>
-            <p className="mt-1.5 text-[0.95em] text-ink-2">
-              Activation and all six answers capture locally and queue. The phone number stays on screen. The printed
-              protocol cards stay available. Nothing you have typed is lost.
-            </p>
-            <p className="mt-2 text-[0.88em] text-ink-3">Offline is the expected state here, not an error.</p>
-          </Card>
-
-          {aiActive && activated && (
+          {mimicCard && (
             <SuggestionCard
               touchpointId="spoke:mimic"
               capabilityId="AI-203"
@@ -170,7 +177,7 @@ export function S1813() {
                 computedAt: formatTime(caseNow),
                 inputs: [
                   { label: 'Presenting deficit as described', source: 'This form' },
-                  { label: 'Site mimic rate', source: 'Stroke registry, INS' },
+                  { label: 'Site mimic rate', source: 'Stroke registry, IPL' },
                 ],
                 evidence: [
                   'One of three activations at this site last month was a mimic.',
@@ -185,9 +192,22 @@ export function S1813() {
               }}
             />
           )}
+
+          <Why label="Why six questions, and what happens if the network drops">
+            <p className="text-ink-2">
+              The hub needs sixty things. You need six. Everything else is collected at the hub from what you send and
+              from the video call, because a console that asks a lone physician sixty questions at 02:00 gets closed.
+            </p>
+            <p className="text-ink-2">
+              Activation and all six answers capture locally and queue. The phone number stays on screen. The printed
+              protocol cards stay available. Nothing you have typed is lost.
+            </p>
+            <p className="text-ink-3">Offline is the expected state here, not an error.</p>
+          </Why>
         </div>
       }
       railTitle="At a spoke"
+      railBadge={mimicCard ? 1 : undefined}
     >
       <div className="space-y-6">
         {offline && (
@@ -202,8 +222,8 @@ export function S1813() {
           <Card className="p-6 text-center md:p-10">
             <h2 className="text-xl font-semibold tracking-tight md:text-2xl">Suspected stroke?</h2>
             <p className="mx-auto mt-2 max-w-lg text-ink-2">
-              One action starts the clock and raises the telestroke request together. You do not have to decide which
-              first, and it works whether or not the AI or the network is up.
+              One action starts the clock and raises the telestroke request together — always enabled, never gated on
+              the model, the network, or a complete form.
             </p>
             <button
               type="button"
@@ -220,9 +240,6 @@ export function S1813() {
               <Icon name="Siren" size={26} />
               ACTIVATE &amp; REQUEST HUB
             </button>
-            <p className="mt-3 text-[0.9em] text-ink-3">
-              Always enabled. Never gated on the model, the network, or a complete form.
-            </p>
           </Card>
         ) : (
           <>
@@ -251,26 +268,20 @@ export function S1813() {
               </Button>
             </div>
 
-            {/* The six. One field per view on a phone. */}
-            <section>
-              <h2 className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-lg font-semibold tracking-tight">The six questions</span>
-                <span className="tabular text-[0.9em] text-ink-3">
-                  {answered} of {SIX.length} answered — none of them blocks
-                </span>
-              </h2>
-              <div className="space-y-4">
+            {/* The six. One field per row, every target >= 64px. */}
+            <SectionCard
+              title="The six questions"
+              meta={<span className="text-[0.88em] text-ink-3">none of them blocks</span>}
+              bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+            >
+              <div className="space-y-5">
                 {SIX.map((f, i) => (
-                  <Card key={f.key} className="p-5">
-                    <Field
-                      label={`${i + 1}. ${f.label}`}
-                      htmlFor={`six-${f.key}`}
-                      hint={f.hint}
-                      required={false}
-                    >
+                  <div key={f.key} className="min-w-0">
+                    <Field label={`${i + 1}. ${f.label}`} htmlFor={`six-${f.key}`} required={false}>
                       {f.type === 'select' ? (
                         <Select
                           id={`six-${f.key}`}
+                          title={f.help}
                           value={answers[f.key] ?? ''}
                           onChange={(e) => setAnswers((a) => ({ ...a, [f.key]: e.target.value }))}
                           className="min-h-16 text-base"
@@ -287,10 +298,11 @@ export function S1813() {
                         <TextInput
                           id={`six-${f.key}`}
                           type={f.type === 'time' ? 'time' : 'text'}
+                          title={f.help}
                           value={answers[f.key] ?? ''}
                           onChange={(e) => setAnswers((a) => ({ ...a, [f.key]: e.target.value }))}
                           className="min-h-16 text-base"
-                          placeholder={f.type === 'time' ? undefined : 'Type it, or leave blank'}
+                          placeholder={f.type === 'time' ? undefined : f.placeholder}
                         />
                       )}
                     </Field>
@@ -300,22 +312,23 @@ export function S1813() {
                         Unknown is recorded as unknown, and the hub sees it as unknown. It is not treated as a no.
                       </p>
                     )}
-                  </Card>
+                  </div>
                 ))}
               </div>
-            </section>
+            </SectionCard>
 
             {/* Poor bandwidth: the CT uploads progressively while the clock runs. */}
-            <Card className="p-5">
-              <h2 className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-lg font-semibold tracking-tight">Upload the CT</span>
+            <SectionCard
+              title="Upload the CT"
+              meta={
                 <Chip tone="caution" icon="WifiLow">
                   bandwidth is poor here
                 </Chip>
-              </h2>
-              <p className="mt-1.5 text-ink-2">
-                It uploads progressively — the hub can read a low-resolution series before the full study arrives. The
-                decision never waits on full resolution.
+              }
+              bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+            >
+              <p className="text-ink-2">
+                It uploads progressively — the hub reads a low-resolution series before the full study arrives.
               </p>
 
               {ctProgress === 0 ? (
@@ -357,16 +370,21 @@ export function S1813() {
                   )}
                 </div>
               )}
-            </Card>
-
-            <p className="flex items-start gap-2 text-[0.9em] text-ink-3">
-              <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
-              You are recorded as the activating clinician: {me.name} at {site.name}. The patient in the hub&rsquo;s
-              view is {p.name}, {p.age}/{p.sex}.
-            </p>
+            </SectionCard>
           </>
         )}
       </div>
+      <ConfirmDialog
+        open={calling}
+        title={`Call the stroke hub at ${facility('ICH').name}?`}
+        consequence="Rings the on-call stroke neurologist, Dr Rohit Desai, on the hub's stroke line. The call is logged against this case with the time."
+        confirmLabel="Call now"
+        onConfirm={() => {
+          setCalling(false)
+          toast({ tone: 'info', title: 'Calling Dr Rohit Desai', detail: `Hub stroke line · logged against the case at ${formatTime(caseNow)}.` })
+        }}
+        onCancel={() => setCalling(false)}
+      />
     </Screen>
   )
 }

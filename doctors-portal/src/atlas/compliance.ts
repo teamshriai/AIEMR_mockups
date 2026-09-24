@@ -90,7 +90,7 @@ export const COMPLIANCE: Record<ComplianceId, ComplianceSpec> = {
   },
   'CMP-DRUG-06': {
     id: 'CMP-DRUG-06',
-    obligation: 'Teleconsultation prescribing categories (O / A / B) and prohibited list',
+    obligation: 'Teleconsult prescribing categories (O / A / B) and prohibited list',
     consequence: 'A hard category gate on tele-prescription; the prohibited list is never AI-decided.',
     critical: true,
   },

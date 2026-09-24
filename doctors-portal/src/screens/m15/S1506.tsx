@@ -12,9 +12,9 @@
 
 import { useState } from 'react'
 
-import { Diamond } from '@/components/ai'
+import { Why } from '@/components/calm'
 import { Modal } from '@/components/overlays'
-import { Button, Checkbox, Chip, Icon, KeyValue, Select, TextArea } from '@/components/primitives'
+import { Button, Checkbox, Icon, KeyValue, Select, TextArea } from '@/components/primitives'
 import { formatTime, NOW } from '@/data/format'
 import { STAFF, patient } from '@/data/kit'
 import { useCurrentStaff } from '@/store/session'
@@ -84,10 +84,6 @@ export function S1506({
           <p className="tabular mt-1 text-[0.92em] text-ink-2">
             {p.name} · {p.age}/{p.sex} · {p.bed} · study {studyId}
           </p>
-          <p className="mt-1.5 flex items-center gap-2 text-[0.88em] text-ink-2">
-            <Diamond size={9} />
-            AI-407 flagged it. The escalation is yours — the model cannot make a phone call.
-          </p>
         </div>
 
         <div>
@@ -101,10 +97,6 @@ export function S1506({
               </option>
             ))}
           </Select>
-          <p className="mt-1.5 text-[0.86em] text-ink-3">
-            A named person, not a ward or a pool. If they cannot be reached, escalate to the on-call and record that
-            too.
-          </p>
         </div>
 
         <div>
@@ -155,14 +147,16 @@ export function S1506({
           }
         />
 
-        <p className="flex flex-wrap items-center gap-2">
-          <Chip tone="caution" icon="ShieldAlert">
-            G2 gate
-          </Chip>
-          <span className="text-[0.86em] text-ink-3">
-            The report still has to be written. This records that somebody was told before it was.
-          </span>
-        </p>
+        <Why label="Why this modal exists">
+          <p className="text-ink-2">
+            AI-407 flagged this finding. The escalation is yours — the model cannot make a phone call. Who you told
+            must be a named person, not a ward or a pool; if they cannot be reached, escalate to the on-call and
+            record that too.
+          </p>
+          <p className="text-[0.92em] text-ink-3">
+            G2 gate. The report still has to be written — this records that somebody was told before it was.
+          </p>
+        </Why>
       </div>
     </Modal>
   )

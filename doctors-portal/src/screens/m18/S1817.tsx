@@ -17,6 +17,11 @@
  *
  * And: "Show the independent second dose check as mandatory EVEN WHEN THE AI IS
  * OFF" — because the check is a rule, not a model output.
+ *
+ * Calm pass: the checklist now folds the satisfied criteria itself, so the
+ * three that need a decision are the surface. The dose-range check is one line
+ * under the dose. The cost panel says "display only" once. Every gate above is
+ * unchanged.
  */
 
 import { useState } from 'react'
@@ -24,8 +29,9 @@ import { useNavigate } from 'react-router-dom'
 
 import { Checklist } from '@/archetypes'
 import { Diamond } from '@/components/ai'
+import { SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Alert, Button, Card, Checkbox, Chip, Icon, KeyValue, Select, TextInput, cx } from '@/components/primitives'
+import { Alert, Button, Checkbox, Chip, Icon, KeyValue, Select, TextInput, cx } from '@/components/primitives'
 import { formatRupees, formatTime } from '@/data/format'
 import { STAFF, patient } from '@/data/kit'
 import { THROMBOLYSIS_COST, THROMBOLYSIS_CRITERIA, THROMBOLYSIS_DOSE, strokeCase } from '@/data/stroke'
@@ -178,7 +184,14 @@ export function S1817({ id }: { id?: string }) {
                 {a}
               </Button>
             ) : (
-              <Button key={a} size="sm" icon="Send">
+              <Button
+                key={a}
+                size="sm"
+                icon="Send"
+                onClick={() =>
+                  toast({ tone: 'info', title: a, detail: `Sent for ${crit.label.toLowerCase()} · logged against the case.` })
+                }
+              >
                 {a}
               </Button>
             ),
@@ -206,17 +219,25 @@ export function S1817({ id }: { id?: string }) {
       bannerExtra={<CaseClockStrip caseId={c.id} />}
       loadingShape="list"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-ABSTAIN', 'AI-LOW']}
-      chips={
+      heading="Thrombolysis"
+      subheading={
         <>
-          <Chip tone={blocking.length === 0 ? 'normal' : 'abnormal'} icon={blocking.length === 0 ? 'Check' : 'Ban'}>
-            {items.length - blocking.length} of {items.length} clear
-          </Chip>
-          {dtn && (
-            <Chip tone={dtn.state === 'BREACH' ? 'abnormal' : 'caution'} className="tabular">
-              DTN {dtn.elapsed}/{dtn.targetMin} min
-            </Chip>
-          )}
+          {items.length - blocking.length} of {items.length} criteria clear ·{' '}
+          {blocking.length > 0
+            ? `${blocking.length} blocking`
+            : !secondCheckBy
+              ? 'second check outstanding'
+              : !consent
+                ? 'consent outstanding'
+                : 'ready to give'}
         </>
+      }
+      chips={
+        dtn && (
+          <Chip tone={dtn.state === 'BREACH' ? 'abnormal' : 'caution'} className="tabular">
+            DTN {dtn.elapsed}/{dtn.targetMin} min
+          </Chip>
+        )
       }
       actions={
         <Button icon="Activity" onClick={() => navigate(`/stroke/case/${c.id}/nihss`)}>
@@ -225,10 +246,17 @@ export function S1817({ id }: { id?: string }) {
       }
       rail={
         <div className="space-y-4">
-          {/* Cost. Display only, and the frame says so. */}
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Cost &amp; coverage</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
+          {/* Cost. Display only — said once, as the marker on the panel. */}
+          <SectionCard
+            title="Cost & coverage"
+            meta={
+              <Chip tone="normal" icon="Check">
+                display only
+              </Chip>
+            }
+            bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+          >
+            <dl className="divide-y divide-glass-hairline">
               <KeyValue label="Tenecteplase">
                 <span className="tabular font-semibold">{formatRupees(THROMBOLYSIS_COST.drugCost)}</span>
               </KeyValue>
@@ -239,11 +267,7 @@ export function S1817({ id }: { id?: string }) {
                 <Chip tone="caution">{THROMBOLYSIS_COST.tpa}</Chip>
               </KeyValue>
             </dl>
-            <p className="mt-3 rounded-panel bg-normal-soft px-3 py-2.5 text-[0.9em] font-medium text-normal">
-              <Icon name="Check" size={13} className="mr-1 inline" />
-              Display only. This panel does not block, and the primary action below does not wait for it.
-            </p>
-            <p className="mt-2 text-[0.86em] text-ink-3">{THROMBOLYSIS_COST.note}</p>
+            <p className="mt-2.5 text-[0.88em] text-ink-3">{THROMBOLYSIS_COST.note}</p>
             <Button
               size="sm"
               className="mt-2.5 w-full"
@@ -258,16 +282,15 @@ export function S1817({ id }: { id?: string }) {
             >
               Authorise in parallel
             </Button>
-          </Card>
+          </SectionCard>
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Why unknown is allowed</h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
+          <Why label="Why unknown is allowed">
+            <p className="text-ink-2">
               A checklist that only accepts yes or no forces a guess at 02:00. Every item here takes
               &ldquo;unknown&rdquo;, and each unknown shows what follows from it — which is the difference between a
               usable checklist and a form.
             </p>
-          </Card>
+          </Why>
         </div>
       }
       railTitle="Alongside"
@@ -309,16 +332,14 @@ export function S1817({ id }: { id?: string }) {
           </Alert>
         )}
 
-        <ScreenSection
-          title="Eligibility"
-          subtitle="Every item answerable unknown, and every unknown shows its consequence"
-        >
+        {/* The three that need a decision come first; the satisfied ones fold. */}
+        <ScreenSection title="Eligibility" subtitle={`${items.length - blocking.length} of ${items.length} clear`}>
           <Checklist items={items} />
         </ScreenSection>
 
         {/* The dose. Weight-based, so the weight and its capture time are shown. */}
-        <ScreenSection title="Dose" subtitle="Weight-based, so the weight and when it was taken are on the screen">
-          <Card className="p-5">
+        <SectionCard title="Dose" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-lg font-semibold">{THROMBOLYSIS_DOSE.drug}</span>
               <span className="tabular text-ink-2">
@@ -332,6 +353,15 @@ export function S1817({ id }: { id?: string }) {
               <Icon name="Scale" size={13} />
               Weight taken {formatTime(THROMBOLYSIS_DOSE.weightCapturedAt)} · {THROMBOLYSIS_DOSE.weightSource}
             </p>
+
+            {/* AI-305, in one line where the dose is. */}
+            {aiActive && (
+              <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.88em] text-ai">
+                <Diamond size={10} />
+                Within the licensed range for {THROMBOLYSIS_DOSE.weightKg} kg and below the 25 mg single-bolus ceiling —
+                the static dose table gives the same answer with the model off.
+              </p>
+            )}
 
             {/* Mandatory even when the AI is off — it is a rule, not a model. */}
             <div
@@ -402,22 +432,8 @@ export function S1817({ id }: { id?: string }) {
                 </>
               }
             />
-          </Card>
-        </ScreenSection>
-
-        {aiActive && (
-          <Card className="border-l-[3px] border-l-ai p-4">
-            <p className="flex items-center gap-2 text-[0.88em] font-semibold text-ai">
-              <Diamond size={10} />
-              AI-305 · dose-range check
-            </p>
-            <p className="mt-1.5 text-[0.92em] text-ink-2">
-              {THROMBOLYSIS_DOSE.totalMg} mg is within the licensed range for {THROMBOLYSIS_DOSE.weightKg} kg at{' '}
-              {THROMBOLYSIS_DOSE.perKg} mg/kg, and below the 25 mg single-bolus ceiling. The static dose table produces
-              the same answer with the model off.
-            </p>
-          </Card>
-        )}
+          </div>
+        </SectionCard>
       </div>
 
       <ConfirmDialog

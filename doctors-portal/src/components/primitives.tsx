@@ -8,7 +8,7 @@
  *          which in a hospital is all of them.
  */
 
-import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import type { ComponentProps, ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { ICONS } from './icons'
 
@@ -46,7 +46,7 @@ const BUTTON_TONES: Record<ButtonTone, string> = {
   primary: 'bg-brand text-brand-on hover:bg-brand-dark border border-transparent',
   secondary: 'glass border-glass-border text-ink hover:bg-glass-fill-hover',
   tertiary: 'bg-transparent text-ink-2 hover:bg-glass-fill border border-transparent',
-  destructive: 'bg-critical text-white hover:brightness-110 border border-transparent',
+  destructive: 'bg-critical text-critical-on hover:brightness-110 border border-transparent',
   ai: 'ai-surface hover:brightness-105',
 }
 
@@ -117,18 +117,27 @@ export function IconButton({
 
 // ───────────────────────────────────────────────────────────── Surfaces
 
+/**
+ * Every card in the product is the same frosted surface, so `SectionCard` and a
+ * bare `Card` cannot sit side by side at two different brightnesses. `quiet`
+ * asks for the lighter fill, for a card nested inside another surface.
+ */
 export function Card({
   className,
   children,
   strong,
+  quiet,
   as: As = 'section',
   ...rest
-}: ComponentPropsWithoutRef<'section'> & { strong?: boolean; as?: 'section' | 'div' | 'article' | 'aside' }) {
+}: ComponentPropsWithoutRef<'section'> & {
+  /** Retained for callers that asked for the strong fill explicitly; now the default. */
+  strong?: boolean
+  quiet?: boolean
+  as?: 'section' | 'div' | 'article' | 'aside'
+}) {
+  void strong
   return (
-    <As
-      {...rest}
-      className={cx(strong ? 'glass-strong' : 'glass', 'glass-card', className)}
-    >
+    <As {...rest} className={cx(quiet ? 'glass' : 'glass-strong', 'glass-card', className)}>
       {children}
     </As>
   )
@@ -176,7 +185,7 @@ const CHIP_TONES: Record<ChipTone, string> = {
   normal: 'bg-normal-soft text-normal border-transparent',
   caution: 'bg-caution-soft text-caution border-transparent',
   abnormal: 'bg-abnormal-soft text-abnormal border-transparent',
-  critical: 'bg-critical text-white border-transparent',
+  critical: 'bg-critical text-critical-on border-transparent',
   isolation: 'bg-isolation-soft text-isolation border-transparent',
   inactive: 'bg-inactive-soft text-inactive border-transparent',
   ai: 'bg-ai-soft text-ai border-transparent',
@@ -226,7 +235,8 @@ export function ClinicalFlag({ flag, className }: { flag: string; className?: st
   const style = map[flag] ?? { tone: 'neutral' as ChipTone, icon: 'Info' }
   return (
     <Chip tone={style.tone} icon={style.icon} className={className}>
-      {flag}
+      {/* The icon is the arrow; repeating it as a glyph reads as "↑ ↑ High". */}
+      {flag.replace(/^[↑↓]+\s*/, '')}
     </Chip>
   )
 }
@@ -266,20 +276,17 @@ export function StatTile({
   return (
     <Card
       as="div"
+      strong
       onClick={onClick}
-      className={cx(
-        'flex min-h-32 flex-col justify-between p-5',
-        interactive && 'glass-hover cursor-pointer',
-        className,
-      )}
+      className={cx('flex min-h-28 flex-col justify-between p-4', interactive && 'lift cursor-pointer', className)}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[0.86em] font-medium tracking-wide text-ink-3 uppercase">{label}</p>
+        <p className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">{label}</p>
         {badge}
       </div>
       <div>
-        <p className={cx('tabular mt-2 text-3xl leading-none font-semibold', accent)}>{value}</p>
-        {sub && <p className="mt-1.5 text-[0.92em] text-ink-3">{sub}</p>}
+        <p className={cx('tabular mt-2 text-3xl leading-none font-bold tracking-tight', accent)}>{value}</p>
+        {sub && <p className="mt-1.5 text-[0.88em] text-ink-3">{sub}</p>}
       </div>
       {action && <div className="mt-3">{action}</div>}
     </Card>
@@ -308,7 +315,7 @@ export function Table({
         <table className="w-full border-collapse text-left">
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead className="sticky top-0 z-10">
-            <tr className="bg-glass-fill-strong backdrop-blur-glass">{head}</tr>
+            <tr className="bg-glass-inset">{head}</tr>
           </thead>
           <tbody>{children}</tbody>
         </table>
@@ -324,8 +331,8 @@ export function Th({ children, className, ...rest }: ComponentPropsWithoutRef<'t
       scope="col"
       {...rest}
       className={cx(
-        'border-b border-glass-hairline px-4 py-2.5',
-        'text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase',
+        'px-4 py-2',
+        'text-[0.76em] font-bold tracking-[0.08em] text-ink-3 uppercase',
         className,
       )}
     >
@@ -336,7 +343,7 @@ export function Th({ children, className, ...rest }: ComponentPropsWithoutRef<'t
 
 export function Td({ children, className, ...rest }: ComponentPropsWithoutRef<'td'>) {
   return (
-    <td {...rest} className={cx('border-b border-glass-hairline px-4 py-3 align-middle', className)}>
+    <td {...rest} className={cx('border-t border-glass-hairline px-4 py-3 align-middle', className)}>
       {children}
     </td>
   )
@@ -475,8 +482,8 @@ export function TextInput({ className, ...rest }: ComponentPropsWithoutRef<'inpu
   return <input {...rest} className={cx(FIELD_BASE, 'min-h-11', className)} />
 }
 
-/** C-04 — textarea, autogrow. */
-export function TextArea({ className, rows = 4, ...rest }: ComponentPropsWithoutRef<'textarea'>) {
+/** C-04 — textarea, autogrow. Takes a `ref` (React 19 passes it as a prop). */
+export function TextArea({ className, rows = 4, ...rest }: ComponentProps<'textarea'>) {
   return <textarea rows={rows} {...rest} className={cx(FIELD_BASE, 'resize-y leading-relaxed', className)} />
 }
 

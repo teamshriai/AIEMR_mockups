@@ -1,96 +1,74 @@
 /**
  * A scaffold frame for a screen whose Z5 is not yet built.
  *
- * It still renders the real registry row — the real title, one-liner, zones,
- * archetype, AI touchpoints, compliance chips, state switcher and the Z7b
- * bubble — so a route is never a blank page, and so the atlas's completeness
- * assertion has something to reconcile against while the build proceeds.
+ * The shell around it is real, so a route is never a blank page and the
+ * atlas's completeness assertion has something to reconcile against. What a
+ * doctor sees is one sentence; the registry row and the AI touchpoints are
+ * specification material, so they sit behind the same `Why` disclosure every
+ * other screen puts its rationale behind.
  */
 
-import { ARCHETYPE_SPECS } from '@/atlas/archetypes'
 import { capability } from '@/atlas/capabilities'
 import { GATE_SPECS } from '@/atlas/gates'
 import { screen } from '@/atlas/registry'
-import { Diamond } from '@/components/ai'
-import { Card, Chip, Icon, KeyValue } from '@/components/primitives'
+import { SectionCard, Why } from '@/components/calm'
+import { Chip, Icon, KeyValue } from '@/components/primitives'
 import { patientByAnyId } from '@/data/kit'
 import { Screen } from '@/shell/Screen'
 
 export function Placeholder({ screenId, patientId }: { screenId: string; patientId?: string }) {
   const spec = screen(screenId)
-  const archetype = ARCHETYPE_SPECS[spec.archetype]
   const p = patientByAnyId(patientId)
 
   return (
     <Screen
       screenId={screenId}
       patient={spec.patientScoped ? p : undefined}
+      subheading="The content region of this screen is not built yet."
       chips={<Chip tone="caution">Z5 pending</Chip>}
     >
-      <div className="space-y-4">
-        <Card className="p-5">
-          <p className="flex items-center gap-2 font-semibold">
-            <Icon name="Hammer" size={16} className="text-ink-3" />
-            This screen&rsquo;s content region is not built yet
+      <div className="max-w-3xl space-y-4">
+        <SectionCard title="Not built yet" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+          <p className="flex items-start gap-2.5 text-ink-2">
+            <Icon name="Hammer" size={16} className="mt-0.5 shrink-0 text-ink-3" />
+            The frame around this region is real — the zones, the archetype contract, the compliance obligations and
+            the assistant all come from this screen&rsquo;s registry row.
           </p>
-          <p className="mt-1.5 text-ink-2">
-            The shell around it is real: the zones, the archetype contract, the compliance obligations and the assistant
-            bubble all come from the registry row below.
-          </p>
-        </Card>
+        </SectionCard>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="p-5">
-            <h2 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Registry row</h2>
-            <dl className="mt-2 divide-y divide-glass-hairline">
+        <Why label="The registry row and its AI touchpoints">
+          <SectionCard title="Registry row" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <dl className="divide-y divide-glass-hairline">
               <KeyValue label="Screen">
                 {spec.id} · {spec.name}
               </KeyValue>
-              <KeyValue label="Module">{spec.module}</KeyValue>
               <KeyValue label="Route">{spec.route ?? `⊘ ${spec.surface}`}</KeyValue>
-              <KeyValue label="Tier">{spec.tier}</KeyValue>
-              <KeyValue label="Archetype">
-                {spec.archetype} · {archetype.name}
-              </KeyValue>
               <KeyValue label="Zones">{spec.zones.join(' · ')}</KeyValue>
-              <KeyValue label="Density">{spec.density}</KeyValue>
               <KeyValue label="Permission">{spec.permission}</KeyValue>
               <KeyValue label="Personas">{spec.personas.join(' · ')}</KeyValue>
             </dl>
-          </Card>
+          </SectionCard>
 
-          <Card className="p-5">
-            <h2 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">AI touchpoints</h2>
-            <ul className="mt-2 space-y-2.5">
-              {spec.ai.map((id) => {
-                const cap = capability(id)
-                return (
-                  <li key={id}>
-                    <p className="flex items-center gap-2 font-medium">
-                      <Diamond size={10} />
-                      {cap.id} · {cap.name}
-                    </p>
-                    <p className="mt-0.5 text-[0.88em] text-ink-3">
-                      gate {cap.gate} {GATE_SPECS[cap.gate].name} · if unavailable: {cap.fallback}
-                    </p>
-                  </li>
-                )
-              })}
-              <li>
-                <p className="flex items-center gap-2 font-medium">
-                  <Diamond size={10} />
-                  AI-911 · Contextual assistant
-                </p>
-                <p className="mt-0.5 text-[0.88em] text-ink-3">
-                  gate G1 · mandatory and cited · on every screen via GP-17
-                </p>
-              </li>
-            </ul>
-            <p className="mt-3 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.88em] text-ink-2">
-              {archetype.shape}
-            </p>
-          </Card>
-        </div>
+          {spec.ai.length > 0 && (
+            <SectionCard title="AI touchpoints" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+              <ul className="space-y-2.5">
+                {spec.ai.map((id) => {
+                  const cap = capability(id)
+                  return (
+                    <li key={id}>
+                      <p className="font-medium">
+                        {cap.id} · {cap.name}
+                      </p>
+                      <p className="mt-0.5 text-[0.88em] text-ink-3">
+                        gate {cap.gate} {GATE_SPECS[cap.gate].name} · if unavailable: {cap.fallback}
+                      </p>
+                    </li>
+                  )
+                })}
+              </ul>
+            </SectionCard>
+          )}
+        </Why>
       </div>
     </Screen>
   )
@@ -107,14 +85,16 @@ export function overlayEntry(screenId: string, openedFrom: string) {
     const spec = screen(screenId)
     return (
       <Screen screenId={screenId} chips={<Chip tone="neutral">{spec.surface}</Chip>}>
-        <Card className="p-5">
-          <p className="font-semibold">
-            {spec.id} is {spec.surface === 'in-place' ? 'an in-place expansion' : `a ${spec.surface}`}, not a page
+        <SectionCard
+          title={spec.surface === 'in-place' ? 'An in-place expansion' : `A ${spec.surface}`}
+          className="max-w-2xl"
+          bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+        >
+          <p className="text-ink-2">
+            {spec.id} has no route of its own. Open it from <strong className="font-semibold">{openedFrom}</strong>,
+            which mounts it.
           </p>
-          <p className="mt-1.5 text-ink-2">
-            It has no route in the atlas registry. Open it from <strong>{openedFrom}</strong>, which mounts it.
-          </p>
-        </Card>
+        </SectionCard>
       </Screen>
     )
   }

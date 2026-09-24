@@ -27,11 +27,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { assistantScreenFor } from '@/atlas/nav'
-import { screenForPath, maybeScreen } from '@/atlas/registry'
-import { Confidence, Diamond } from '@/components/ai'
+import { screenForPath, maybeScreen, routeForSource } from '@/atlas/registry'
+import { AttestStrip, Confidence, Diamond } from '@/components/ai'
 import { Drawer } from '@/components/overlays'
 import { Button, Chip, Icon, IconButton, cx } from '@/components/primitives'
 import type { AssistantAnswer } from '@/data/assistant'
@@ -141,6 +141,19 @@ function usePatientInContext(): string | undefined {
 
 export function AssistantPanel() {
   const { assistantOpen, assistantFrom, closeAssistant, thread, pushTurn, reportAnswer, clearThread } = useUI()
+  const navigate = useNavigate()
+  const toast = useUI((s) => s.toast)
+
+  /** A citation opens its screen where this build has one; otherwise it says so. */
+  function openSource(label: string, source: string) {
+    const route = routeForSource(source)
+    if (route) {
+      closeAssistant()
+      navigate(route)
+    } else {
+      toast({ tone: 'info', title: label, detail: `${source} — documentation, not a screen in this build.` })
+    }
+  }
   const language = useSession((s) => s.language)
   const [draft, setDraft] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -234,7 +247,7 @@ export function AssistantPanel() {
         <div role="log" aria-live="polite" aria-label="Conversation" className="space-y-4">
           {thread.length === 0 && <EmptyThread />}
           {thread.map((turn) => (
-            <Turn key={turn.id} turn={turn} onReport={() => reportAnswer(turn.id)} />
+            <Turn key={turn.id} turn={turn} onReport={() => reportAnswer(turn.id)} onOpenSource={openSource} />
           ))}
           <div ref={threadEndRef} />
         </div>
@@ -269,7 +282,13 @@ export function AssistantPanel() {
         <p className="mt-6 border-t border-glass-hairline pt-3 text-[0.8em] leading-relaxed text-ink-3">
           AI-911 · answers come only from cited documentation. Clinical questions are routed to the capability that owns
           them, under its own gate. No task in this product requires me to complete — the{' '}
-          <button type="button" className="underline underline-offset-2">
+          <button
+            type="button"
+            className="underline underline-offset-2"
+            onClick={() =>
+              toast({ tone: 'info', title: 'Help centre', detail: 'Static help lives on the hospital intranet and is not part of this build. The service desk is on extension 4400.' })
+            }
+          >
             help centre
           </button>{' '}
           and the service desk are always available.
@@ -303,7 +322,15 @@ function EmptyThread() {
 
 // ──────────────────────────────────────────────────────────── A turn
 
-function Turn({ turn, onReport }: { turn: ThreadTurn; onReport: () => void }) {
+function Turn({
+  turn,
+  onReport,
+  onOpenSource,
+}: {
+  turn: ThreadTurn
+  onReport: () => void
+  onOpenSource: (label: string, source: string) => void
+}) {
   if (turn.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -345,6 +372,7 @@ function Turn({ turn, onReport }: { turn: ThreadTurn; onReport: () => void }) {
             <li key={c.n}>
               <button
                 type="button"
+                onClick={() => onOpenSource(c.label, c.source)}
                 className="flex w-full items-start gap-2 rounded-chip px-1.5 py-1 text-left hover:bg-glass-fill-hover"
               >
                 <span className="mt-0.5 flex size-4.5 shrink-0 items-center justify-center rounded-[5px] bg-ai-soft text-[0.72em] font-bold text-ai">
@@ -360,6 +388,9 @@ function Turn({ turn, onReport }: { turn: ThreadTurn; onReport: () => void }) {
           ))}
         </ul>
       </div>
+
+      {/* A reading is a claim, so it ends in a signature rather than a full stop. */}
+      {answer.attest && <AttestStrip attest={answer.attest} />}
 
       <footer className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <Confidence band={answer.band} />

@@ -9,20 +9,25 @@
  *
  * Corrections are audited amendments, never overwrites — so the original stays
  * visible next to the resolved value.
+ *
+ * Calm pass: the unresolved slice opens by default — tonight it is empty and
+ * says so in one sentence; the resolved conflicts are one tap away with their
+ * three-source tables intact. The precedence rule and the rationale fold.
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { Alert, Button, Card, Chip, Icon, Table, Td, Th, TextArea, Tr, cx } from '@/components/primitives'
+import { ScopeTabs, SectionCard, Why, useScope } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
+import { Button, Chip, Icon, Table, Td, Th, TextArea, Tr, cx } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { TIMESTAMP_CONFLICTS, strokeCase } from '@/data/stroke'
 import { useCurrentStaff } from '@/store/session'
 import { useStroke, minutesBetween } from '@/store/stroke'
 import { useUI } from '@/store/ui'
-import { Screen, ScreenSection } from '@/shell/Screen'
+import { Screen } from '@/shell/Screen'
 
 import { CaseClockStrip, useCaseClock } from './CaseClock'
 
@@ -33,12 +38,18 @@ const AUTHORITY_NOTE = {
   local: 'Recorded, never trusted as authoritative. Reconciled against the server.',
 } as const
 
+type Scope = 'unresolved' | 'resolved'
+const SCOPES: readonly Scope[] = ['unresolved', 'resolved']
+
+type Conflict = (typeof TIMESTAMP_CONFLICTS)[number]
+
 export function S1808({ id }: { id?: string }) {
   const navigate = useNavigate()
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
   const caseNow = useCaseClock()
   const stamps = useStroke((s) => s.stamps)
+  const [scope, setScope] = useScope(SCOPES, 'unresolved')
 
   const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
@@ -46,11 +57,17 @@ export function S1808({ id }: { id?: string }) {
   const [amending, setAmending] = useState<string | null>(null)
   const [rationale, setRationale] = useState('')
 
-  const doorConflict = TIMESTAMP_CONFLICTS[0]
-  const spreadMin = minutesBetween(
-    doorConflict.sources.reduce((a, b) => (a.value < b.value ? a : b)).value,
-    doorConflict.sources.reduce((a, b) => (a.value > b.value ? a : b)).value,
-  )
+  /** A conflict is resolved once a server-reconciled value has been chosen. */
+  const isResolved = (x: Conflict) => Boolean(x.resolved)
+  const resolved = TIMESTAMP_CONFLICTS.filter(isResolved)
+  const unresolved = TIMESTAMP_CONFLICTS.filter((x) => !isResolved(x))
+  const shown = scope === 'unresolved' ? unresolved : resolved
+
+  const spread = (x: Conflict) =>
+    minutesBetween(
+      x.sources.reduce((a, b) => (a.value < b.value ? a : b)).value,
+      x.sources.reduce((a, b) => (a.value > b.value ? a : b)).value,
+    )
 
   return (
     <Screen
@@ -59,14 +76,10 @@ export function S1808({ id }: { id?: string }) {
       bannerExtra={<CaseClockStrip caseId={c.id} />}
       loadingShape="list"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF']}
-      chips={
+      heading="Timestamps"
+      subheading={
         <>
-          <Chip tone="neutral" icon="Radio">
-            server-authoritative
-          </Chip>
-          <Chip tone={spreadMin > 0 ? 'caution' : 'normal'}>
-            {TIMESTAMP_CONFLICTS.length} events with disagreeing sources
-          </Chip>
+          {unresolved.length} unresolved · {resolved.length} resolved · {stamps.length} stamped this session
         </>
       }
       actions={
@@ -74,97 +87,92 @@ export function S1808({ id }: { id?: string }) {
           Case clock
         </Button>
       }
-      rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Why it matters</h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              A five-minute disagreement about the door time moves door-to-needle from 41 to 46 minutes. One of those
-              numbers is inside the target and one is not — which is why the reconciliation is a clinical record rather
-              than a data-quality exercise.
-            </p>
-          </Card>
-
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">The precedence rule</h3>
-            <ul className="mt-2 space-y-2">
-              {(['server', 'device', 'local'] as const).map((a) => (
-                <li key={a}>
-                  <Chip tone={AUTHORITY_TONE[a]}>{a}</Chip>
-                  <p className="mt-1 text-[0.88em] text-ink-2">{AUTHORITY_NOTE[a]}</p>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-      }
-      railTitle="Precedence"
     >
       <div className="space-y-5">
-        <Alert tone="info" title="Corrections are amendments, never overwrites">
-          A resolved value sits next to the sources it was resolved from. Nothing is deleted, and the amendment carries
-          the name of whoever made it — the stream only ever grows.
-        </Alert>
+        <ScopeTabs
+          value={scope}
+          onChange={setScope}
+          options={[
+            { key: 'unresolved', label: 'Unresolved', icon: 'TriangleAlert', count: unresolved.length },
+            { key: 'resolved', label: 'Resolved', icon: 'Check', count: resolved.length },
+          ]}
+        />
 
-        {TIMESTAMP_CONFLICTS.map((conflict) => (
-          <ScreenSection key={conflict.event} title={conflict.event}>
-            <Card className="overflow-hidden">
-              <div className="grid gap-0 md:grid-cols-[1fr_auto]">
-                {/* Left: the disagreeing sources. */}
-                <div>
-                  <Table
-                    caption={`${conflict.event} sources`}
-                    head={
-                      <>
-                        <Th>Source</Th>
-                        <Th>Time</Th>
-                        <Th>Authority</Th>
-                      </>
-                    }
-                  >
-                    {conflict.sources.map((s) => (
-                      <Tr
-                        key={s.source}
-                        className={cx(s.value.getTime() === conflict.resolved.getTime() && 'bg-normal-soft/50')}
-                      >
-                        <Td>{s.source}</Td>
-                        <Td className="tabular font-semibold">{formatTime(s.value)}</Td>
-                        <Td>
-                          <Chip tone={AUTHORITY_TONE[s.authority]} title={AUTHORITY_NOTE[s.authority]}>
-                            {s.authority}
-                          </Chip>
-                        </Td>
-                      </Tr>
-                    ))}
-                  </Table>
-                </div>
+        {shown.length === 0 && (
+          <SectionCard title={scope === 'unresolved' ? 'Unresolved' : 'Resolved'} bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <p className="flex items-center gap-2 text-[0.95em] text-ink-2">
+              <Icon name="Check" size={15} className="text-normal" />
+              {scope === 'unresolved'
+                ? 'Both door-time conflicts are resolved.'
+                : 'No conflict has been resolved on this case yet.'}
+            </p>
+          </SectionCard>
+        )}
 
-                {/* Right: the resolution. */}
-                <div className="border-t border-glass-hairline bg-glass-fill-muted px-5 py-4 md:w-72 md:border-t-0 md:border-l">
-                  <p className="text-[0.8em] font-semibold tracking-wide text-ink-3 uppercase">Resolved</p>
-                  <p className="tabular mt-1 text-2xl font-bold">{formatTime(conflict.resolved)}</p>
-                  <p className="mt-1 flex items-center gap-1.5 text-[0.88em] font-medium text-normal">
-                    <Icon name="Check" size={13} />
-                    {conflict.resolvedBy}
-                  </p>
-                  <p className="mt-2.5 text-[0.9em] text-ink-2">{conflict.consequence}</p>
-                  <Button
-                    size="sm"
-                    className="mt-3"
-                    icon="PenLine"
-                    onClick={() => setAmending(conflict.event)}
+        {shown.map((conflict) => (
+          <SectionCard
+            key={conflict.event}
+            title={conflict.event}
+            meta={
+              <span className="tabular text-[0.88em] text-ink-3">
+                {conflict.sources.length} sources · {spread(conflict)} min apart
+              </span>
+            }
+            action={
+              <Button size="sm" icon="PenLine" onClick={() => setAmending(conflict.event)}>
+                Amend with a reason
+              </Button>
+            }
+          >
+            <div className="grid gap-0 md:grid-cols-[1fr_auto]">
+              {/* The disagreeing sources. */}
+              <Table
+                caption={`${conflict.event} sources`}
+                head={
+                  <>
+                    <Th>Source</Th>
+                    <Th>Time</Th>
+                    <Th>Authority</Th>
+                  </>
+                }
+              >
+                {conflict.sources.map((s) => (
+                  <Tr
+                    key={s.source}
+                    className={cx(s.value.getTime() === conflict.resolved.getTime() && 'bg-normal-soft/50')}
                   >
-                    Amend with a reason
-                  </Button>
-                </div>
+                    <Td>{s.source}</Td>
+                    <Td className="tabular font-semibold">{formatTime(s.value)}</Td>
+                    <Td>
+                      <Chip tone={AUTHORITY_TONE[s.authority]} title={AUTHORITY_NOTE[s.authority]}>
+                        {s.authority}
+                      </Chip>
+                    </Td>
+                  </Tr>
+                ))}
+              </Table>
+
+              {/* The resolution, beside the sources it came from. */}
+              <div className="rounded-panel bg-glass-fill-muted px-4 py-3 md:w-64">
+                <p className="text-[0.78em] font-bold tracking-[0.08em] text-ink-3 uppercase">Resolved</p>
+                <p className="tabular mt-1 text-2xl font-bold">{formatTime(conflict.resolved)}</p>
+                <p className="mt-1 flex items-center gap-1.5 text-[0.88em] font-medium text-normal">
+                  <Icon name="Check" size={13} />
+                  {conflict.resolvedBy}
+                </p>
+                <p className="mt-2 text-[0.88em] text-ink-2">{conflict.consequence}</p>
               </div>
-            </Card>
-          </ScreenSection>
+            </div>
+          </SectionCard>
         ))}
 
         {/* The append-only stream, including stamps made this session. */}
-        <ScreenSection title="Event stream" subtitle="Append-only. Nothing here is ever edited in place.">
-          <Card className="overflow-hidden">
+        <SectionCard title="Event stream" meta={<span className="text-[0.88em] text-ink-3">append-only</span>}>
+          {stamps.length === 0 ? (
+            <p className="px-3 py-3 text-[0.95em] text-ink-2">
+              Nothing stamped yet in this session. Stamping happens on the case clock, one keystroke each.
+            </p>
+          ) : (
             <Table
               caption="Case event stream"
               rowCount={`${stamps.length} stamps this session · server time ${formatTime(caseNow)}`}
@@ -177,29 +185,41 @@ export function S1808({ id }: { id?: string }) {
                 </>
               }
             >
-              {stamps.length === 0 ? (
-                <Tr>
-                  <Td colSpan={4} className="py-6 text-center text-ink-3">
-                    Nothing stamped yet in this session. Stamping happens on the case clock, one keystroke each.
+              {stamps.map((s) => (
+                <Tr key={s.key}>
+                  <Td className="font-medium">{s.label}</Td>
+                  <Td className="tabular">{formatTime(s.at)}</Td>
+                  <Td>{s.by}</Td>
+                  <Td>
+                    <Chip tone={s.pending ? 'caution' : 'normal'} icon={s.pending ? 'Clock' : 'Check'}>
+                      {s.pending ? 'pending sync' : 'committed'}
+                    </Chip>
                   </Td>
                 </Tr>
-              ) : (
-                stamps.map((s) => (
-                  <Tr key={s.key}>
-                    <Td className="font-medium">{s.label}</Td>
-                    <Td className="tabular">{formatTime(s.at)}</Td>
-                    <Td>{s.by}</Td>
-                    <Td>
-                      <Chip tone={s.pending ? 'caution' : 'normal'} icon={s.pending ? 'Clock' : 'Check'}>
-                        {s.pending ? 'pending sync' : 'committed'}
-                      </Chip>
-                    </Td>
-                  </Tr>
-                ))
-              )}
+              ))}
             </Table>
-          </Card>
-        </ScreenSection>
+          )}
+        </SectionCard>
+
+        <Why label="Which source wins, and why it matters">
+          <ul className="space-y-2">
+            {(['server', 'device', 'local'] as const).map((a) => (
+              <li key={a} className="flex items-start gap-2">
+                <Chip tone={AUTHORITY_TONE[a]}>{a}</Chip>
+                <span className="text-ink-2">{AUTHORITY_NOTE[a]}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-ink-2">
+            A five-minute disagreement about the door time moves door-to-needle from 41 to 46 minutes. One of those
+            numbers is inside the target and one is not — which is why the reconciliation is a clinical record rather
+            than a data-quality exercise.
+          </p>
+          <p className="text-ink-3">
+            Corrections are amendments, never overwrites. A resolved value sits next to the sources it was resolved
+            from; nothing is deleted, and the amendment carries the name of whoever made it.
+          </p>
+        </Why>
       </div>
 
       <ConfirmDialog

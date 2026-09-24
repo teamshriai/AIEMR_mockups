@@ -3,19 +3,29 @@
  *
  * "A consultant's inpatient list, ordered by who needs them first."
  *
- * The same two capabilities as My Day, doing the same jobs — which is the
+ * Redesigned to match My Day, because this is where My Day's Ward and ICU
+ * counts land and a calm home screen opening onto a dense grid is two products
+ * rather than one. The rows and the data are unchanged; they render through the
+ * `calm` variant of `ARC-01`, which keeps every behaviour the archetype
+ * mandates — the keyboard map, the row-count line, the named sort, selection
+ * surviving a refresh — and only changes the shape.
+ *
+ * The same two capabilities as My Day, doing the same jobs, which is the
  * atlas's point about one interaction language. What differs is the scope: this
  * is the ward list, so the row carries the bed, the length of stay and what is
  * outstanding on the round.
+ *
+ * `?location=ward|icu` arrives from My Day's counts so the list opens already
+ * narrowed, and the narrowing is visible and removable rather than silent.
  */
 
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
-import { Diamond, RowBadge } from '@/components/ai'
-import { Button, Card, Chip, Icon, KeyValue } from '@/components/primitives'
+import { PillTabs } from '@/components/myday'
+import { Button, Chip } from '@/components/primitives'
 import { AbstainCard } from '@/components/states'
 import { INPATIENTS, NEEDS_ATTENTION, RISK_STRIPS, encounterForPatient } from '@/data/clinical'
 import type { WorklistRow } from '@/data/clinical'
@@ -24,70 +34,88 @@ import { useClinical } from '@/store/clinical'
 import { useCurrentStaff } from '@/store/session'
 import { Screen } from '@/shell/Screen'
 
+type Location = 'all' | 'ward' | 'icu' | 'ed'
+
+/* VOCABULARY.md — `All` is the unfiltered slice on every list in the product. */
+const LOCATION_LABEL: Record<Location, string> = {
+  all: 'All',
+  ward: 'Ward',
+  icu: 'ICU',
+  ed: 'ED',
+}
+
+function inLocation(row: WorklistRow, location: Location): boolean {
+  const bed = row.bed ?? ''
+  if (location === 'icu') return bed.startsWith('ICU')
+  if (location === 'ed') return bed.startsWith('ED')
+  if (location === 'ward') return bed !== '' && !bed.startsWith('ICU') && !bed.startsWith('ED')
+  return true
+}
+
 export function S0803() {
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
   const me = useCurrentStaff()
   const notes = useClinical((s) => s.notes)
   const [aiSort, setAiSort] = useState(true)
 
-  const pinned = NEEDS_ATTENTION
-  const others = INPATIENTS.filter((r) => !pinned.some((n) => n.patientId === r.patientId))
-  const rows = aiSort
-    ? others
-    : [...others].sort((a, b) => a.chronologicalAt.getTime() - b.chronologicalAt.getTime())
+  const raw = params.get('location')
+  const location: Location = raw === 'ward' || raw === 'icu' || raw === 'ed' ? raw : 'all'
 
   const noteDone = (patientId: string) => {
     const enc = encounterForPatient(patientId)
     return enc ? notes[enc.id]?.status === 'signed' : false
   }
 
+  const scoped = INPATIENTS.filter((r) => inLocation(r, location))
+  const pinned = NEEDS_ATTENTION.filter((r) => inLocation(r, location))
+  const others = scoped.filter((r) => !pinned.some((n) => n.patientId === r.patientId))
+  const rows = aiSort
+    ? others
+    : [...others].sort((a, b) => a.chronologicalAt.getTime() - b.chronologicalAt.getTime())
+
   const columns: WorklistColumn<WorklistRow>[] = [
     {
       key: 'bed',
       label: 'Bed',
+      role: 'lead',
       className: 'w-20',
-      cell: (r) => <span className="tabular font-medium">{r.bed ?? '—'}</span>,
+      cell: (r) => r.bed ?? '—',
     },
     {
       key: 'patient',
       label: 'Patient',
+      role: 'primary',
+      cell: (r) => patient(r.patientId).name,
+    },
+    {
+      key: 'who',
+      label: 'Age / sex',
+      role: 'context',
       cell: (r) => {
         const p = patient(r.patientId)
         return (
-          <span className="block min-w-0">
-            <span className="block truncate font-medium">{p.name}</span>
-            <span className="tabular block text-[0.86em] text-ink-3">
-              {p.age}/{p.sex} · {p.uhid}
-              {p.losDays !== undefined && ` · LOS ${p.losDays}d`}
-            </span>
+          <span className="tabular">
+            {p.age}/{p.sex}
+            {p.losDays !== undefined && ` · LOS ${p.losDays}d`}
           </span>
         )
       },
     },
     {
-      key: 'risk',
-      label: 'Deterioration risk',
-      cell: (r) =>
-        r.risk === 'ABSTAIN' ? (
-          <span className="flex items-center gap-1.5 text-[0.88em] font-medium text-caution">
-            <Icon name="CircleHelp" size={14} />
-            Cannot assess
-          </span>
-        ) : (
-          <RowBadge
-            label={r.risk ?? '—'}
-            reason={r.reason}
-            tone={r.risk === 'HIGH' ? 'abnormal' : r.risk === 'MODERATE' ? 'caution' : 'normal'}
-            band="HIGH"
-          />
-        ),
+      /* The one line that says WHY the row sits where it does. */
+      key: 'reason',
+      label: 'Reason',
+      role: 'context',
+      cell: (r) => (r.risk === 'ABSTAIN' ? null : r.reason),
     },
     {
       key: 'flags',
       label: 'Flags',
-      secondary: true,
+      role: 'context',
       cell: (r) => {
         const p = patient(r.patientId)
+        if (p.allergies.length === 0 && !p.mlc) return null
         return (
           <span className="flex flex-wrap gap-1">
             {p.allergies.length > 0 && (
@@ -100,130 +128,134 @@ export function S0803() {
                 MLC
               </Chip>
             )}
-            <Chip tone="neutral">{p.payer}</Chip>
           </span>
         )
       },
     },
     {
-      key: 'round',
-      label: 'Round note',
+      /*
+       * One chip, the word in it, nothing else. The AI-201 provenance (◆, the
+       * confidence dot, the reason chip) moves to the patient's chart — on a
+       * six-row list it was the loudest thing in every row and said the same
+       * thing six times.
+       */
+      key: 'risk',
+      label: 'Deterioration risk',
+      role: 'status',
       cell: (r) =>
-        noteDone(r.patientId) ? (
-          <Chip tone="normal" icon="Check">
-            Signed
+        r.risk === 'ABSTAIN' ? (
+          /* §4.5 — cannot score is not a zero, and it says so in words. */
+          <Chip tone="caution" icon="CircleHelp">
+            Cannot assess
+          </Chip>
+        ) : r.risk === 'HIGH' ? (
+          <Chip tone="abnormal" icon="TriangleAlert">
+            High risk
+          </Chip>
+        ) : r.risk === 'MODERATE' ? (
+          <Chip tone="caution" icon="CircleAlert">
+            Moderate
           </Chip>
         ) : (
-          <Chip tone="caution" icon="PenLine">
-            Outstanding
+          <Chip tone="normal" icon="Check">
+            Low risk
           </Chip>
         ),
     },
     {
-      key: 'action',
-      label: '',
-      className: 'text-right',
-      cell: (r) => {
-        const enc = encounterForPatient(r.patientId)
-        return enc ? (
-          <Button
-            size="sm"
-            tone="primary"
-            icon="PenLine"
-            onClick={(e) => {
-              e.stopPropagation()
-              navigate(`/ip/encounter/${enc.id}/note`)
-            }}
-          >
-            Round note
-          </Button>
-        ) : (
-          <Icon name="ChevronRight" size={15} className="text-ink-muted" />
-        )
-      },
+      /*
+       * Only the exception is marked. "Note outstanding" on all six rows
+       * carried no information; the count is in the subheading.
+       */
+      key: 'round',
+      label: 'Round note',
+      role: 'status',
+      cell: (r) =>
+        noteDone(r.patientId) ? (
+          <Chip tone="normal" icon="PenLine">
+            Note signed
+          </Chip>
+        ) : null,
     },
   ]
 
-  const outstanding = INPATIENTS.filter((r) => !noteDone(r.patientId)).length
+  const outstanding = scoped.filter((r) => !noteDone(r.patientId)).length
+  const highRisk = scoped.filter((r) => r.risk === 'HIGH').length
 
   return (
     <Screen
       screenId="S-08-03"
       loadingShape="list"
-      states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN']}
-      chips={
+      heading="Inpatients"
+      subheading={
         <>
-          <Chip tone="neutral">{INPATIENTS.length} inpatients</Chip>
-          {outstanding > 0 && <Chip tone="caution">{outstanding} round notes outstanding</Chip>}
+          {scoped.length} under you · {highRisk} high risk · {outstanding} round{' '}
+          {outstanding === 1 ? 'note' : 'notes'} outstanding
         </>
       }
+      states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN']}
       actions={
         <Button icon="DoorOpen" onClick={() => navigate('/discharge/board')}>
           Discharge board
         </Button>
       }
-      rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Your ward round</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
-              <KeyValue label="Under you">{INPATIENTS.length}</KeyValue>
-              <KeyValue label="High risk">
-                {INPATIENTS.filter((r) => r.risk === 'HIGH').length}
-              </KeyValue>
-              <KeyValue label="Notes outstanding">{outstanding}</KeyValue>
-              <KeyValue label="Discharge predicted">1</KeyValue>
-            </dl>
-            <p className="mt-3 text-[0.86em] text-ink-3">
-              Across wards 4B, 2A, ICU-1 and the emergency department at {me.facilityCode}.
-            </p>
-          </Card>
-
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              Same ranking, different scope
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              AI-613 and AI-201 are the same two capabilities as on My Day. A clinician who learned the reason chip
-              there already knows it here — that consistency is treated as a safety property, not a style choice.
-            </p>
-          </Card>
-        </div>
-      }
-      railTitle="Round"
     >
-      <div className="space-y-5">
+      <div className="max-w-4xl space-y-6">
         <Worklist
+          variant="calm"
           rows={rows}
           pinned={pinned}
           pinnedLabel="Needs attention"
           columns={columns}
           rowKey={(r) => r.patientId}
-          onOpen={(r) => navigate(`/patient/${patient(r.patientId).uhid}/chart`)}
+          onOpen={(r) => {
+            const enc = encounterForPatient(r.patientId)
+            navigate(enc ? `/ip/encounter/${enc.id}/note` : `/patient/${patient(r.patientId).uhid}/chart`)
+          }}
           aiSort={aiSort}
           onSortChange={setAiSort}
           sortCapability="AI-613"
           caption="Inpatients under this consultant"
-          emptyWhy="No inpatients are assigned to you at this facility. An admission under your name, or being added to a care team, would put them here."
+          noun="patients"
+          emptyWhy={
+            location === 'all'
+              ? 'No inpatients are assigned to you at this facility. An admission under your name, or being added to a care team, would put them here.'
+              : `No inpatients of yours are in ${location === 'icu' ? 'the ICU' : location === 'ed' ? 'the ED' : 'a ward bed'} right now. Clearing the filter shows the rest of your list.`
+          }
+          emptyAction={
+            location !== 'all' ? (
+              <Button size="sm" icon="X" onClick={() => setParams({})}>
+                All locations
+              </Button>
+            ) : undefined
+          }
           filters={
             <>
               <Chip tone="neutral" icon="Building2">
                 {me.facilityCode}
               </Chip>
-              <Chip tone="neutral" icon="BedDouble">
-                4B · 2A · ICU-1 · ED
-              </Chip>
+              {/* The narrowing that arrived in the URL, visible and removable. */}
+              <PillTabs
+                ariaLabel="Location"
+                value={location}
+                options={(['all', 'ward', 'icu', 'ed'] as Location[]).map((l) => ({
+                  key: l,
+                  label: LOCATION_LABEL[l],
+                  icon: l === 'ward' ? 'BedDouble' : l === 'icu' ? 'Activity' : l === 'ed' ? 'Siren' : undefined,
+                  count: INPATIENTS.filter((r) => inLocation(r, l)).length,
+                }))}
+                onChange={(l) => setParams(l === 'all' ? {} : { location: l })}
+              />
             </>
           }
         />
 
-        {INPATIENTS.some((r) => r.risk === 'ABSTAIN') && (
+        {scoped.some((r) => r.risk === 'ABSTAIN') && (
           <AbstainCard
             capabilityId="AI-201"
             missing={RISK_STRIPS['SD-P-08']?.abstainReason ?? 'No recent observations for one patient on this list.'}
             fixAction={
-              <Button size="sm" icon="Activity" onClick={() => navigate('/patient/AWF-0044221/chart')}>
+              <Button size="sm" icon="Activity" onClick={() => navigate('/patient/ICH-0044221/chart')}>
                 Open the patient
               </Button>
             }

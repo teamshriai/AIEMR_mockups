@@ -15,11 +15,16 @@ import { useState } from 'react'
 
 import { FieldGroup, FormGroups } from '@/archetypes'
 import { AIActionBar, Diamond } from '@/components/ai'
-import { Alert, Button, Card, Checkbox, Chip, Field, Icon, Select, TextArea } from '@/components/primitives'
+import { SectionCard, Why } from '@/components/calm'
+import { PrintPreview } from '@/components/print'
+import { Alert, Button, Checkbox, Chip, Field, Select, TextArea } from '@/components/primitives'
+import { InputModeSwitch, VoiceField } from '@/components/voicefield'
 import { encounter } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
 import { LANGUAGES, patient } from '@/data/kit'
 import { selectAiActive, useAI } from '@/store/ai'
+
+import { encounterLabel } from '../shared/NoteAuthoring'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
@@ -49,11 +54,19 @@ export function S0608({ id }: { id?: string }) {
   const aiActive = useAI(selectAiActive)
   const toast = useUI((s) => s.toast)
 
-  const [clinicianText, setClinicianText] = useState(CLINICIAN_WORDING)
-  const [plainText, setPlainText] = useState(PLAIN_ENGLISH)
+  /** Empty until dictated or typed. The patient version is drafted only on request, from what you wrote. */
+  const [clinicianText, setClinicianText] = useState('')
+  const [plainText, setPlainText] = useState('')
+  const [drafted, setDrafted] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
+  const hasDraft = plainText.trim() !== ''
+  const rewriteId = `${enc.id}:instructions`
+  const rejected = useAI((s) => s.dispositions[rewriteId]?.disposition === 'Rejected')
+  const clearDisposition = useAI((s) => s.clearDisposition)
   /** CMP-DPDP-02 — the PATIENT's language, not the user's. */
   const [patientLanguage, setPatientLanguage] = useState('KN')
   const [channels, setChannels] = useState({ print: true, app: true, sms: false })
+  const languageLabel = LANGUAGES.find((l) => l.code === patientLanguage)?.label ?? patientLanguage
 
   return (
     <Screen
@@ -62,13 +75,22 @@ export function S0608({ id }: { id?: string }) {
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-LOW']}
       chips={<Chip tone="neutral" icon="Globe">{LANGUAGES.find((l) => l.code === patientLanguage)?.label}</Chip>}
+      actions={<InputModeSwitch />}
       actionBar={
         <>
-          <Button icon="Printer">Preview the A5 print</Button>
+          <Button icon="Printer" disabled={!hasDraft} title={hasDraft ? undefined : 'Nothing to print yet'} onClick={() => setPrintOpen(true)}>
+            Preview the A5 print
+          </Button>
+          {!hasDraft && (
+            <span className="text-[0.88em] text-ink-3">
+              {clinicianText.trim() === '' ? 'Dictate or type your instructions first' : 'Draft the patient version to issue'}
+            </span>
+          )}
           <Button
             tone="primary"
             className="ml-auto"
             icon="Send"
+            disabled={!hasDraft}
             onClick={() =>
               toast({
                 tone: 'success',
@@ -83,9 +105,8 @@ export function S0608({ id }: { id?: string }) {
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Channels</h3>
-            <div className="mt-2 space-y-1">
+          <SectionCard title="Channels" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <div className="space-y-1">
               <Checkbox
                 checked={channels.print}
                 onChange={(v) => setChannels((c) => ({ ...c, print: v }))}
@@ -103,18 +124,15 @@ export function S0608({ id }: { id?: string }) {
               />
             </div>
             {channels.sms && (
-              <p className="mt-2 flex items-start gap-2 rounded-panel bg-caution-soft px-2.5 py-2 text-[0.86em] font-medium text-caution">
-                <Icon name="TriangleAlert" size={13} className="mt-0.5 shrink-0" />
-                The SMS will say only that instructions are available. It never carries the reason for the visit, a
+              <Alert tone="caution" className="mt-2" title="The SMS carries no PHI">
+                It will say only that instructions are available. It never carries the reason for the visit, a
                 diagnosis or a result.
-              </p>
+              </Alert>
             )}
-          </Card>
+          </SectionCard>
 
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Patient&rsquo;s language</h3>
+          <SectionCard title="Patient's language" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
             <Select
-              className="mt-2"
               value={patientLanguage}
               onChange={(e) => setPatientLanguage(e.target.value)}
               aria-label="Patient's preferred language"
@@ -125,46 +143,100 @@ export function S0608({ id }: { id?: string }) {
                 </option>
               ))}
             </Select>
-            <p className="mt-2 text-[0.86em] text-ink-3">
-              Patient-facing documents follow the patient&rsquo;s preference, not yours. Yours only changes the
-              interface.
-            </p>
-          </Card>
+            {/* The rail rationale, one line by default. */}
+            <p className="mt-2 text-[0.86em] text-ink-3">Follows the patient&rsquo;s preference, not yours.</p>
+          </SectionCard>
         </div>
       }
       railTitle="Delivery"
     >
       <div className="space-y-5">
-        <Alert tone="info" title="Both versions are kept">
-          The rewrite does not replace what you wrote. Your wording stays in the record; the plain-language version is
-          what the patient receives.
-        </Alert>
+        <Why label="Why two versions">
+          <p className="text-ink-2">
+            The rewrite does not replace what you wrote. Your wording stays in the record; the plain-language version
+            is what the patient receives — AI-111&rsquo;s guardrail.
+          </p>
+        </Why>
 
         <FormGroups columns={2}>
-          <FieldGroup title="Your wording" hint="Stays in the clinical record exactly as you write it">
-            <Field label="Clinical instructions" htmlFor="clinician-text">
-              <TextArea
-                id="clinician-text"
-                rows={8}
-                value={clinicianText}
-                onChange={(e) => setClinicianText(e.target.value)}
-              />
-            </Field>
-            <p className="flex items-start gap-2 text-[0.86em] text-ink-3">
-              <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-              Abbreviations are fine here — this version is read by clinicians. The patient version expands them.
-            </p>
+          <FieldGroup title="Your wording" hint="Stays in the clinical record exactly as you say or write it">
+            <VoiceField
+              id="clinician-text"
+              label="Clinical instructions"
+              required
+              rows={8}
+              value={clinicianText}
+              onChange={setClinicianText}
+              patientId={p.id}
+              sample={CLINICIAN_WORDING}
+            />
+            <Why label="Abbreviations">
+              <p className="text-ink-2">
+                Abbreviations are fine here — this version is read by clinicians. The patient version expands them.
+              </p>
+            </Why>
           </FieldGroup>
 
           <FieldGroup title="What the patient reads" hint="AI-111 · plain language, then translated">
-            {aiActive ? (
+            {aiActive && !drafted && rejected ? (
+              /* The rewrite was rejected: the patient version is yours to write, and the AI can try again. */
+              <div className="space-y-2">
+                <Field label="Patient instructions" htmlFor="plain-text" hint="Rewrite rejected — write the patient version yourself, or ask the AI to draft again.">
+                  <TextArea
+                    id="plain-text"
+                    rows={8}
+                    value={plainText}
+                    onChange={(e) => setPlainText(e.target.value)}
+                    placeholder="Write the patient version in plain language…"
+                  />
+                </Field>
+                <Button
+                  tone="tertiary"
+                  size="sm"
+                  icon="Sparkles"
+                  onClick={() => {
+                    clearDisposition(rewriteId)
+                    setPlainText(PLAIN_ENGLISH)
+                    setDrafted(true)
+                  }}
+                >
+                  Draft again with AI
+                </Button>
+              </div>
+            ) : aiActive && !drafted ? (
+              /* Nothing is rewritten until you ask, and not before you have written something to rewrite. */
+              <div className="flex flex-col items-start gap-3 rounded-field border border-dashed border-glass-border bg-glass-fill-muted px-4 py-5">
+                <p className="text-[0.92em] text-ink-2">
+                  The plain-language version is drafted from your instructions, at roughly a grade-6 reading level, then
+                  translated into the patient&rsquo;s language.
+                </p>
+                <Button
+                  tone="ai"
+                  icon="Sparkles"
+                  disabled={clinicianText.trim() === ''}
+                  title={clinicianText.trim() === '' ? 'Write or dictate your instructions first' : undefined}
+                  onClick={() => {
+                    setPlainText(PLAIN_ENGLISH)
+                    setDrafted(true)
+                  }}
+                >
+                  Draft with AI
+                </Button>
+              </div>
+            ) : aiActive ? (
               <>
                 <div className="ai-ghost rounded-field px-3.5 py-3">
                   <p className="mb-2 flex items-center gap-2 text-[0.82em] font-semibold tracking-wide text-ai uppercase">
                     <Diamond size={10} />
                     AI-111 rewrite
                   </p>
-                  <div className="space-y-2 leading-relaxed whitespace-pre-line">{plainText}</div>
+                  {/* One <p> per paragraph rather than one pre-line blob: this is
+                      the document the patient receives, so it is marked up as prose. */}
+                  <div className="space-y-2 leading-relaxed">
+                    {plainText.split(/\n{2,}/).map((para, i) => (
+                      <p key={i}>{para}</p>
+                    ))}
+                  </div>
                 </div>
                 <AIActionBar
                   touchpointId={`${enc.id}:instructions`}
@@ -173,6 +245,15 @@ export function S0608({ id }: { id?: string }) {
                   band="HIGH"
                   score={0.89}
                   onEdit={() => setPlainText(PLAIN_ENGLISH)}
+                  /* A rejected rewrite must not be issuable: it leaves the screen and Issue disables. */
+                  onReject={() => {
+                    setPlainText('')
+                    setDrafted(false)
+                  }}
+                  onUndo={() => {
+                    setPlainText(PLAIN_ENGLISH)
+                    setDrafted(true)
+                  }}
                   explain={{
                     touchpointId: `${enc.id}:instructions`,
                     capabilityId: 'AI-111',
@@ -181,7 +262,7 @@ export function S0608({ id }: { id?: string }) {
                     band: 'HIGH',
                     computedAt: formatTime(NOW),
                     inputs: [
-                      { label: 'Your clinical instructions', source: `Encounter ${enc.encounterNo}` },
+                      { label: 'Your clinical instructions', source: encounterLabel(enc) },
                       { label: 'Active medication list', source: 'Prescription record' },
                     ],
                     evidence: [
@@ -199,11 +280,18 @@ export function S0608({ id }: { id?: string }) {
               </>
             ) : (
               <Field label="Patient instructions" htmlFor="plain-text">
-                <TextArea id="plain-text" rows={8} value={plainText} onChange={(e) => setPlainText(e.target.value)} />
+                <TextArea
+                  id="plain-text"
+                  rows={8}
+                  value={plainText}
+                  onChange={(e) => setPlainText(e.target.value)}
+                  placeholder="Write the patient version in plain language…"
+                />
               </Field>
             )}
           </FieldGroup>
 
+          {hasDraft && (
           <FieldGroup
             title={`Translation — ${LANGUAGES.find((l) => l.code === patientLanguage)?.label}`}
             hint="AI-110 · English-only is the fallback, with the limitation stated"
@@ -215,26 +303,41 @@ export function S0608({ id }: { id?: string }) {
               </p>
             ) : (
               <>
-                <div className="rounded-field bg-glass-fill-muted px-4 py-3">
-                  <p
-                    className="space-y-2 leading-loose whitespace-pre-line"
-                    lang={patientLanguage.toLowerCase()}
-                    style={{ fontFamily: "'Noto Sans Devanagari', var(--font-sans)" }}
-                  >
-                    {patientLanguage === 'KN' ? KANNADA : KANNADA}
-                  </p>
+                <div
+                  className="space-y-2 rounded-field bg-glass-fill-muted px-4 py-3 leading-loose"
+                  lang={patientLanguage.toLowerCase()}
+                  style={{ fontFamily: "'Noto Sans Devanagari', var(--font-sans)" }}
+                >
+                  {KANNADA.split(/\n{2,}/).map((para, i) => (
+                    <p key={i}>{para}</p>
+                  ))}
                 </div>
-                <p className="flex items-start gap-2 text-[0.86em] text-ink-3">
-                  <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-                  Line height is raised 15% over Latin, as the type rules require for Indic scripts. If translation is
-                  unavailable the document prints in English with that limitation stated on it — it never prints a
-                  partial translation.
-                </p>
+                <Why label="Script and fallback">
+                  <p className="text-ink-2">
+                    Line height is raised 15% over Latin, as the type rules require for Indic scripts. If translation is
+                    unavailable the document prints in English with that limitation stated on it — it never prints a
+                    partial translation.
+                  </p>
+                </Why>
               </>
             )}
           </FieldGroup>
+          )}
         </FormGroups>
       </div>
+
+      <PrintPreview
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Patient instructions"
+        patient={p}
+        meta={`${encounterLabel(enc)} · English${patientLanguage === 'EN' ? '' : ` and ${languageLabel}`}`}
+        paper="A5"
+        sections={[
+          { heading: 'Your instructions', body: plainText },
+          ...(patientLanguage === 'EN' ? [] : [{ heading: languageLabel, body: KANNADA, lang: patientLanguage.toLowerCase() }]),
+        ]}
+      />
     </Screen>
   )
 }

@@ -7,13 +7,21 @@
  * reporting — which is how essentially all pharmacovigilance actually works,
  * and why the detection is worth having: the reaction that never gets reported
  * is the one nobody had time to write up.
+ *
+ * Calm: the signal card stays, because it is an offer with an Accept/Reject —
+ * its supporting detail folds to two lines. The "suspected is enough"
+ * reassurance and the "why report" / "what happens next" rail move behind one
+ * `Why`. The hard-stop consequence of submitting stays stated once, at the
+ * point of submission.
  */
 
 import { useState } from 'react'
 
 import { FieldGroup, FormGroups } from '@/archetypes'
 import { AIActionBar, Diamond } from '@/components/ai'
-import { Alert, Button, Card, Checkbox, Chip, Field, Icon, Select, TextArea, TextInput } from '@/components/primitives'
+import { Why } from '@/components/calm'
+import { Card, Checkbox, Chip, Field, Icon, Select, TextArea, TextInput, cx } from '@/components/primitives'
+import { Button } from '@/components/primitives'
 import { formatDate, formatTime, NOW } from '@/data/format'
 import { DRUGS, PATIENTS } from '@/data/kit'
 import { selectAiActive, useAI } from '@/store/ai'
@@ -25,6 +33,7 @@ import { Screen } from '@/shell/Screen'
 const SIGNAL = {
   drug: 'Co-amoxiclav 1.2g IV',
   reaction: 'Urticaria with facial swelling',
+  summary: 'Three patients at this facility have had a urticarial reaction within two hours of a first co-amoxiclav dose in the last 90 days.',
   detail:
     'Three patients at this facility have had a urticarial reaction within two hours of a first co-amoxiclav dose in the last 90 days. Two were not reported to PvPI.',
   confidence: 0.72,
@@ -50,6 +59,7 @@ export function S1608() {
   const [narrative, setNarrative] = useState('')
   const [rechallenge, setRechallenge] = useState(false)
   const [attested, setAttested] = useState(false)
+  const [detailExpanded, setDetailExpanded] = useState(false)
 
   const ready = reaction.trim().length > 3 && narrative.trim().length >= 20 && attested
   const signalActioned = dispositions['adr:signal']
@@ -59,30 +69,27 @@ export function S1608() {
       screenId="S-16-08"
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'OFFLINE', 'SAVING', 'AI-OFF', 'AI-LOW']}
+      subheading={<>PvPI Form 1</>}
       chips={
-        <>
-          <Chip tone="neutral">PvPI Form 1</Chip>
-          {aiActive && !signalActioned && (
-            <Chip tone="caution" icon="TriangleAlert">
-              1 signal detected
-            </Chip>
-          )}
-        </>
+        aiActive &&
+        !signalActioned && (
+          <Chip tone="caution" icon="TriangleAlert">
+            1 signal detected
+          </Chip>
+        )
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Why reporting matters</h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
+          <Why label="Why reporting matters">
+            <p className="text-ink-2">
               A reaction recorded in the chart protects this patient. A reaction reported to PvPI protects everyone
               else&rsquo;s. They are different acts, and only the second one needs this form.
             </p>
-            <p className="mt-2 text-[0.86em] text-ink-3">CMP-DRUG-04 · ADR reporting.</p>
-          </Card>
-
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">What happens next</h3>
-            <ul className="mt-2 space-y-1.5 text-[0.9em] text-ink-2">
+            <p className="text-ink-2">
+              Suspected is enough — a report does not assert causation. &ldquo;Possible&rdquo; is a valid causality
+              assessment and a useful report; waiting for certainty is how signals get missed.
+            </p>
+            <ul className="space-y-1.5 text-ink-2">
               {[
                 'The allergy is added to the patient record immediately',
                 'Prescribing this drug for them becomes a hard stop',
@@ -95,13 +102,19 @@ export function S1608() {
                 </li>
               ))}
             </ul>
-          </Card>
+            <p className="text-[0.92em] text-ink-3">CMP-DRUG-04 · ADR reporting.</p>
+          </Why>
         </div>
       }
       railTitle="PvPI"
       actionBar={
         <>
-          <Button icon="Save">Save draft</Button>
+          <Button
+            icon="Save"
+            onClick={() => toast({ tone: 'info', title: 'Draft saved', detail: 'The ADR report stays a draft on this device until you submit it to PvPI.' })}
+          >
+            Save draft
+          </Button>
           <span className="text-[0.88em] text-ink-3">
             {ready ? 'Ready to submit' : 'A narrative and the attestation are required'}
           </span>
@@ -133,7 +146,18 @@ export function S1608() {
             <p className="mt-2 font-medium">
               {SIGNAL.drug} → {SIGNAL.reaction}
             </p>
-            <p className="mt-1.5 text-[0.95em] text-ink-2">{SIGNAL.detail}</p>
+            <p className={cx('mt-1.5 text-[0.95em] text-ink-2', !detailExpanded && 'line-clamp-2')}>
+              {SIGNAL.detail}
+            </p>
+            <button
+              type="button"
+              aria-expanded={detailExpanded}
+              onClick={() => setDetailExpanded((v) => !v)}
+              className="mt-1 inline-flex min-h-9 items-center gap-1 rounded-pill px-1.5 text-[0.86em] font-medium text-ink-3 hover:bg-glass-fill-hover hover:text-ink-2"
+            >
+              {detailExpanded ? 'Show less' : 'Read more'}
+              <Icon name={detailExpanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+            </button>
             <AIActionBar
               className="mt-3"
               touchpointId="adr:signal"
@@ -172,11 +196,6 @@ export function S1608() {
             />
           </Card>
         )}
-
-        <Alert tone="info" title="Suspected is enough">
-          A report does not assert causation. &ldquo;Possible&rdquo; is a valid causality assessment and a useful
-          report — waiting for certainty is how signals get missed.
-        </Alert>
 
         <FormGroups columns={2}>
           <FieldGroup title="Patient">

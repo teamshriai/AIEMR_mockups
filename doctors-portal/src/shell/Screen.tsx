@@ -1,16 +1,22 @@
 /**
  * The per-screen frame. Reads the registry row and composes the zones it
- * declares — so no screen re-derives its own title, density, theme default,
- * breadcrumb or state table.
+ * declares — so no screen re-derives its own title, density, theme default or
+ * state table.
  *
  * §5.2 — "A screen specification describes ONLY THE ZONES IT CHANGES."
  * The corollary here: a screen component renders only its Z5 (and optionally a
  * Z6 rail and a Z7a bar). Everything else comes from the registry.
+ *
+ * The frame is CALM by construction. The Z4 header is a heading, one quiet
+ * line and the actions — no breadcrumb, no atlas one-liner, no compliance
+ * chip row, no footer spec line. All of that is still here, folded into one
+ * `ⓘ` popover (`ScreenInfo`), because a reviewer needs to trace a frame and a
+ * doctor does not. The Z6 rail opens collapsed, because on 43 screens it is
+ * reference material, and reference material is one tap away.
  */
 
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 
 import { ARCHETYPE_SPECS } from '@/atlas/archetypes'
 import { COMPLIANCE } from '@/atlas/compliance'
@@ -18,7 +24,9 @@ import { screen } from '@/atlas/registry'
 import type { ScreenSpec } from '@/atlas/registry'
 import { DECLARED_STATES } from '@/atlas/states'
 import type { DeclaredState } from '@/atlas/states'
-import { Button, Chip, Icon, IconButton, cx } from '@/components/primitives'
+import { SectionTitle } from '@/components/calm'
+import { MenuSection, Popover } from '@/components/popover'
+import { Chip, Icon, IconButton, cx } from '@/components/primitives'
 import {
   AiOffLine,
   DeniedPanel,
@@ -29,7 +37,7 @@ import {
 } from '@/components/states'
 import { StateSwitcher } from '@/components/states'
 import type { Patient } from '@/data/kit'
-import { NOW, formatDateLong, formatTime } from '@/data/format'
+import { NOW } from '@/data/format'
 import { useAI } from '@/store/ai'
 import { useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
@@ -42,13 +50,15 @@ export interface ScreenProps {
   patient?: Patient
   /** Extra content inside Z3, e.g. the stroke module's live case-clock strip. */
   bannerExtra?: ReactNode
-  /** Z4 — status chips beside the title. */
+  /** Z4 — status chips, rendered on the quiet line under the heading. */
   chips?: ReactNode
   /** Z4 — secondary actions in the page header. */
   actions?: ReactNode
-  /** Z6 — the right rail. 320px, collapsible. */
+  /** Z6 — the right rail. 320px, opens collapsed. */
   rail?: ReactNode
   railTitle?: string
+  /** A count on the collapsed rail tab — "3 suggestions". */
+  railBadge?: ReactNode
   /** Z7a — the sticky action bar. */
   actionBar?: ReactNode
   /** Which of the 14 states this screen can demonstrate. */
@@ -59,20 +69,12 @@ export interface ScreenProps {
   empty?: ReactNode
   /** Z5. */
   children: ReactNode
-  /** Widen Z5 beyond the default reading measure. */
+  /** Widen Z5 to the full frame — boards, walls, two-pane editors. */
   wide?: boolean
-  /**
-   * `minimal` strips Z4 down to a heading and one quiet subline — no
-   * breadcrumb, no one-liner, no date chip, no compliance row. The calm
-   * screens use it; everything else keeps the specification-forward default.
-   */
-  headerVariant?: 'default' | 'minimal'
-  /** The minimal header's large line. */
+  /** The large line. Defaults to the registry name. */
   heading?: ReactNode
-  /** The minimal header's quiet line. */
+  /** The quiet line — one line of the counts that matter today. */
   subheading?: ReactNode
-  /** Drops the footer spec line, for a screen that must stay quiet. */
-  hideSpecLine?: boolean
 }
 
 export function Screen({
@@ -83,16 +85,15 @@ export function Screen({
   actions,
   rail,
   railTitle = 'Context',
+  railBadge,
   actionBar,
   states,
   loadingShape = 'list',
   empty,
   children,
   wide,
-  headerVariant = 'default',
   heading,
   subheading,
-  hideSpecLine,
 }: ScreenProps) {
   const spec = screen(screenId)
   const forced = useAI((s) => s.forcedState)
@@ -122,9 +123,6 @@ export function Screen({
     return () => document.documentElement.style.setProperty('--z7a-offset', '0px')
   }, [actionBar])
 
-  const archetype = ARCHETYPE_SPECS[spec.archetype]
-  const minimal = headerVariant === 'minimal'
-
   /** These four replace the content entirely; the rest wrap or annotate it. */
   const replacesContent = forced === 'LOADING' || forced === 'EMPTY' || forced === 'ERROR' || forced === 'DENIED'
 
@@ -135,118 +133,91 @@ export function Screen({
    */
   const showBanner = patient && forced !== 'DENIED'
 
+  /** One reading measure for the whole product; boards and editors go wide. */
+  const measure = wide ? 'max-w-[1600px]' : 'max-w-6xl'
+
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    /**
+     * `data-screen-id` is how the route walk proves a component mounted rather
+     * than falling through to the router's fallback.
+     */
+    <div data-screen-id={spec.id} className="flex min-h-0 min-w-0 flex-1 flex-col">
       {showBanner && <PatientBanner patient={patient} extra={bannerExtra} />}
 
       {forced === 'OFFLINE' && (
         <OfflineStrip
           pendingCount={3}
           works={['Reading the record', 'Typing and drafting', 'Static protocols']}
-          queued={['Sign & publish', 'Order placement', 'ABDM publish']}
+          queued={['Sign', 'Order placement', 'ABDM publish']}
           blocked={['Live bed state', 'New imaging']}
         />
       )}
 
-      {/* Z4 — page header. */}
-      <header
-        className={cx(
-          'gutter shrink-0',
-          // A calm header separates by space, not by a rule.
-          minimal ? 'pt-6 pb-1' : 'border-b border-glass-hairline py-3',
-        )}
-      >
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-start justify-between gap-x-4 gap-y-3">
-          {minimal ? (
-            <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{heading ?? spec.name}</h1>
-              {subheading && <p className="mt-1 text-[0.95em] text-ink-3">{subheading}</p>}
-            </div>
-          ) : (
-            <div className="min-w-0">
-              <nav
-                aria-label="Breadcrumb"
-                className="mb-1 flex flex-wrap items-center gap-1.5 text-[0.82em] text-ink-3"
-              >
-                <Link to="/clinician" className="hover:text-ink">
-                  My Day
-                </Link>
-                <Icon name="ChevronRight" size={11} />
-                <span className="tabular">{spec.module}</span>
-                <Icon name="ChevronRight" size={11} />
-                <span className="tabular font-medium text-ink-2">{spec.id}</span>
-              </nav>
-              <h1 className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xl font-semibold tracking-tight">
-                {spec.name}
-                {chips}
-              </h1>
-              <p className="mt-0.5 max-w-2xl text-[0.92em] text-ink-3">{spec.oneLiner}</p>
-            </div>
-          )}
+      {/* Z4 — page header. Separated by space, not by a rule. */}
+      <header className="gutter shrink-0 pt-6 pb-1">
+        <div className={cx('mx-auto flex flex-wrap items-start justify-between gap-x-4 gap-y-3', measure)}>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{heading ?? spec.name}</h1>
+            {(subheading || chips) && (
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.95em] text-ink-3">
+                {subheading && <p className="min-w-0">{subheading}</p>}
+                {chips && <span className="flex flex-wrap items-center gap-1.5">{chips}</span>}
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {forced === 'STALE' ? (
+            {forced === 'STALE' && (
               <StaleChip asOf={new Date(NOW.getTime() - 1000 * 60 * 34)} onRefresh={() => forceState(null)} />
-            ) : (
-              !minimal && (
-                <span className="tabular hidden text-[0.86em] text-ink-3 lg:inline">
-                  {formatDateLong(NOW)} · {formatTime(NOW)} IST
-                </span>
-              )
             )}
+
+            {/*
+              §5.3 makes night mandatory on this screen. The brief is light-by-default
+              with an explicit toggle, so the rule is surfaced rather than enforced:
+              one pill, one click, dismissible, and it never switches underneath you.
+            */}
+            {spec.nightDefault && theme === 'light' && !nightPromptDismissed && (
+              <span className="inline-flex items-center gap-0.5 rounded-pill bg-glass-fill-muted pl-1">
+                <button
+                  type="button"
+                  onClick={() => setTheme('night')}
+                  title="This screen is specified for night use — ICU, radiology reading rooms and stroke calls happen at 03:00."
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-pill px-2.5 text-[0.86em] font-medium text-ink-2 hover:bg-glass-fill-hover"
+                >
+                  <Icon name="Moon" size={13} />
+                  Night recommended
+                </button>
+                <IconButton icon="X" label="Dismiss" onClick={dismissNightPrompt} className="size-8" size={12} />
+              </span>
+            )}
+
             {actions}
-            <StateSwitcher available={states ?? DECLARED_STATES} compact={minimal} />
+            <ScreenInfo spec={spec} />
+            <StateSwitcher available={states ?? DECLARED_STATES} compact />
           </div>
         </div>
-
-        {/*
-          §5.3 makes night mandatory on this screen. The brief is light-by-default
-          with an explicit toggle, so the rule is surfaced rather than enforced:
-          one line, one click, dismissible, and it never switches underneath you.
-        */}
-        {spec.nightDefault && theme === 'light' && !nightPromptDismissed && (
-          <div className="mx-auto mt-2.5 flex max-w-[1600px] flex-wrap items-center gap-2 rounded-panel bg-glass-fill-muted px-3 py-2">
-            <Icon name="Moon" size={14} className="shrink-0 text-ink-3" />
-            <p className="min-w-0 flex-1 text-[0.88em] text-ink-2">
-              This screen is specified for night use — ICU, radiology reading rooms and stroke calls happen at 03:00.
-            </p>
-            <Button size="sm" icon="Moon" onClick={() => setTheme('night')}>
-              Switch to night
-            </Button>
-            <IconButton icon="X" label="Dismiss" onClick={dismissNightPrompt} className="size-8" size={13} />
-          </div>
-        )}
-
-        {/* Compliance obligations this screen carries, stated rather than implied. */}
-        {!minimal && spec.compliance && spec.compliance.length > 0 && (
-          <div className="mx-auto mt-2 flex max-w-[1600px] flex-wrap items-center gap-1.5">
-            {spec.compliance.map((id) => {
-              const cmp = COMPLIANCE[id]
-              return (
-                <Chip
-                  key={id}
-                  tone={cmp?.critical ? 'caution' : 'neutral'}
-                  icon={cmp?.critical ? 'TriangleAlert' : 'ShieldCheck'}
-                  title={cmp ? `${cmp.obligation} — ${cmp.consequence}` : id}
-                >
-                  {id}
-                </Chip>
-              )
-            })}
-          </div>
-        )}
       </header>
 
       {/* Z5 + Z6. */}
       <div className="thin-scroll min-h-0 flex-1 overflow-y-auto">
         <div
           className={cx(
-            'gutter mx-auto flex w-full gap-6 py-5',
-            wide ? 'max-w-[1600px]' : 'max-w-[1600px]',
-            rail && !railCollapsed ? 'lg:flex-row' : 'flex-col',
+            /*
+              `min-h-full` + the bottom padding (rather than a spacer sibling)
+              makes Z5 as tall as the frame, so a screen whose root is `flex-1`
+              fills the viewport instead of floating in the top third. The
+              padding is what the Z7b bubble, the Z7a bar and the phone tab bar
+              need to clear.
+            */
+            'gutter mx-auto flex min-h-full w-full flex-col gap-6 py-4',
+            actionBar ? 'pb-28' : 'pb-24',
+            'max-sm:pb-40',
+            measure,
+            // The rail — open or collapsed to its tab — sits beside Z5 from lg.
+            rail ? 'lg:flex-row' : undefined,
           )}
         >
-          <main className="min-w-0 flex-1">
+          <main className="flex min-w-0 flex-1 flex-col">
             {forced === 'AI-OFF' && <AiOffLine className="mb-4" />}
 
             {replacesContent ? (
@@ -263,7 +234,7 @@ export function Screen({
                 />
               ) : (
                 (empty ?? (
-                  <div className="glass glass-card p-10 text-center text-ink-2">
+                  <div className="glass-strong glass-card p-10 text-center text-ink-2">
                     Nothing to show here yet, and the reason is stated on the screen this stands in for.
                   </div>
                 ))
@@ -273,36 +244,51 @@ export function Screen({
             )}
           </main>
 
-          {/* Z6 — 320px right rail, collapsible. */}
+          {/* Z6 — 320px right rail. Opens collapsed; the tab carries a count. */}
           {rail && !replacesContent && (
-            <aside
-              className={cx(
-                'shrink-0',
-                railCollapsed ? 'lg:w-12' : 'w-full lg:w-z6',
-              )}
-            >
+            <aside className={cx('shrink-0', railCollapsed ? 'lg:w-12' : 'w-full lg:w-z6')}>
               {railCollapsed ? (
-                <button
-                  type="button"
-                  onClick={toggleRail}
-                  className="glass sticky top-0 hidden w-12 flex-col items-center gap-2 rounded-card py-3 lg:flex"
-                  title={`Show ${railTitle}`}
-                >
-                  <Icon name="PanelRight" size={16} />
-                  <span className="text-[0.72em] [writing-mode:vertical-rl]">{railTitle}</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleRail}
+                    className="glass-strong lift sticky top-0 hidden w-12 flex-col items-center gap-2 rounded-card py-3 lg:flex"
+                    title={`Show ${railTitle}`}
+                  >
+                    <Icon name="PanelRight" size={16} className="text-ink-3" />
+                    {railBadge !== undefined && railBadge !== null && (
+                      <span className="tabular inline-flex min-h-5 min-w-5 items-center justify-center rounded-pill bg-brand px-1 text-[0.72em] font-bold text-brand-on">
+                        {railBadge}
+                      </span>
+                    )}
+                    <span className="text-[0.72em] font-semibold text-ink-3 [writing-mode:vertical-rl]">{railTitle}</span>
+                  </button>
+                  {/* Below lg the rail has no column of its own, so it opens inline. */}
+                  <button
+                    type="button"
+                    onClick={toggleRail}
+                    className="glass-strong mt-2 flex min-h-11 w-full items-center justify-between gap-2 rounded-card px-4 text-[0.9em] font-semibold text-ink-2 lg:hidden"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon name="PanelRight" size={15} className="text-ink-3" />
+                      {railTitle}
+                      {railBadge !== undefined && railBadge !== null && (
+                        <span className="tabular inline-flex min-h-5 min-w-5 items-center justify-center rounded-pill bg-brand px-1 text-[0.76em] font-bold text-brand-on">
+                          {railBadge}
+                        </span>
+                      )}
+                    </span>
+                    <Icon name="ChevronDown" size={14} className="text-ink-3" />
+                  </button>
+                </>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">{railTitle}</h2>
-                    <IconButton
-                      icon="PanelRight"
-                      label={`Collapse ${railTitle}`}
-                      onClick={toggleRail}
-                      className="hidden size-9 lg:inline-flex"
-                      size={15}
-                    />
-                  </div>
+                  <SectionTitle
+                    title={railTitle}
+                    action={
+                      <IconButton icon="PanelRight" label={`Collapse ${railTitle}`} onClick={toggleRail} className="size-9" size={15} />
+                    }
+                  />
                   {rail}
                 </div>
               )}
@@ -310,29 +296,80 @@ export function Screen({
           )}
         </div>
 
-        {/* Room for the sticky bar and the bubble. */}
-        <div className={cx(actionBar ? 'h-24' : 'h-20', 'sm:h-8')} />
       </div>
 
       {/* Z7a — sticky action bar. The Z7b bubble floats ABOVE this, never in it. */}
       {actionBar && !replacesContent && (
-        <div className="glass-strong sticky bottom-0 z-50 shrink-0 border-t border-glass-hairline max-sm:mb-14">
-          <div className="gutter mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 py-3">{actionBar}</div>
+        <div className="chrome-bar sticky bottom-0 z-50 shrink-0 border-t border-glass-hairline max-sm:mb-14">
+          <div className={cx('gutter mx-auto flex flex-wrap items-center gap-3 py-3', measure)}>{actionBar}</div>
         </div>
-      )}
-
-      {/* A quiet footer line naming the spec, so a reviewer can trace any frame. */}
-      {!hideSpecLine && (
-        <p className="gutter shrink-0 pb-3 text-[0.76em] text-ink-3 max-sm:mb-16">
-          {spec.id} · {spec.module} · {spec.archetype} {archetype.name} · tier {spec.tier} · density {spec.density} ·
-          Z7b {spec.z7b === 'GP-17' ? 'GP-17, no deviation' : `⊘ ${spec.z7b}`}
-        </p>
       )}
     </div>
   )
 }
 
-/** A convenience for screens whose Z5 is a single card. */
+/**
+ * The atlas trace for this frame — spec id, archetype, tier, density, the
+ * one-liner, the compliance obligations and the Z7b disposition — behind one
+ * `ⓘ`. It used to be the header and the footer; now it is a popover.
+ */
+function ScreenInfo({ spec }: { spec: ScreenSpec }) {
+  const archetype = ARCHETYPE_SPECS[spec.archetype]
+  return (
+    <Popover
+      label={`About ${spec.name}`}
+      width={340}
+      trigger={({ open, toggle }) => (
+        <IconButton icon="Info" label="About this screen" onClick={toggle} active={open} className="size-9" size={15} />
+      )}
+    >
+      {() => (
+        <>
+          <MenuSection title={`${spec.id} · ${spec.module}`}>
+            <p className="px-4 pb-2 text-[0.92em] text-ink-2">{spec.oneLiner}</p>
+            <dl className="tabular grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-4 pb-2 text-[0.84em] text-ink-3">
+              <dt>Archetype</dt>
+              <dd className="text-ink-2">
+                {spec.archetype} · {archetype.name}
+              </dd>
+              <dt>Tier</dt>
+              <dd className="text-ink-2">
+                {spec.tier} · {spec.density}
+              </dd>
+              <dt>Assistant</dt>
+              <dd className="text-ink-2">{spec.z7b === 'GP-17' ? 'GP-17, no deviation' : `⊘ ${spec.z7b}`}</dd>
+            </dl>
+          </MenuSection>
+          {spec.compliance && spec.compliance.length > 0 && (
+            <MenuSection title="Compliance obligations">
+              <div className="flex flex-wrap gap-1.5 px-4 pb-2">
+                {spec.compliance.map((id) => {
+                  const cmp = COMPLIANCE[id]
+                  return (
+                    <Chip
+                      key={id}
+                      tone={cmp?.critical ? 'caution' : 'neutral'}
+                      icon={cmp?.critical ? 'TriangleAlert' : 'ShieldCheck'}
+                      title={cmp ? `${cmp.obligation} — ${cmp.consequence}` : id}
+                    >
+                      {id}
+                    </Chip>
+                  )
+                })}
+              </div>
+            </MenuSection>
+          )}
+        </>
+      )}
+    </Popover>
+  )
+}
+
+/**
+ * A section of Z5: the uppercase calm title, a quiet meta line and an action,
+ * with the children below. It is NOT a glass card, because its children are
+ * usually cards themselves and glass on glass is the thing the brief forbids.
+ */
 export function ScreenSection({
   title,
   subtitle,
@@ -349,13 +386,12 @@ export function ScreenSection({
   return (
     <section className={cx('min-w-0', className)}>
       {title && (
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-[1.05em] font-semibold tracking-tight">{title}</h2>
-            {subtitle && <p className="text-[0.9em] text-ink-3">{subtitle}</p>}
-          </div>
-          {action}
-        </div>
+        <SectionTitle
+          className="mb-3"
+          title={title}
+          meta={subtitle && <span className="text-[0.88em] text-ink-3">{subtitle}</span>}
+          action={action}
+        />
       )}
       {children}
     </section>
@@ -366,4 +402,3 @@ export function ScreenSection({
 export function useScreenSpec(screenId: string): ScreenSpec {
   return screen(screenId)
 }
-

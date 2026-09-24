@@ -11,6 +11,7 @@
  */
 
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 import { capability } from '@/atlas/capabilities'
 import type { ConfidenceBand } from '@/atlas/confidence'
@@ -49,7 +50,9 @@ export interface AIState {
   resetAll: () => void
 }
 
-export const useAI = create<AIState>()((set, get) => ({
+export const useAI = create<AIState>()(
+  persist(
+    (set, get) => ({
   aiEnabled: true,
   forcedState: null,
   dispositions: {},
@@ -86,7 +89,32 @@ export const useAI = create<AIState>()((set, get) => ({
   },
 
   resetAll: () => set({ dispositions: {}, expanded: {}, forcedState: null, aiEnabled: true }),
-}))
+    }),
+    {
+      /**
+       * Dispositions persist with the clinical record they qualify. A note whose
+       * text survives a reload but whose decisions do not would re-present every
+       * AI draft as undecided — and show live Accept / Reject bars on a SIGNED
+       * note. The kill switch and the forced state stay per session.
+       */
+      name: 'indostates.ai',
+      partialize: (s) => ({ dispositions: s.dispositions }),
+    },
+  ),
+)
+
+/**
+ * A disposition that decides something. `Deferred` records that the clinician
+ * looked and chose not to decide yet — it must never satisfy a signing gate,
+ * or a section the clinician declined to decide on would sign as empty text.
+ */
+export const decided = (d?: DispositionRecord): boolean => d !== undefined && d.disposition !== 'Deferred'
+
+/** How many of these touchpoints still need a decision — subscribed, so gates update. */
+export function useOutstanding(touchpointIds: string[]): number {
+  const dispositions = useAI((s) => s.dispositions)
+  return touchpointIds.filter((id) => !decided(dispositions[id])).length
+}
 
 /**
  * Whether the fabric is live right now. Two things can switch it off: the

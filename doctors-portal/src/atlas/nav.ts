@@ -23,6 +23,15 @@ export interface NavItem {
   to: string
   /** Capability required to enter. Absent from the rail without it. */
   permission: string
+  /**
+   * Behind "More". The brief's rule is that no core flow may depend on the
+   * sidebar, which My Day satisfies by carrying the whole day and every
+   * attention item itself. This goes one step further and demotes the two rail
+   * items that are not day-to-day destinations for a doctor: order-set
+   * governance, and a deep link into one study. GP-02 is untouched — these are
+   * still present and still capability-scoped, just not surfaced by default.
+   */
+  secondary?: boolean
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -36,8 +45,8 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     section: 'queue',
-    label: 'Clinic & Queue',
-    short: 'Clinic',
+    label: 'OPD',
+    short: 'OPD',
     icon: 'Users',
     to: '/op-queue',
     permission: 'op.encounter.read',
@@ -65,6 +74,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'ClipboardList',
     to: '/orders/sets',
     permission: 'order.write',
+    secondary: true,
   },
   {
     section: 'discharge',
@@ -81,13 +91,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'Scan',
     to: '/radiology/study/ST-4471/view',
     permission: 'imaging.read',
+    secondary: true,
   },
   {
     section: 'stroke',
-    label: 'Stroke Centre',
-    short: 'Stroke',
+    label: 'Stroke-AI Console',
+    short: 'Stroke-AI',
     icon: 'Brain',
-    to: '/stroke/wall',
+    to: '/stroke/ai-console',
     permission: 'stroke.case.read',
   },
   {
@@ -114,6 +125,15 @@ export const NAV_ITEMS: NavItem[] = [
  */
 export function navFor(persona: PersonaId): NavItem[] {
   return NAV_ITEMS.filter((item) => can(persona, item.permission))
+}
+
+/** The rail, split into what is surfaced and what sits behind "More". */
+export function navGroupsFor(persona: PersonaId): { primary: NavItem[]; secondary: NavItem[] } {
+  const items = navFor(persona)
+  return {
+    primary: items.filter((i) => !i.secondary),
+    secondary: items.filter((i) => i.secondary),
+  }
 }
 
 /**

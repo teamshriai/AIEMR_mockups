@@ -9,23 +9,23 @@
  * is released.
  *
  * Density is comfortable rather than compact. This is not a screen to make
- * dense.
+ * dense — and calm here means fewer words beside the form, not fewer steps.
+ * The statutory rationale is one tap away under the step; AI-810 speaks only
+ * when the sequence does not read as a chain.
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { FieldGroup } from '@/archetypes'
-import { Diamond } from '@/components/ai'
+import { Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
   Chip,
   Field,
-  Icon,
   Select,
   Stepper,
   TextArea,
@@ -40,6 +40,8 @@ import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
 const STEPS = ['Verification', 'Cause of death', 'Medico-legal', 'Handover']
+
+const norm = (s: string) => s.trim().toLowerCase()
 
 export function S1306({ id }: { id?: string }) {
   const navigate = useNavigate()
@@ -70,62 +72,29 @@ export function S1306({ id }: { id?: string }) {
 
   const canComplete = stepValid.every(Boolean)
 
+  /**
+   * AI-810's coherence check, surfaced only when it DISAGREES. A chain that
+   * repeats a line is the commonest way a certificate fails to code, and it is
+   * the one thing the model can say for certain from the text alone.
+   */
+  const repeated =
+    (immediate && antecedent1 && norm(immediate) === norm(antecedent1)) ||
+    (antecedent2 && (norm(antecedent2) === norm(immediate) || norm(antecedent2) === norm(antecedent1)))
+
   return (
     <Screen
       screenId="S-13-06"
       patient={p}
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF']}
+      subheading={<>MCCD Form 4 · {STEPS[step]}</>}
       chips={
-        <>
-          <Chip tone="caution" icon="FileText">
-            MCCD Form 4
+        isMlc && (
+          <Chip tone="isolation" icon="Gavel">
+            MLC
           </Chip>
-          {isMlc && (
-            <Chip tone="isolation" icon="Gavel">
-              MLC
-            </Chip>
-          )}
-        </>
+        )
       }
-      rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Why a sequence</h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              Part I records a causal chain, read downwards: (a) is caused by (b), which is caused by (c). Part II is
-              for conditions that contributed without being in that chain. Recorded as a list instead, the certificate
-              cannot be coded and the registration is rejected.
-            </p>
-            <p className="mt-2 text-[0.84em] text-ink-3">CMP-STAT-03 · Form 4 for an institutional death.</p>
-          </Card>
-
-          {isMlc && (
-            <Card className="border-l-[3px] border-l-isolation p-4">
-              <h3 className="text-[0.82em] font-semibold tracking-wide text-isolation uppercase">Medico-legal</h3>
-              <p className="mt-1.5 text-[0.9em] text-ink-2">
-                Police intimation must be made and <strong>acknowledged</strong> before the body is released. The
-                acknowledgement is the gate — sending the intimation is not enough.
-              </p>
-              <p className="mt-2 text-[0.84em] text-ink-3">CMP-STAT-01 · intimation with acknowledgement.</p>
-            </Card>
-          )}
-
-          {aiActive && (
-            <Card className="p-4">
-              <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-                <Diamond size={10} />
-                AI-810 · completeness
-              </p>
-              <p className="mt-1.5 text-[0.9em] text-ink-2">
-                Checks that the sequence is causally coherent and that the medico-legal steps are present. It flags; it
-                never fills the cause of death in for you.
-              </p>
-            </Card>
-          )}
-        </div>
-      }
-      railTitle="Statutory"
       actionBar={
         <>
           {step > 0 && (
@@ -190,9 +159,10 @@ export function S1306({ id }: { id?: string }) {
 
         {step === 1 && (
           <>
+            {/* The operative rule for Part I — a sequence, not a list. One sentence. */}
             <Alert tone="info" title="Part I is a chain, read downwards">
-              Each line is caused by the line below it. If there is no antecedent cause, leave (b) and (c) empty rather
-              than repeating (a).
+              Each line is caused by the line below it; with no antecedent cause, leave (b) and (c) empty rather than
+              repeating (a).
             </Alert>
             <FieldGroup title="Part I · the causal sequence">
               <Field label="(a) Immediate cause" required htmlFor="cod-a">
@@ -242,18 +212,26 @@ export function S1306({ id }: { id?: string }) {
                 />
               </Field>
             </FieldGroup>
-            {aiActive && immediate && antecedent1 && (
-              <Card className="border-l-[3px] border-l-ai p-4">
-                <p className="flex items-center gap-2 text-[0.88em] font-semibold text-ai">
-                  <Diamond size={10} />
-                  AI-810 · the sequence reads coherently
-                </p>
-                <p className="mt-1.5 text-[0.92em] text-ink-2">
-                  &ldquo;{immediate}&rdquo; caused by &ldquo;{antecedent1}&rdquo;
-                  {antecedent2 && ` caused by "${antecedent2}"`} is a recognised causal chain. Both lines will code.
-                </p>
-              </Card>
+
+            {/* AI-810 speaks only when it disagrees. A coherent chain earns silence. */}
+            {aiActive && repeated && (
+              <Alert tone="caution" title="The sequence repeats itself">
+                A line in Part I repeats another. Each line should be a distinct condition that caused the one above
+                it; a repeated line will not code and the registration is rejected. Flagged by AI-810; it never fills
+                the cause in for you.
+              </Alert>
             )}
+
+            <Why label="Why a sequence, not a list">
+              <p className="text-ink-2">
+                Part I records a causal chain, read downwards: (a) is caused by (b), which is caused by (c). Part II is
+                for conditions that contributed without being in that chain. Recorded as a list instead, the certificate
+                cannot be coded and the registration is rejected.
+              </p>
+              <p className="text-[0.92em] text-ink-3">
+                CMP-STAT-03 · Form 4 for an institutional death. {aiActive && 'AI-810 checks that the sequence is causally coherent and that the medico-legal steps are present. It flags; it never fills the cause of death in for you.'}
+              </p>
+            </Why>
           </>
         )}
 
@@ -274,12 +252,13 @@ export function S1306({ id }: { id?: string }) {
             />
             {isMlc && (
               <>
+                {/* The gate itself — operative, so it stays an Alert. */}
                 <Alert tone="caution" title="Police intimation is required, and must be acknowledged">
                   The body is not released until the acknowledgement is recorded. Sending the intimation is not the
                   gate; receiving the acknowledgement is.
                 </Alert>
                 <Field label="Police station and docket" required htmlFor="mlc-station">
-                  <TextInput id="mlc-station" placeholder="Whitefield PS · docket number" />
+                  <TextInput id="mlc-station" placeholder="Peelamedu PS · docket number" />
                 </Field>
                 <Checkbox
                   checked={policeAck}
@@ -293,13 +272,19 @@ export function S1306({ id }: { id?: string }) {
                     </>
                   }
                 />
+                <Why label="Why the acknowledgement is the gate">
+                  <p className="text-ink-2">
+                    CMP-STAT-01 · intimation with acknowledgement. A medico-legal death is intimated to the police and
+                    the acknowledgement is filed before the body is released; the intimation alone leaves the release
+                    unlawful and the record unable to show who was told.
+                  </p>
+                </Why>
               </>
             )}
             {!isMlc && (
-              <p className="flex items-start gap-2 rounded-panel bg-glass-fill-muted px-3 py-2.5 text-[0.9em] text-ink-2">
-                <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
-                A natural death with a clear cause proceeds to handover directly. If in doubt, mark it medico-legal —
-                it is reversible before certification and not afterwards.
+              <p className="text-[0.9em] text-ink-3">
+                A natural death with a clear cause proceeds to handover; if in doubt, mark it medico-legal — reversible
+                before certification, not after.
               </p>
             )}
           </FieldGroup>

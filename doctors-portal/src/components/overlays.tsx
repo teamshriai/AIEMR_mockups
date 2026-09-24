@@ -6,6 +6,10 @@
  * The AIP-09 modal variant is "not dismissible without a disposition", so
  * `Modal` takes an explicit `dismissible` flag rather than assuming an Esc
  * handler is always welcome.
+ *
+ * Stacking order, since three of these can coexist: drawer 90 < modal 95 <
+ * toast 100. A modal opened from inside a drawer has to sit above it, and a
+ * status message a dialog can hide is not a status message.
  */
 
 import { useEffect, useRef } from 'react'
@@ -94,7 +98,7 @@ export function Modal({
   const width = size === 'lg' ? 'max-w-3xl' : size === 'sm' ? 'max-w-md' : 'max-w-xl'
 
   return (
-    <div className="fixed inset-0 z-80 flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-95 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-hidden
@@ -259,7 +263,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             className={cx(
               'min-h-11 rounded-pill px-4 py-2.5 font-medium',
-              tone === 'destructive' ? 'bg-critical text-white' : 'bg-brand text-brand-on',
+              tone === 'destructive' ? 'bg-critical text-critical-on' : 'bg-brand text-brand-on',
             )}
           >
             {confirmLabel}

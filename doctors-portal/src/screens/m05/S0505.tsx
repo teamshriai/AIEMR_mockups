@@ -7,19 +7,28 @@
  * clinical rather than administrative is what happens to the patients already
  * booked — blocking a session does not cancel them, it surfaces them, and
  * somebody has to decide where each one goes.
+ *
+ * Calm pass: the surface opens on today's seven slots as a list; the week grid
+ * is one tap away. The displaced-patient list is shown exactly once — inside
+ * the confirmation, before the block is made — and the notice-period rule and
+ * the legend are folded behind `Why`.
  */
 
 import { useState } from 'react'
 
+import { Worklist } from '@/archetypes'
+import type { WorklistColumn } from '@/archetypes'
 import { Diamond } from '@/components/ai'
+import { ScopeTabs, Why, useScope } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Alert, Card, Chip, Field, Icon, Select, TextArea, cx } from '@/components/primitives'
-import { formatDate } from '@/data/format'
+import { Card, Chip, Field, Icon, Select, TextArea, cx } from '@/components/primitives'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
-import { Screen, ScreenSection } from '@/shell/Screen'
+import { Screen } from '@/shell/Screen'
 
 const DAYS = ['Mon 21', 'Tue 22', 'Wed 23', 'Thu 24', 'Fri 25']
+/** NOW is Mon 21-Sep-2026. */
+const TODAY = DAYS[0]
 const SLOTS = ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00']
 
 type CellState = 'clinic' | 'free' | 'blocked' | 'theatre' | 'oncall'
@@ -61,6 +70,15 @@ const LABEL: Record<CellState, string> = {
   oncall: 'On call',
 }
 
+/** The list's state chip — icon and word, never colour alone. */
+const CHIP: Record<CellState, { tone: 'brand' | 'inactive' | 'abnormal' | 'isolation' | 'caution'; icon: string; label: string }> = {
+  clinic: { tone: 'brand', icon: 'Stethoscope', label: 'OPD' },
+  free: { tone: 'inactive', icon: 'CircleDot', label: 'Free' },
+  blocked: { tone: 'abnormal', icon: 'Ban', label: 'Blocked' },
+  theatre: { tone: 'isolation', icon: 'Syringe', label: 'Theatre' },
+  oncall: { tone: 'caution', icon: 'Phone', label: 'On call' },
+}
+
 /** Patients booked into a session, surfaced when it is blocked. */
 const BOOKED: Record<string, { name: string; token: string }[]> = {
   'Thu 24|08:00': [
@@ -75,6 +93,14 @@ const BOOKED: Record<string, { name: string; token: string }[]> = {
   'Thu 24|10:00': [{ name: 'Joseph Mathew', token: 'MED-070' }],
 }
 
+type Scope = 'today' | 'week'
+const SCOPES: readonly Scope[] = ['today', 'week']
+
+interface SlotRow {
+  key: string
+  slot: string
+}
+
 export function S0505() {
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
@@ -82,150 +108,240 @@ export function S0505() {
   const [pending, setPending] = useState<string | null>(null)
   const [reason, setReason] = useState('Annual leave')
   const [note, setNote] = useState('')
+  const [scope, setScope] = useScope(SCOPES, 'today')
 
   const stateFor = (key: string): CellState => (blocks[key] ? 'blocked' : (BASE[key] ?? 'free'))
 
   const affected = pending ? (BOOKED[pending] ?? []) : []
   const blockedKeys = Object.keys(blocks)
-  const displaced = blockedKeys.flatMap((k) => BOOKED[k] ?? [])
+
+  /** Clicking a session: unblock if blocked, otherwise ask before blocking. */
+  function toggle(key: string) {
+    const st = stateFor(key)
+    if (st === 'free') return
+    if (blocks[key]) {
+      setBlocks((b) => {
+        const next = { ...b }
+        delete next[key]
+        return next
+      })
+      return
+    }
+    setPending(key)
+  }
+
+  const todayRows: SlotRow[] = SLOTS.map((slot) => ({ key: `${TODAY}|${slot}`, slot }))
+  const todaySessions = todayRows.filter((r) => BASE[r.key] && BASE[r.key] !== 'free').length
+  const todayBlocked = todayRows.filter((r) => blocks[r.key]).length
+
+  const columns: WorklistColumn<SlotRow>[] = [
+    { key: 'time', label: 'Time', role: 'lead', cell: (r) => r.slot },
+    {
+      key: 'what',
+      label: 'Session',
+      role: 'primary',
+      cell: (r) => {
+        const base = BASE[r.key] ?? 'free'
+        return base === 'free' ? 'Nothing scheduled' : base === 'clinic' ? 'Clinic session' : base === 'theatre' ? 'Theatre list' : 'On call'
+      },
+    },
+    {
+      key: 'booked',
+      label: 'Booked',
+      role: 'context',
+      cell: (r) => {
+        const n = (BOOKED[r.key] ?? []).length
+        return n > 0 ? <span className="tabular">{n} booked</span> : null
+      },
+    },
+    {
+      key: 'reason',
+      label: 'Reason',
+      role: 'context',
+      cell: (r) => (blocks[r.key] ? blocks[r.key] : null),
+    },
+    {
+      key: 'state',
+      label: 'State',
+      role: 'status',
+      cell: (r) => {
+        const st = stateFor(r.key)
+        const c = CHIP[st]
+        return (
+          <Chip tone={c.tone} icon={c.icon}>
+            {c.label}
+          </Chip>
+        )
+      },
+    },
+    {
+      key: 'block',
+      label: '',
+      role: 'status',
+      cell: (r) => {
+        const st = stateFor(r.key)
+        if (st === 'free') return null
+        return (
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.stopPropagation()
+              toggle(r.key)
+            }}
+            className={cx(
+              'inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-pill px-3.5 text-[0.86em] font-semibold',
+              st === 'blocked'
+                ? 'bg-glass-inset text-ink-2 hover:bg-glass-fill-hover'
+                : 'bg-brand-soft text-brand hover:bg-brand hover:text-brand-on',
+            )}
+          >
+            {st === 'blocked' ? 'Unblock' : 'Block'}
+          </span>
+        )
+      },
+    },
+  ]
 
   return (
     <Screen
       screenId="S-05-05"
-      loadingShape="board"
+      loadingShape={scope === 'week' ? 'board' : 'list'}
       states={['LOADING', 'EMPTY', 'ERROR', 'VALIDATION', 'DENIED', 'OFFLINE', 'SAVING', 'AI-OFF']}
-      chips={
+      heading="Blocks and leave"
+      subheading={
         <>
-          <Chip tone="neutral">week of {formatDate(new Date(2026, 8, 21))}</Chip>
-          {blockedKeys.length > 0 && <Chip tone="abnormal">{blockedKeys.length} blocked</Chip>}
+          {todaySessions} sessions today
+          {todayBlocked > 0 && ` · ${todayBlocked} blocked today`}
+          {blockedKeys.length > 0 && ` · ${blockedKeys.length} blocked this week`}
         </>
       }
-      wide
+      wide={scope === 'week'}
       rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Notice period</h3>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              A block inside 14 days needs an administrator&rsquo;s override, because patients are already booked.
-              Beyond 14 days it is yours to set.
-            </p>
-            <p className="mt-2 text-[0.84em] text-ink-3">
-              Approved by the medical superintendent for anything shorter.
-            </p>
-          </Card>
-
-          {displaced.length > 0 && (
-            <Card className="border-l-[3px] border-l-abnormal p-4">
-              <h3 className="text-[0.82em] font-semibold tracking-wide text-abnormal uppercase">
-                {displaced.length} patients displaced
-              </h3>
-              <ul className="mt-2 space-y-1.5">
-                {displaced.map((b) => (
-                  <li key={b.token} className="flex items-center justify-between gap-2 text-[0.9em]">
-                    <span className="truncate">{b.name}</span>
-                    <span className="tabular text-ink-3">{b.token}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2.5 text-[0.86em] text-ink-2">
-                Blocking a session does not cancel them. Each one needs rebooking or covering, and the waitlist screen
-                picks them up.
-              </p>
-            </Card>
-          )}
-
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              AI-608 · cover suggestions
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              Where a colleague has spare capacity in the same speciality on the same day, it is proposed as cover. It
-              suggests; the rota owner decides.
-            </p>
-          </Card>
-        </div>
+        <Card strong className="p-4">
+          <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
+            <Diamond size={10} />
+            AI-608 · cover suggestions
+          </p>
+          <p className="mt-1.5 text-[0.9em] text-ink-2">
+            Where a colleague has spare capacity in the same speciality on the same day, it is proposed as cover. It
+            suggests; the rota owner decides.
+          </p>
+        </Card>
       }
-      railTitle="Impact"
+      railTitle="Cover"
     >
-      <div className="space-y-5">
-        <Alert tone="info" title="A block surfaces patients rather than cancelling them">
-          The grid is the easy part. The consequence is the list of people already booked into the session you are
-          blocking — which is why it appears before you confirm, not after.
-        </Alert>
-
-        <ScreenSection title="This week" subtitle="Click a clinic session to block it">
-          <Card className="overflow-hidden p-4">
-            <div className="thin-scroll overflow-x-auto">
-              <table className="w-full border-separate border-spacing-1">
-                <thead>
-                  <tr>
-                    <th className="w-16" />
-                    {DAYS.map((d) => (
-                      <th key={d} className="pb-1 text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-                        {d}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {SLOTS.map((slot) => (
-                    <tr key={slot}>
-                      <th className="tabular pr-2 text-right text-[0.84em] font-medium text-ink-3">{slot}</th>
-                      {DAYS.map((day) => {
-                        const key = `${day}|${slot}`
-                        const st = stateFor(key)
-                        const bookedCount = (BOOKED[key] ?? []).length
-                        return (
-                          <td key={key}>
-                            <button
-                              type="button"
-                              disabled={st === 'free'}
-                              onClick={() => {
-                                if (blocks[key]) {
-                                  setBlocks((b) => {
-                                    const next = { ...b }
-                                    delete next[key]
-                                    return next
-                                  })
-                                  return
-                                }
-                                setPending(key)
-                              }}
-                              className={cx(
-                                'min-h-14 w-full min-w-24 rounded-field px-2 py-1.5 text-left transition-colors',
-                                TONE[st],
-                                st !== 'free' && 'hover:brightness-95',
-                                st === 'free' && 'cursor-default',
-                              )}
-                            >
-                              <span className="block text-[0.84em] font-semibold">{LABEL[st]}</span>
-                              {bookedCount > 0 && st !== 'blocked' && (
-                                <span className="tabular block text-[0.78em] opacity-80">{bookedCount} booked</span>
-                              )}
-                              {st === 'blocked' && (
-                                <span className="block truncate text-[0.78em] opacity-80">{blocks[key]}</span>
-                              )}
-                            </button>
-                          </td>
-                        )
-                      })}
+      <div className={cx('space-y-5', scope === 'today' && 'max-w-4xl')}>
+        {scope === 'today' ? (
+          <Worklist
+            rows={todayRows}
+            columns={columns}
+            rowKey={(r) => r.key}
+            onOpen={(r) => toggle(r.key)}
+            caption={`${TODAY} — this clinician's slots`}
+            noun="slots"
+            emptyWhy="No slots are templated for today."
+            filters={
+              <ScopeTabs
+                value={scope}
+                onChange={setScope}
+                options={[
+                  { key: 'today', label: 'Today' },
+                  { key: 'week', label: 'This week' },
+                ]}
+              />
+            }
+          />
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <ScopeTabs
+                value={scope}
+                onChange={setScope}
+                options={[
+                  { key: 'today', label: 'Today' },
+                  { key: 'week', label: 'This week' },
+                ]}
+              />
+              <span className="text-[0.88em] text-ink-3">Click a session to block it</span>
+            </div>
+            <Card strong className="overflow-hidden p-4">
+              <div className="thin-scroll overflow-x-auto">
+                <table className="w-full border-separate border-spacing-1">
+                  <thead>
+                    <tr>
+                      <th className="w-16" />
+                      {DAYS.map((d) => (
+                        <th key={d} className="pb-1 text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
+                          {d}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {SLOTS.map((slot) => (
+                      <tr key={slot}>
+                        <th className="tabular pr-2 text-right text-[0.84em] font-medium text-ink-3">{slot}</th>
+                        {DAYS.map((day) => {
+                          const key = `${day}|${slot}`
+                          const st = stateFor(key)
+                          const bookedCount = (BOOKED[key] ?? []).length
+                          return (
+                            <td key={key}>
+                              <button
+                                type="button"
+                                disabled={st === 'free'}
+                                onClick={() => toggle(key)}
+                                className={cx(
+                                  'min-h-14 w-full min-w-24 rounded-field px-2 py-1.5 text-left transition-colors',
+                                  TONE[st],
+                                  st !== 'free' && 'hover:brightness-95',
+                                  st === 'free' && 'cursor-default',
+                                )}
+                              >
+                                <span className="block text-[0.84em] font-semibold">{LABEL[st]}</span>
+                                {bookedCount > 0 && st !== 'blocked' && (
+                                  <span className="tabular block text-[0.78em] opacity-80">{bookedCount} booked</span>
+                                )}
+                                {st === 'blocked' && (
+                                  <span className="block truncate text-[0.78em] opacity-80">{blocks[key]}</span>
+                                )}
+                              </button>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {(['clinic', 'theatre', 'oncall', 'blocked', 'free'] as CellState[]).map((s) => (
-                <span key={s} className="flex items-center gap-1.5 text-[0.86em]">
-                  <span className={cx('block size-3 rounded-[3px]', TONE[s])} />
-                  {LABEL[s]}
-                </span>
-              ))}
-            </div>
-          </Card>
-        </ScreenSection>
+              <Why label="Legend" className="mt-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  {(['clinic', 'theatre', 'oncall', 'blocked', 'free'] as CellState[]).map((s) => (
+                    <span key={s} className="flex items-center gap-1.5 text-[0.9em]">
+                      <span className={cx('block size-3 rounded-[3px]', TONE[s])} />
+                      {s === 'free' ? 'Free' : LABEL[s]}
+                    </span>
+                  ))}
+                </div>
+              </Why>
+            </Card>
+          </>
+        )}
+
+        <Why label="Why a block surfaces patients, and who may set one">
+          <p className="text-ink-2">
+            Blocking a session does not cancel the patients already booked into it. They are listed before you confirm,
+            not after, and each one moves to the waitlist for rebooking or cover — they are told the appointment has
+            moved, not why.
+          </p>
+          <p className="text-ink-2">
+            A block inside 14 days needs an administrator&rsquo;s override, because patients are already booked. Beyond
+            14 days it is yours to set.
+          </p>
+          <p className="text-ink-3">Approved by the medical superintendent for anything shorter.</p>
+        </Why>
       </div>
 
       <ConfirmDialog

@@ -5,6 +5,13 @@
  *
  * Deck beat #13: "Results come ranked, and the critical one escalates."
  *
+ * Redesigned to match My Day — the calm `ARC-01` variant, a minimal header, and
+ * the reference material that used to fill a 320px rail removed rather than
+ * restated. What is NOT removed is the escalation: the critical banner still
+ * interrupts, the acknowledgement is still a named act, and the modal is still
+ * undismissable without a disposition. Calm is a property of the layout, not of
+ * the safety path.
+ *
  * The two capabilities do different jobs and it matters that they look
  * different on screen:
  *   AI-212 RANKS and shows a delta against the prior value. G1 — you may
@@ -18,11 +25,11 @@ import { useNavigate } from 'react-router-dom'
 
 import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
-import { Diamond, RowBadge } from '@/components/ai'
-import { Alert, Button, Card, Chip, ClinicalFlag, Icon, cx } from '@/components/primitives'
+import { PillTabs } from '@/components/myday'
+import { Alert, Button, Card, Chip, ClinicalFlag, Icon } from '@/components/primitives'
 import { RESULTS } from '@/data/clinical'
 import type { ResultRow } from '@/data/clinical'
-import { formatDateTime, formatElapsed } from '@/data/format'
+import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { useClinical } from '@/store/clinical'
 import { Screen } from '@/shell/Screen'
@@ -34,7 +41,7 @@ export function S0904() {
   const acknowledgements = useClinical((s) => s.acknowledgements)
   const [aiSort, setAiSort] = useState(true)
   const [critical, setCritical] = useState<ResultRow | null>(null)
-  const [filter, setFilter] = useState<'unreviewed' | 'all'>('unreviewed')
+  const [filter, setFilter] = useState<'to-review' | 'all'>('to-review')
 
   const acked = (r: ResultRow) => r.acknowledged || acknowledgements[r.id] !== undefined
 
@@ -51,105 +58,74 @@ export function S0904() {
 
   const columns: WorklistColumn<ResultRow>[] = [
     {
+      key: 'clock',
+      label: 'Reported',
+      role: 'lead',
+      cell: (r) => formatTime(r.reportedAt),
+    },
+    {
       key: 'patient',
       label: 'Patient',
-      cell: (r) => {
-        const p = patient(r.patientId)
-        return (
-          <span className="block min-w-0">
-            <span className="block truncate font-medium">{p.name}</span>
-            <span className="tabular block text-[0.86em] text-ink-3">
-              {p.age}/{p.sex} · {p.bed ?? 'outpatient'}
-            </span>
-          </span>
-        )
-      },
+      role: 'primary',
+      cell: (r) => patient(r.patientId).name,
     },
     {
       key: 'test',
       label: 'Result',
+      role: 'context',
       cell: (r) => (
-        <span className="block min-w-0">
-          <span className="block truncate font-medium">{r.test}</span>
-          <span className="tabular block text-[0.88em]">
-            {r.value} {r.unit}
-            <span className="ml-2 text-ink-3">ref {r.refRange}</span>
-          </span>
+        <span className="tabular font-semibold text-ink-2">
+          {r.test} {r.value} {r.unit}
         </span>
       ),
+    },
+    {
+      key: 'where',
+      label: 'Location',
+      role: 'context',
+      cell: (r) => patient(r.patientId).bed ?? 'outpatient',
+    },
+    {
+      /*
+       * The movement against the prior value, as a number. The ◆ that used to
+       * sit on it, and AI-212's one-line reason, live on the result detail —
+       * where "Why?" opens the four panels. Here they doubled every row.
+       */
+      key: 'delta',
+      label: 'Delta vs prior',
+      role: 'context',
+      cell: (r) => (r.delta ? <span className="tabular">{r.delta} vs prior</span> : <span>no prior</span>),
     },
     {
       key: 'flag',
       label: 'Range',
+      role: 'status',
       cell: (r) => <ClinicalFlag flag={r.flag} />,
     },
     {
-      key: 'delta',
-      label: 'Delta vs prior',
-      secondary: true,
-      cell: (r) =>
-        r.delta ? (
-          <span className="tabular flex items-center gap-1.5 text-[0.9em]">
-            <Diamond size={9} />
-            {r.delta}
-            <span className="text-ink-3">from {r.priorValue}</span>
-          </span>
-        ) : (
-          <span className="text-[0.88em] text-ink-3">no prior</span>
-        ),
-    },
-    {
-      key: 'why',
-      label: 'Why it is here',
-      secondary: true,
-      cell: (r) => (
-        <RowBadge
-          label={r.critical ? 'CRITICAL' : 'Review'}
-          reason={r.aiReason}
-          tone={r.critical ? 'critical' : 'ai'}
-          band={r.band}
-        />
-      ),
-    },
-    {
-      key: 'clock',
-      label: 'Reported',
-      cell: (r) => (
-        <span className="block">
-          <span className="tabular block text-[0.9em]">{formatDateTime(r.reportedAt)}</span>
-          {r.critical && !acked(r) && r.unackMinutes !== undefined && (
-            <span className="tabular block text-[0.86em] font-semibold text-critical">
-              unacknowledged {r.unackMinutes} min
-            </span>
-          )}
-          {acked(r) && (
-            <span className="block text-[0.86em] text-normal">
-              acknowledged{acknowledgements[r.id] ? ` by ${acknowledgements[r.id].by}` : ''}
-            </span>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: 'action',
+      key: 'ack',
       label: '',
-      className: 'text-right',
+      role: 'status',
       cell: (r) =>
         r.critical && !acked(r) ? (
-          <Button
-            size="sm"
-            tone="destructive"
-            icon="TriangleAlert"
+          <span
+            role="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation()
               setCritical(r)
             }}
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-pill bg-critical px-3 py-1 text-[0.86em] font-semibold text-critical-on"
           >
+            <Icon name="TriangleAlert" size={13} />
             Acknowledge
-          </Button>
-        ) : (
-          <Icon name="ChevronRight" size={15} className="text-ink-muted" />
-        ),
+            <span className="tabular font-normal opacity-80">{r.unackMinutes} min</span>
+          </span>
+        ) : acked(r) ? (
+          <span className="text-[0.84em] text-normal">
+            acknowledged{acknowledgements[r.id] ? ` · ${acknowledgements[r.id].by}` : ''}
+          </span>
+        ) : null,
     },
   ]
 
@@ -157,20 +133,14 @@ export function S0904() {
     <Screen
       screenId="S-09-04"
       loadingShape="list"
-      states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN', 'AI-LOW']}
-      chips={
+      heading="Results"
+      subheading={
         <>
-          {criticalUnacked.length > 0 && (
-            <Chip tone="critical" icon="TriangleAlert">
-              {criticalUnacked.length} critical unacknowledged
-            </Chip>
-          )}
-          <Chip tone="ai">
-            <Diamond size={9} />
-            AI-212 · AI-213
-          </Chip>
+          {rows.length} to review
+          {criticalUnacked.length > 0 && ` · ${criticalUnacked.length} critical, unacknowledged`}
         </>
       }
+      states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN', 'AI-LOW']}
       empty={
         <Card className="p-10 text-center">
           <p className="text-lg font-medium">No results are waiting for review.</p>
@@ -180,48 +150,9 @@ export function S0904() {
           </p>
         </Card>
       }
-      rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              How a critical value reaches you
-            </h3>
-            <ol className="mt-2 space-y-2 text-[0.9em] text-ink-2">
-              {[
-                'Released by the laboratory against a rule-based threshold.',
-                'Interrupts a NAMED clinician — you, not the ward.',
-                'You acknowledge, which records that you saw it.',
-                'Unacknowledged inside the window, it escalates to the on-call.',
-                'Acting on it is documented separately, in an addendum or a note.',
-              ].map((t, i) => (
-                <li key={t} className="flex gap-2.5">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-pill bg-glass-fill-muted text-[0.82em] font-semibold">
-                    {i + 1}
-                  </span>
-                  {t}
-                </li>
-              ))}
-            </ol>
-            <p className="mt-3 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.86em] text-ink-2">
-              Acknowledging is not the same as acting. The acknowledgement records only that you saw it.
-            </p>
-          </Card>
-
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              AI-212 · delta check
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              The ranking uses how far a value has moved, not only whether it is out of range. A creatinine inside the
-              range that has doubled is more interesting than a stable one just above it.
-            </p>
-          </Card>
-        </div>
-      }
-      railTitle="Escalation"
     >
-      <div className="space-y-5">
+      <div className="max-w-4xl space-y-6">
+        {/* AI-213 escalating. This is allowed to interrupt; nothing else here is. */}
         {criticalUnacked.length > 0 && (
           <Alert
             tone="critical"
@@ -234,11 +165,13 @@ export function S0904() {
             }
           >
             {patient(criticalUnacked[0].patientId).name} · {patient(criticalUnacked[0].patientId).bed}. This escalates
-            to the on-call consultant at 15 minutes. The threshold that fired is rule-based and never switches off.
+            to the on-call consultant at 15 minutes. Acknowledging records that you saw it — acting on it is documented
+            separately.
           </Alert>
         )}
 
         <Worklist
+          variant="calm"
           rows={ordered}
           columns={columns}
           rowKey={(r) => r.id}
@@ -249,6 +182,7 @@ export function S0904() {
           aiSortLabel="Clinical concern"
           deterministicLabel="Most recent first"
           caption="Results released for this clinician's patients"
+          noun="results"
           emptyWhy="No results are waiting for review. A newly released result for one of your patients would appear here."
           emptyAction={
             <Button size="sm" onClick={() => setFilter('all')}>
@@ -257,35 +191,24 @@ export function S0904() {
           }
           filters={
             <>
-              <button
-                type="button"
-                onClick={() => setFilter('unreviewed')}
-                className={cx(
-                  'min-h-9 rounded-pill px-3 py-1 text-[0.88em] font-medium',
-                  filter === 'unreviewed' ? 'bg-brand text-brand-on' : 'glass hover:bg-glass-fill-hover',
-                )}
-              >
-                To review
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('all')}
-                className={cx(
-                  'min-h-9 rounded-pill px-3 py-1 text-[0.88em] font-medium',
-                  filter === 'all' ? 'bg-brand text-brand-on' : 'glass hover:bg-glass-fill-hover',
-                )}
-              >
-                All
-              </button>
+              <PillTabs
+                ariaLabel="Which results"
+                value={filter}
+                options={[
+                  { key: 'to-review', label: 'To review' },
+                  { key: 'all', label: 'All' },
+                ]}
+                onChange={setFilter}
+              />
               <Chip tone="neutral" icon="Clock">
-                as of {formatElapsed(0)} ago
+                as of 08:40
               </Chip>
             </>
           }
         />
 
         {/* AI-212 abstains on the incomplete culture rather than scoring it low. */}
-        {RESULTS.some((r) => r.aiReason.startsWith('Cannot assess')) && (
+        {ordered.some((r) => r.aiReason.startsWith('Cannot assess')) && (
           <Card className="border-l-[3px] border-l-caution p-4">
             <p className="flex items-center gap-2 font-semibold text-caution">
               <Icon name="CircleHelp" size={16} />
@@ -293,10 +216,7 @@ export function S0904() {
             </p>
             <p className="mt-1.5 text-[0.95em] text-ink-2">
               The blood culture is incomplete — a final read is due at 72 hours. AI-212 abstains rather than ranking it
-              low, because "low concern" and "cannot yet say" are different claims.
-            </p>
-            <p className="mt-2 text-[0.84em] text-ink-3">
-              AI-212 · never a null score, a zero, or a blank band.
+              low, because &ldquo;low concern&rdquo; and &ldquo;cannot yet say&rdquo; are different claims.
             </p>
           </Card>
         )}

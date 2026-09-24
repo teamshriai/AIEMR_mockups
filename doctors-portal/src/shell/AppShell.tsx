@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
-import { screenForPath } from '@/atlas/registry'
+import { isBare, screenForPath } from '@/atlas/registry'
 import { useSession } from '@/store/session'
 
 import { AppBar } from './AppBar'
@@ -24,7 +24,9 @@ export function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   const spec = screenForPath(pathname)
-  const bare = spec ? spec.density === 'wall' && spec.z7b === 'absent' : false
+  // The registry decides this, not the shell — a wall through its archetype,
+  // sign-in through its own `bare` field.
+  const bare = spec ? isBare(spec) : false
 
   // The theme lives on <html> so the page backdrop and every token follow it.
   useEffect(() => {

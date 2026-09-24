@@ -14,14 +14,19 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
-import { Confidence, Diamond } from '@/components/ai'
+import { routeForSource } from '@/atlas/registry'
+
+import { AttestStrip, Confidence, Diamond } from '@/components/ai'
+import { Why } from '@/components/calm'
 import { Button, Card, Chip, Icon, cx } from '@/components/primitives'
 import type { AssistantAnswer } from '@/data/assistant'
 import { FORCEABLE_OUTCOMES, promptsFor, resolveAnswer } from '@/data/assistant'
 import { patient } from '@/data/kit'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useSession } from '@/store/session'
+import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
 interface Turn {
@@ -56,6 +61,16 @@ export function AssistantScreen({
   useEffect(() => {
     if (thread.length > 0) end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }, [thread.length])
+
+  const navigate = useNavigate()
+  const toast = useUI((s) => s.toast)
+
+  /** A citation opens its screen where this build has one; otherwise it says so. */
+  function openSource(label: string, source: string) {
+    const route = routeForSource(source)
+    if (route) navigate(route)
+    else toast({ tone: 'info', title: label, detail: `${source} — documentation, not a screen in this build.` })
+  }
 
   function ask(q: string) {
     const question = q.trim()
@@ -92,63 +107,61 @@ export function AssistantScreen({
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">What this covers</h3>
-            <ul className="mt-2 space-y-1.5">
-              {covers.map((c) => (
-                <li key={c} className="flex gap-2 text-[0.9em] text-ink-2">
-                  <Icon name="Check" size={13} className="mt-1 shrink-0 text-normal" />
-                  {c}
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          <Card className="border-l-[3px] border-l-caution p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-caution uppercase">
-              What it will not do
-            </h3>
-            <ul className="mt-2 space-y-1.5 text-[0.9em] text-ink-2">
-              <li className="flex gap-2">
-                <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
-                Answer a clinical question. Those route to the capability that owns them, under its own gate.
-              </li>
-              <li className="flex gap-2">
-                <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
-                Show you a patient you have not opened.
-              </li>
-              <li className="flex gap-2">
-                <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
-                Extrapolate a policy this hospital has not written.
-              </li>
-            </ul>
-          </Card>
-
-          {/* The five outcomes, each reachable in one click. */}
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">
-              Every outcome, in one click
-            </h3>
-            <p className="mt-1.5 text-[0.88em] text-ink-3">
-              A refusal taxonomy that only exists on paper is not a refusal taxonomy. Try each one.
-            </p>
-            <div className="mt-2.5 space-y-1.5">
-              {FORCEABLE_OUTCOMES.map((o) => (
-                <button
-                  key={o.kind}
-                  type="button"
-                  onClick={() => ask(o.example)}
-                  className="glass flex w-full items-start gap-2 rounded-panel px-3 py-2 text-left hover:bg-glass-fill-hover"
-                >
-                  <Icon name="CornerDownRight" size={12} className="mt-1 shrink-0 text-ink-muted" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[0.88em] font-medium">{o.label}</span>
-                    <span className="block text-[0.84em] text-ink-3">&ldquo;{o.example}&rdquo;</span>
-                  </span>
-                </button>
-              ))}
+          <Why label="What this covers, and what it will not do">
+            <div>
+              <p className="mb-1.5 text-[0.8em] font-semibold tracking-wide text-ink-3 uppercase">This covers</p>
+              <ul className="space-y-1.5">
+                {covers.map((c) => (
+                  <li key={c} className="flex gap-2 text-[0.9em] text-ink-2">
+                    <Icon name="Check" size={13} className="mt-1 shrink-0 text-normal" />
+                    {c}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </Card>
+            <div>
+              <p className="mb-1.5 text-[0.8em] font-semibold tracking-wide text-caution uppercase">Will not do</p>
+              <ul className="space-y-1.5 text-[0.9em] text-ink-2">
+                <li className="flex gap-2">
+                  <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
+                  Answer a clinical question. Those route to the capability that owns them, under its own gate.
+                </li>
+                <li className="flex gap-2">
+                  <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
+                  Show you a patient you have not opened.
+                </li>
+                <li className="flex gap-2">
+                  <Icon name="X" size={13} className="mt-1 shrink-0 text-caution" />
+                  Extrapolate a policy this hospital has not written.
+                </li>
+              </ul>
+            </div>
+          </Why>
+
+          {/* Dev-only demo: the five refusal outcomes, each reachable in one click. */}
+          {import.meta.env.DEV && (
+            <Why label="Demo · every outcome, in one click">
+              <p className="text-[0.88em] text-ink-3">
+                A refusal taxonomy that only exists on paper is not a refusal taxonomy. Try each one.
+              </p>
+              <div className="space-y-1.5">
+                {FORCEABLE_OUTCOMES.map((o) => (
+                  <button
+                    key={o.kind}
+                    type="button"
+                    onClick={() => ask(o.example)}
+                    className="glass flex w-full items-start gap-2 rounded-panel px-3 py-2 text-left hover:bg-glass-fill-hover"
+                  >
+                    <Icon name="CornerDownRight" size={12} className="mt-1 shrink-0 text-ink-muted" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.88em] font-medium">{o.label}</span>
+                      <span className="block text-[0.84em] text-ink-3">&ldquo;{o.example}&rdquo;</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Why>
+          )}
         </div>
       }
       railTitle="Scope"
@@ -184,7 +197,13 @@ export function AssistantScreen({
               Every screen in the product still works. The static help centre and the service desk on extension 4400
               remain available — no task here requires the assistant to complete.
             </p>
-            <Button className="mt-4" icon="BookOpen">
+            <Button
+              className="mt-4"
+              icon="BookOpen"
+              onClick={() =>
+                toast({ tone: 'info', title: 'Help centre', detail: 'Static help lives on the hospital intranet and is not part of this build. The service desk is on extension 4400.' })
+              }
+            >
               Open the help centre
             </Button>
           </Card>
@@ -244,6 +263,7 @@ export function AssistantScreen({
                   </div>
                 ) : (
                   <AnswerBlock
+                    onOpenSource={openSource}
                     key={turn.id}
                     answer={turn.answer!}
                     reported={turn.reported}
@@ -255,31 +275,6 @@ export function AssistantScreen({
               )}
               <div ref={end} />
             </div>
-
-            {/* Prompts reappear after a refusal. */}
-            {thread.length > 0 &&
-              thread[thread.length - 1].answer?.kind !== undefined &&
-              thread[thread.length - 1].answer!.kind !== 'cited' && (
-                <div className="mt-5">
-                  <p className="mb-2 text-[0.8em] font-semibold tracking-wider text-ink-3 uppercase">
-                    Things I can answer
-                  </p>
-                  <ul className="grid gap-2 sm:grid-cols-2">
-                    {prompts.slice(0, 4).map((q) => (
-                      <li key={q}>
-                        <button
-                          type="button"
-                          onClick={() => ask(q)}
-                          className="glass flex w-full items-center gap-2.5 rounded-panel px-3.5 py-2.5 text-left text-[0.95em] hover:bg-glass-fill-hover"
-                        >
-                          <Icon name="CornerDownRight" size={13} className="shrink-0 text-ink-muted" />
-                          <span className="min-w-0 flex-1">{q}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
           </>
         )}
       </div>
@@ -291,10 +286,12 @@ function AnswerBlock({
   answer,
   reported,
   onReport,
+  onOpenSource,
 }: {
   answer: AssistantAnswer
   reported?: boolean
   onReport: () => void
+  onOpenSource: (label: string, source: string) => void
 }) {
   /** An uncited answer is not rendered at all. */
   if (answer.citations.length === 0) {
@@ -374,6 +371,7 @@ function AnswerBlock({
             <li key={c.n}>
               <button
                 type="button"
+                onClick={() => onOpenSource(c.label, c.source)}
                 className="flex w-full items-start gap-2.5 rounded-chip px-2 py-1.5 text-left hover:bg-glass-fill-hover"
               >
                 <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-ai-soft text-[0.75em] font-bold text-ai">
@@ -389,6 +387,9 @@ function AnswerBlock({
           ))}
         </ul>
       </div>
+
+      {/* A reading is a claim, so it ends in a signature rather than a full stop. */}
+      {answer.attest && <AttestStrip attest={answer.attest} />}
 
       <footer className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <Confidence band={answer.band} />

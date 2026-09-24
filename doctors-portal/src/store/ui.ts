@@ -97,7 +97,8 @@ export const useUI = create<UIState>()((set, get) => ({
   explain: null,
   modal: null,
   toasts: [],
-  railCollapsed: false,
+  /** Collapsed by default: the rail is context, and context is one tap away. */
+  railCollapsed: true,
 
   openAssistant: (assistantFrom) => set({ assistantOpen: true, assistantFrom, assistantNudge: false }),
   /** Closing leaves the thread intact — "leaves the page state untouched". */

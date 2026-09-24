@@ -6,6 +6,10 @@
  * AI-308 closes the loop: it chases an order that has not moved. The fallback
  * is "a manual order status list", which is exactly what this screen is
  * underneath — the chasing is the addition, not the list.
+ *
+ * Calm pass: the surface opens on the orders still open, one line each with
+ * the chase reason on the line it belongs to. Resulted and earlier orders are
+ * one tap away; voided ones stay visible, folded. The explainer is a `Why`.
  */
 
 import { useState } from 'react'
@@ -13,25 +17,21 @@ import { useNavigate } from 'react-router-dom'
 
 import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
-import { Diamond, RowBadge } from '@/components/ai'
+import { Disclosure, ScopeTabs, Why, useScope } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Button, Card, Chip, Icon, Select, TextArea } from '@/components/primitives'
+import { Button, Icon, Select, TextArea, cx } from '@/components/primitives'
 import { encounter, ordersFor } from '@/data/clinical'
 import type { OrderRow } from '@/data/clinical'
-import { formatDateTime, formatElapsed, NOW } from '@/data/format'
+import { formatDate, formatTime, NOW } from '@/data/format'
 import { TRANSFER_REASONS, patient } from '@/data/kit'
 import { useClinical } from '@/store/clinical'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
-const STATUS_TONE: Record<OrderRow['status'], 'neutral' | 'normal' | 'caution' | 'abnormal' | 'inactive'> = {
-  Ordered: 'neutral',
-  Collected: 'neutral',
-  'In progress': 'caution',
-  Resulted: 'normal',
-  Cancelled: 'inactive',
-  Overdue: 'abnormal',
-}
+type Scope = 'open' | 'resulted' | 'earlier'
+const SCOPES: readonly Scope[] = ['open', 'resulted', 'earlier']
+
+const START_OF_TODAY = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate())
 
 export function S0903({ id }: { id?: string }) {
   const navigate = useNavigate()
@@ -45,6 +45,7 @@ export function S0903({ id }: { id?: string }) {
   const [cancelling, setCancelling] = useState<OrderRow | null>(null)
   const [reason, setReason] = useState<string>(TRANSFER_REASONS[0])
   const [reasonText, setReasonText] = useState('')
+  const [scope, setScope] = useScope(SCOPES, 'open')
 
   /** Orders placed from the basket this session join the list. */
   const session: OrderRow[] = placedOrders
@@ -63,75 +64,92 @@ export function S0903({ id }: { id?: string }) {
     cancelledOrders[o.id] ? { ...o, status: 'Cancelled' as const } : o,
   )
 
-  const ordered = aiSort
-    ? [...all].sort((a, b) => (b.chase ? 1 : 0) - (a.chase ? 1 : 0) || b.placedAt.getTime() - a.placedAt.getTime())
-    : [...all].sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime())
+  const sort = (rows: OrderRow[]) =>
+    aiSort
+      ? [...rows].sort((a, b) => (b.chase ? 1 : 0) - (a.chase ? 1 : 0) || b.placedAt.getTime() - a.placedAt.getTime())
+      : [...rows].sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime())
 
-  const chasing = all.filter((o) => o.chase)
+  const open = sort(all.filter((o) => o.status !== 'Resulted' && o.status !== 'Cancelled'))
+  const resulted = sort(all.filter((o) => o.status === 'Resulted'))
+  const earlier = sort(all.filter((o) => o.placedAt.getTime() < START_OF_TODAY.getTime()))
+  const voided = sort(all.filter((o) => o.status === 'Cancelled'))
+  const chasing = open.filter((o) => o.chase)
+
+  const rows = scope === 'open' ? open : scope === 'resulted' ? resulted : earlier
 
   const columns: WorklistColumn<OrderRow>[] = [
-    { key: 'item', label: 'Order', cell: (o) => <span className="font-medium">{o.item}</span> },
-    { key: 'category', label: 'Category', cell: (o) => <Chip tone="neutral">{o.category}</Chip> },
+    {
+      key: 'placed',
+      label: 'Placed',
+      role: 'lead',
+      cell: (o) =>
+        o.placedAt.getTime() < START_OF_TODAY.getTime() ? formatDate(o.placedAt).replace('-2026', '') : formatTime(o.placedAt),
+    },
+    { key: 'item', label: 'Order', role: 'primary', cell: (o) => o.item },
     {
       key: 'status',
       label: 'Status',
+      role: 'context',
       cell: (o) => (
-        <Chip tone={STATUS_TONE[o.status]} icon={o.status === 'Resulted' ? 'Check' : o.status === 'Overdue' ? 'TriangleAlert' : undefined}>
-          {o.status}
-        </Chip>
+        <span className={cx(o.status === 'Overdue' && 'font-semibold text-abnormal', o.status === 'Resulted' && 'text-normal')}>
+          {o.status === 'Resulted' ? 'Resulted · loop closed' : o.status}
+        </span>
       ),
     },
     {
       key: 'chase',
       label: 'Closing the loop',
-      secondary: true,
-      cell: (o) =>
-        o.chase ? (
-          <RowBadge label="Chasing" reason={o.chase} tone="caution" band="HIGH" />
-        ) : o.status === 'Resulted' ? (
-          <span className="text-[0.88em] text-normal">loop closed</span>
-        ) : (
-          <span className="text-[0.88em] text-ink-3">on track</span>
-        ),
+      role: 'context',
+      cell: (o) => (o.chase ? <span className="text-caution">chasing · {o.chase}</span> : null),
     },
-    {
-      key: 'placed',
-      label: 'Placed',
-      cell: (o) => (
-        <span className="block">
-          <span className="tabular block text-[0.9em]">{formatDateTime(o.placedAt)}</span>
-          <span className="tabular block text-[0.84em] text-ink-3">
-            {formatElapsed((NOW.getTime() - o.placedAt.getTime()) / 60000)} ago · {o.placedBy}
-          </span>
-        </span>
-      ),
-    },
+    { key: 'by', label: 'By', role: 'context', cell: (o) => o.placedBy },
     {
       key: 'action',
       label: '',
-      className: 'text-right',
+      role: 'status',
       cell: (o) =>
         o.status === 'Resulted' ? (
-          <Button size="sm" icon="ArrowRight" onClick={(e) => { e.stopPropagation(); navigate('/results/inbox') }}>
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate('/results/inbox')
+            }}
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-pill bg-brand-soft px-3.5 text-[0.86em] font-semibold text-brand hover:bg-brand hover:text-brand-on"
+          >
             Result
-          </Button>
+            <Icon name="ArrowRight" size={13} />
+          </span>
         ) : o.status === 'Cancelled' ? (
           <span className="text-[0.86em] text-ink-3">voided</span>
         ) : (
-          <Button
-            size="sm"
-            tone="tertiary"
-            icon="X"
+          <span
+            role="button"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation()
               setCancelling(o)
             }}
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-pill px-3.5 text-[0.86em] font-semibold text-ink-2 hover:bg-glass-fill-hover"
           >
             Cancel
-          </Button>
+          </span>
         ),
     },
   ]
+
+  const tabs = (
+    <ScopeTabs
+      value={scope}
+      onChange={setScope}
+      options={[
+        { key: 'open', label: 'Open', count: open.length },
+        { key: 'resulted', label: 'Resulted', count: resulted.length },
+        { key: 'earlier', label: 'Earlier', count: earlier.length },
+      ]}
+    />
+  )
 
   return (
     <Screen
@@ -139,70 +157,70 @@ export function S0903({ id }: { id?: string }) {
       patient={p}
       loadingShape="list"
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF']}
-      chips={<Chip tone="neutral" className="tabular">{enc.encounterNo}</Chip>}
+      heading="Orders"
+      subheading={
+        <>
+          {open.length} open
+          {chasing.length > 0 && ` · ${chasing.length} being chased`}
+          {resulted.length > 0 && ` · ${resulted.length} resulted`}
+        </>
+      }
       actions={
         <Button tone="primary" icon="Plus" onClick={() => navigate(`/encounter/${enc.id}/orders/new`)}>
           New order
         </Button>
       }
-      rail={
-        <div className="space-y-4">
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              AI-308 · closed-loop chasing
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              An order that has not moved inside its expected window is chased, with the blocking step named. Without
-              it this screen is still a status list — the chasing is what stops an order quietly going nowhere.
-            </p>
-          </Card>
-          {chasing.length > 0 && (
-            <Card className="border-l-[3px] border-l-caution p-4">
-              <h3 className="text-[0.82em] font-semibold tracking-wide text-caution uppercase">
-                {chasing.length} being chased
-              </h3>
-              <ul className="mt-2 space-y-2.5">
-                {chasing.map((o) => (
-                  <li key={o.id}>
-                    <p className="font-medium">{o.item}</p>
-                    <p className="text-[0.88em] text-ink-2">{o.chase}</p>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </div>
-      }
-      railTitle="Order flow"
     >
-      <Worklist
-        rows={ordered}
-        columns={columns}
-        rowKey={(o) => o.id}
-        aiSort={aiSort}
-        onSortChange={setAiSort}
-        sortCapability="AI-308"
-        aiSortLabel="Needs chasing first"
-        deterministicLabel="Most recent first"
-        caption="Orders on this encounter"
-        emptyWhy="No orders on this encounter yet. Placing one from the basket, or applying an order set, would fill this."
-        emptyAction={
-          <Button size="sm" tone="primary" onClick={() => navigate(`/encounter/${enc.id}/orders/new`)}>
-            Open the order basket
-          </Button>
-        }
-        filters={
-          <>
-            <Chip tone="neutral" icon="User">
-              {p.name}
-            </Chip>
-            <Chip tone="neutral" icon="Clock">
-              as of 08:40
-            </Chip>
-          </>
-        }
-      />
+      <div className="max-w-4xl space-y-5">
+        <Worklist
+          rows={rows}
+          columns={columns}
+          rowKey={(o) => o.id}
+          aiSort={aiSort}
+          onSortChange={setAiSort}
+          sortCapability="AI-308"
+          aiSortLabel="Needs chasing first"
+          deterministicLabel="Most recent first"
+          caption={`Orders on ${enc.encounterNo}`}
+          noun="orders"
+          emptyWhy={
+            scope === 'open'
+              ? 'Nothing is open on this encounter. Everything placed has resulted or been voided.'
+              : scope === 'resulted'
+                ? 'No order on this encounter has resulted yet.'
+                : 'No orders were placed on this encounter before today.'
+          }
+          emptyAction={
+            scope === 'open' ? (
+              <Button size="sm" tone="primary" onClick={() => navigate(`/encounter/${enc.id}/orders/new`)}>
+                Open the order basket
+              </Button>
+            ) : undefined
+          }
+          filters={tabs}
+        />
+
+        {scope === 'open' && voided.length > 0 && (
+          <Disclosure label="voided" count={voided.length}>
+            <Worklist
+              rows={voided}
+              columns={columns}
+              rowKey={(o) => o.id}
+              caption="Voided orders on this encounter"
+              noun="orders"
+              emptyWhy="No orders have been voided."
+            />
+          </Disclosure>
+        )}
+
+        <Why label="Why some orders are chased">
+          <p className="text-ink-2">
+            An order that has not moved inside its expected window is chased, with the blocking step named. Without it
+            this screen is still a status list — the chasing is what stops an order quietly going nowhere. AI-308 ·
+            the deterministic sort is one click away.
+          </p>
+        </Why>
+      </div>
 
       <ConfirmDialog
         open={cancelling !== null}

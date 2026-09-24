@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 
 import { PERSONA_SPECS } from '@/atlas/personas'
 import { ROUTED_SCREENS, OVERLAY_SCREENS } from '@/atlas/registry'
@@ -54,6 +54,22 @@ function Landing() {
   return <Navigate to={PERSONA_SPECS[persona].landing} replace />
 }
 
+/**
+ * S-02-01's entry condition: "any unauthenticated request (redirect)".
+ *
+ * The requested address is carried in `?next=` so signing in returns you to
+ * where you were going rather than to a landing page, which is what the spec's
+ * Exit line asks for. `signedIn` says only that someone authenticated — §3.2
+ * rule 3 means every screen still evaluates its own capability per request.
+ */
+function RequireSession() {
+  const signedIn = useSession((s) => s.signedIn)
+  const { pathname, search } = useLocation()
+  if (signedIn) return <Outlet />
+  const next = encodeURIComponent(`${pathname}${search}`)
+  return <Navigate to={`/login?next=${next}`} replace />
+}
+
 export function App() {
   // The completeness assertion. Reported, not thrown, so a gap is visible in
   // the console without taking the whole app down mid-build.
@@ -79,11 +95,16 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AppShell />}>
-          <Route path="/" element={<Landing />} />
-          {ROUTED_SCREENS.map((spec) => (
-            <Route key={spec.id} path={spec.route!} element={<RouteAdapter screenId={spec.id} />} />
-          ))}
-          <Route path="*" element={<NotFound />} />
+          {/* The one public route. It sits OUTSIDE the session gate. */}
+          <Route path="/login" element={<RouteAdapter screenId="S-02-01" />} />
+
+          <Route element={<RequireSession />}>
+            <Route path="/" element={<Landing />} />
+            {ROUTED_SCREENS.filter((s) => s.permission !== 'public').map((spec) => (
+              <Route key={spec.id} path={spec.route!} element={<RouteAdapter screenId={spec.id} />} />
+            ))}
+            <Route path="*" element={<NotFound />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

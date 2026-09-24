@@ -36,6 +36,7 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
     setFacility,
     setLanguage,
     toggleNav,
+    signOut,
   } = useSession()
   const me = useCurrentStaff()
   const aiEnabled = useAI((s) => s.aiEnabled)
@@ -57,16 +58,23 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
 
   return (
     <header
-      className="glass-strong sticky top-0 z-60 flex h-z1 shrink-0 items-center gap-2 border-b border-glass-hairline px-3 md:px-4"
+      className="chrome-bar sticky top-0 z-60 flex h-z1 shrink-0 items-center gap-1 border-b border-glass-hairline px-2 sm:gap-2 sm:px-3 md:px-4"
       /* GP-01 is the same everywhere; no screen redraws it. */
     >
       {/* Nav toggle — Z2 collapses to a 64px icon rail on desktop, a tab bar on phone. */}
       <IconButton icon="Menu" label="Toggle navigation" onClick={toggleNav} className="md:inline-flex" />
 
+      {/*
+        Hidden below 768px. Eight 44px controls plus the facility pill do not fit
+        in 320px, and something has to give — this is the one that costs nothing,
+        because Home is the first item in the phone tab bar at exactly those
+        widths. Shrinking a target instead would break the >=44px floor (§10.4),
+        and burying the facility switcher would break GP-07.
+      */}
       <button
         type="button"
         onClick={() => navigate(PERSONA_SPECS[persona].landing)}
-        className="flex shrink-0 items-center gap-2.5 rounded-pill px-1.5 py-1 hover:bg-glass-fill-hover"
+        className="hidden shrink-0 items-center gap-2.5 rounded-pill px-1.5 py-1 hover:bg-glass-fill-hover sm:flex"
       >
         <span className="flex size-7 items-center justify-center rounded-[9px] bg-brand text-brand-on">
           <Icon name="Hospital" size={16} />
@@ -87,7 +95,7 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-pill border border-glass-hairline bg-glass-fill-muted px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover"
           >
             <span className="tabular">{facility.code}</span>
-            <span className="hidden max-w-36 truncate lg:inline">{facility.name.replace('Indostates ', '')}</span>
+            <span className="hidden max-w-36 truncate lg:inline">{facility.short}</span>
             <Icon name="ChevronDown" size={13} className="text-ink-3" />
           </button>
         )}
@@ -133,7 +141,7 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
       <div className="flex-1 md:hidden" />
       <IconButton icon="Search" label="Search" onClick={onOpenSearch} className="md:hidden" />
 
-      {/* The theme toggle the brief asked for. Light is the default. */}
+      {/* The theme toggle. Night is the default; light is the explicit alternative. */}
       <IconButton
         icon={theme === 'light' ? 'Moon' : 'Sun'}
         label={theme === 'light' ? 'Switch to night theme' : 'Switch to light theme'}
@@ -153,7 +161,7 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             className="relative inline-flex size-11 items-center justify-center rounded-pill hover:bg-glass-fill-hover"
           >
             <Icon name="Bell" size={17} />
-            <span className="absolute top-2 right-2 flex size-4 items-center justify-center rounded-pill bg-critical text-[9px] font-bold text-white">
+            <span className="absolute top-2 right-2 flex size-4 items-center justify-center rounded-pill bg-critical text-[9px] font-bold text-critical-on">
               3
             </span>
           </button>
@@ -176,13 +184,13 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             <MenuSection title="Urgent">
               <MenuItem
                 icon={<Icon name="Brain" size={15} className="text-isolation" />}
-                detail="STROKE/26-27/0141 · INS · DIDO projected breach"
+                detail="STROKE/26-27/0141 · IPL · DIDO projected breach"
                 onClick={() => {
                   navigate('/stroke/wall')
                   close()
                 }}
               >
-                Code stroke active at Nashik
+                Code stroke active at Pollachi
               </MenuItem>
             </MenuSection>
             <MenuSection title="Routine">
@@ -317,6 +325,20 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
                   }}
                 />
               </div>
+            </MenuSection>
+
+            <MenuSection title="Session">
+              <MenuItem
+                icon={<Icon name="LogOut" size={15} />}
+                detail="Returns to sign-in. Break-glass grants end with the session."
+                onClick={() => {
+                  close()
+                  signOut()
+                  navigate('/login', { replace: true })
+                }}
+              >
+                Sign out
+              </MenuItem>
             </MenuSection>
           </>
         )}

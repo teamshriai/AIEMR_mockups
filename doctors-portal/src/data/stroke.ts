@@ -14,6 +14,7 @@
  */
 
 import type { ConfidenceBand } from '@/atlas/confidence'
+import { facility } from '@/data/kit'
 
 /** Server time on the live case clock. S-18-06 draws 02:55:12. */
 export const STROKE_NOW = new Date(2026, 8, 21, 2, 52, 0)
@@ -47,8 +48,8 @@ export const STROKE_CASES: StrokeCase[] = [
     id: '0141',
     caseNo: 'STROKE/26-27/0141',
     patientId: 'SD-P-05',
-    originFacility: 'INS',
-    destinationFacility: 'AWF',
+    originFacility: 'IPL',
+    destinationFacility: 'ICH',
     lkw: at(1, 20),
     activatedAt: at(2, 16),
     activatedBy: 'Dr Priya Menon',
@@ -62,8 +63,8 @@ export const STROKE_CASES: StrokeCase[] = [
     id: '0140',
     caseNo: 'STROKE/26-27/0140',
     patientId: 'SD-P-08',
-    originFacility: 'AWF',
-    destinationFacility: 'AWF',
+    originFacility: 'ICH',
+    destinationFacility: 'ICH',
     lkw: at(0, 35),
     activatedAt: at(0, 52),
     activatedBy: 'Dr Ananya Iyer',
@@ -174,7 +175,7 @@ export const CASE_INTERVALS: ClockInterval[] = [
     nextAction: 'Load the ambulance',
     owner: 'Sr. Grace Fernandes',
     projectedBreachIn: 19,
-    blockingStep: 'Ambulance not loaded — AMB-INS-03 is on site but the trolley has not moved',
+    blockingStep: 'Ambulance not loaded — AMB-IPL-03 is on site but the trolley has not moved',
   },
   {
     key: 'groin',
@@ -353,7 +354,7 @@ export const THROMBOLYSIS_DOSE = {
   unit: 'mg/kg',
   weightKg: 78,
   weightCapturedAt: at(2, 22),
-  weightSource: 'Estimated by Dr Priya Menon — no bed scale at INS',
+  weightSource: 'Estimated by Dr Priya Menon — no bed scale at IPL',
   totalMg: 19.5,
   administration: 'single IV bolus over 5 seconds',
   /** "Show the independent second dose check as mandatory even when the AI is off." */
@@ -423,14 +424,14 @@ export const TRANSFER_RESERVATION: Reservation[] = [
   {
     key: 'ambulance',
     resource: 'Ambulance',
-    detail: 'AMB-INS-03 · ALS-equipped · paramedic Mr Ganesh Patil',
+    detail: 'AMB-IPL-03 · ALS-equipped · paramedic Mr Ganesh Kumar',
     status: 'available',
     ownerModule: 'M-22 Support Services',
   },
   {
     key: 'cathlab',
     resource: 'Cath lab',
-    detail: 'CATH-1 at AWF · free from 03:40',
+    detail: 'CATH-1 at ICH · free from 03:40',
     status: 'available',
     ownerModule: 'M-11 Operation Theatre',
   },
@@ -451,13 +452,13 @@ export const TRANSFER_RESERVATION: Reservation[] = [
 ]
 
 export const TRANSFER_ROUTE = {
-  from: 'Indostates Nashik (INS)',
-  to: 'Indostates Whitefield, Bengaluru (AWF)',
-  distanceKm: 712,
-  /** A 712 km road transfer is not credible — the atlas's own topology forces
-   *  air transfer for this case, and the screen must say so. */
-  mode: 'Air ambulance to HAL, then road' as const,
-  etaMinutes: 148,
+  from: `${facility('IPL').name} (IPL)`,
+  to: `${facility('ICH').name} (ICH)`,
+  distanceKm: 42,
+  /** Pollachi to Coimbatore is a 42 km blue-light run on NH-83 — road is the
+   *  credible mode, and the ETA is what the registry has seen on this pair. */
+  mode: 'Road ambulance, blue-light' as const,
+  etaMinutes: 48,
   aiEta: { model: 'amb-eta v3.1.0', confidence: 0.69, band: 'MED' as ConfidenceBand },
 }
 
@@ -465,8 +466,8 @@ export const TRANSFER_ROUTE = {
 
 export const NETWORK_SITES = [
   {
-    code: 'AWF',
-    name: 'Indostates Whitefield',
+    code: 'ICH',
+    name: 'Indostates Health Hospital, Coimbatore',
     role: 'hub' as const,
     ctStatus: 'free' as const,
     neurologist: 'Dr Rohit Desai (phone)',
@@ -476,8 +477,8 @@ export const NETWORK_SITES = [
     readiness: [] as string[],
   },
   {
-    code: 'IHY',
-    name: 'Indostates Hyderabad',
+    code: 'ITP',
+    name: 'Indostates Tiruppur',
     role: 'secondary' as const,
     ctStatus: 'free' as const,
     neurologist: '⊘ teleneurology only',
@@ -486,8 +487,8 @@ export const NETWORK_SITES = [
     readiness: ['2 of 6 ED staff overdue for stroke competency refresher'],
   },
   {
-    code: 'INS',
-    name: 'Indostates Nashik',
+    code: 'IPL',
+    name: 'Indostates Pollachi',
     role: 'spoke' as const,
     ctStatus: 'in use' as const,
     neurologist: '⊘ no on-site neurologist',
@@ -496,8 +497,8 @@ export const NETWORK_SITES = [
     readiness: ['CT gantry service due in 11 days — AI-622 predicts failure risk rising'],
   },
   {
-    code: 'IKP',
-    name: 'Indostates Kolhapur',
+    code: 'IUD',
+    name: 'Indostates Udumalpet',
     role: 'spoke' as const,
     ctStatus: 'none' as const,
     neurologist: '⊘ no on-site neurologist',
@@ -509,14 +510,14 @@ export const NETWORK_SITES = [
 
 export const INBOUND_AMBULANCES = [
   {
-    id: 'AMB-INS-03',
-    from: 'INS',
-    to: 'AWF',
+    id: 'AMB-IPL-03',
+    from: 'IPL',
+    to: 'ICH',
     etaMinutes: 9,
     caseId: '0141',
     /** AI-616. The GPS position remains when the model is off. */
     band: 'MED' as ConfidenceBand,
-    note: 'On site at INS. ETA is to departure, not arrival.',
+    note: 'On site at IPL. ETA is to departure, not arrival.',
   },
 ]
 
@@ -542,7 +543,7 @@ export interface StrokeTask {
 }
 
 export const STROKE_TASKS: StrokeTask[] = [
-  { id: 'T-01', label: 'NCCT + CTA acquired', owner: 'Radiographer, INS', column: 'Done', dueInMin: null },
+  { id: 'T-01', label: 'NCCT + CTA acquired', owner: 'Radiographer, IPL', column: 'Done', dueInMin: null },
   { id: 'T-02', label: 'AI triage reviewed and confirmed', owner: 'Dr Rohit Desai', column: 'Done', dueInMin: null },
   { id: 'T-03', label: 'NIHSS scored over video', owner: 'Dr Rohit Desai', column: 'Done', dueInMin: null },
   {
@@ -594,7 +595,7 @@ export const TIMESTAMP_CONFLICTS = [
   {
     event: 'Door time',
     sources: [
-      { source: 'ED triage entry (INS)', value: at(2, 14), authority: 'server' as const },
+      { source: 'ED triage entry (IPL)', value: at(2, 14), authority: 'server' as const },
       { source: 'Ambulance handover form', value: at(2, 9), authority: 'local' as const },
       { source: 'CCTV entry log', value: at(2, 12), authority: 'device' as const },
     ],
@@ -620,7 +621,7 @@ export const TIMESTAMP_CONFLICTS = [
 export const PAGING_LOG = [
   { role: 'Stroke neurologist', name: 'Dr Rohit Desai', pagedAt: at(2, 16), ackAt: at(2, 18), channel: 'Push + call' },
   { role: 'Stroke coordinator', name: 'Sr. Grace Fernandes', pagedAt: at(2, 16), ackAt: at(2, 17), channel: 'Push' },
-  { role: 'Radiographer, INS', name: 'On duty', pagedAt: at(2, 16), ackAt: at(2, 21), channel: 'Ward phone' },
+  { role: 'Radiographer, IPL', name: 'On duty', pagedAt: at(2, 16), ackAt: at(2, 21), channel: 'Ward phone' },
   { role: 'Neuro-interventionist', name: 'Dr Samir Kulkarni', pagedAt: at(2, 38), ackAt: null, channel: 'Push + call' },
   { role: 'Anaesthetist on call', name: 'Dr S. Iyengar', pagedAt: at(2, 38), ackAt: at(2, 44), channel: 'Push' },
 ]
@@ -631,7 +632,7 @@ export const TELESTROKE_QUEUE = [
   {
     caseId: '0141',
     patientId: 'SD-P-05',
-    site: 'INS',
+    site: 'IPL',
     requestedAt: at(2, 20),
     lkwElapsedMin: 92,
     nihss: 14,
@@ -644,7 +645,7 @@ export const TELESTROKE_QUEUE = [
   {
     caseId: '0139',
     patientId: 'SD-P-09',
-    site: 'IHY',
+    site: 'ITP',
     requestedAt: at(2, 41),
     lkwElapsedMin: 310,
     nihss: 6,
@@ -699,18 +700,18 @@ export interface OutcomeRow {
   ditgMin: number | null
   /** modified Rankin Scale at 90 days. null where the call has not happened. */
   mrs90: number | null
-  followUpStatus: 'Complete' | 'Call due' | 'Unreachable — 3 attempts' | 'Window open'
+  followUpStatus: 'Done' | 'Call due' | 'Unreachable — 3 attempts' | 'Window open'
   /** AI-708 outreach prioritisation. */
   outreachReason?: string
 }
 
 export const OUTCOMES: OutcomeRow[] = [
-  { caseNo: 'STROKE/26-27/0118', patientInitials: 'S.R.', site: 'AWF', treatedWith: 'Both', dtnMin: 38, ditgMin: 84, mrs90: 1, followUpStatus: 'Complete' },
-  { caseNo: 'STROKE/26-27/0121', patientInitials: 'K.M.', site: 'AWF', treatedWith: 'Thrombolysis', dtnMin: 52, ditgMin: null, mrs90: 2, followUpStatus: 'Complete' },
+  { caseNo: 'STROKE/26-27/0118', patientInitials: 'S.R.', site: 'ICH', treatedWith: 'Both', dtnMin: 38, ditgMin: 84, mrs90: 1, followUpStatus: 'Done' },
+  { caseNo: 'STROKE/26-27/0121', patientInitials: 'K.M.', site: 'ICH', treatedWith: 'Thrombolysis', dtnMin: 52, ditgMin: null, mrs90: 2, followUpStatus: 'Done' },
   {
     caseNo: 'STROKE/26-27/0126',
     patientInitials: 'B.N.',
-    site: 'INS',
+    site: 'IPL',
     treatedWith: 'Thrombolysis',
     dtnMin: 61,
     ditgMin: null,
@@ -721,7 +722,7 @@ export const OUTCOMES: OutcomeRow[] = [
   {
     caseNo: 'STROKE/26-27/0131',
     patientInitials: 'A.D.',
-    site: 'IHY',
+    site: 'ITP',
     treatedWith: 'Conservative',
     dtnMin: null,
     ditgMin: null,
@@ -729,7 +730,7 @@ export const OUTCOMES: OutcomeRow[] = [
     followUpStatus: 'Unreachable — 3 attempts',
     outreachReason: 'Number unobtainable. Try the attendant contact recorded at admission.',
   },
-  { caseNo: 'STROKE/26-27/0137', patientInitials: 'P.G.', site: 'AWF', treatedWith: 'Thrombectomy', dtnMin: null, ditgMin: 72, mrs90: null, followUpStatus: 'Window open' },
+  { caseNo: 'STROKE/26-27/0137', patientInitials: 'P.G.', site: 'ICH', treatedWith: 'Thrombectomy', dtnMin: null, ditgMin: 72, mrs90: null, followUpStatus: 'Window open' },
 ]
 
 export const REGISTRY_INDICATORS = [

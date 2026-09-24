@@ -57,10 +57,18 @@ export interface ScreenSpec {
   ai: string[]
   zones: ZoneId[]
   density: 'compact' | 'comfortable' | 'wall'
-  /** §5.3 night-theme-mandatory list. Still user-overridable via the Z1 toggle. */
+  /** §5.3 night-theme-mandatory list. Night is the product default; where a user has switched to light, these screens prompt. */
   nightDefault: boolean
   /** §6.1 — the one line every screen spec carries about the assistant bubble. */
   z7b: Z7bDisposition
+  /**
+   * No shell at all — no Z1, no Z2, no Z7b. `ARC-12` walls get this from their
+   * archetype; `S-02-01` sets it explicitly, because an unauthenticated screen
+   * cannot carry a facility switcher, a nav rail built from capabilities, or an
+   * assistant whose retrieval §6.1 requires be filtered to what the caller may
+   * already read. Before sign-in there is no caller.
+   */
+  bare?: boolean
   /** Whether Z3 (GP-05 patient banner) renders. */
   patientScoped: boolean
   /** Verbatim from the screen spec. */
@@ -86,7 +94,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-01',
     module: 'M-06',
-    name: 'Clinician Home / My Day',
+    name: 'My Day',
     route: '/clinician',
     archetype: 'ARC-20',
     tier: 'T1',
@@ -105,7 +113,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-02',
     module: 'M-06',
-    name: 'Patient Chart Summary',
+    name: 'Chart',
     route: '/patient/:id/chart',
     archetype: 'ARC-02',
     tier: 'T2',
@@ -123,7 +131,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-03',
     module: 'M-06',
-    name: 'Consultation Note',
+    name: 'Consultation note',
     route: '/encounter/:id/note',
     archetype: 'ARC-15',
     tier: 'T1',
@@ -142,12 +150,12 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-04',
     module: 'M-06',
-    name: 'Ambient Scribe Session',
+    name: 'Ambient scribe',
     route: null,
     surface: 'overlay',
     archetype: 'ARC-21',
     tier: 'T1',
-    personas: ['P-04'],
+    personas: ['P-04', 'P-05'],
     ai: ['AI-101', 'AI-104', 'AI-110'],
     zones: ['Z4', 'Z5', 'Z7a'],
     density: 'compact',
@@ -155,14 +163,14 @@ export const SCREENS: ScreenSpec[] = [
     // §6.1 — an overlay over S-06-03 carries no bubble of its own.
     z7b: 'n/a',
     patientScoped: true,
-    oneLiner: 'The scribe listening while the consultation happens.',
+    oneLiner: 'The scribe drafting all four sections from the visit, on request.',
     navSection: null,
     permission: 'op.note.write',
   },
   {
     id: 'S-06-05',
     module: 'M-06',
-    name: 'Problem List & Diagnosis Coding',
+    name: 'Problems and coding',
     route: '/encounter/:id/problems',
     archetype: 'ARC-15',
     tier: 'T2',
@@ -180,7 +188,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-06',
     module: 'M-06',
-    name: 'Clinical Timeline',
+    name: 'Timeline',
     route: '/patient/:id/timeline',
     archetype: 'ARC-25',
     tier: 'T2',
@@ -198,7 +206,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-07',
     module: 'M-06',
-    name: 'Prescription Writer',
+    name: 'Prescription',
     route: '/encounter/:id/rx',
     archetype: 'ARC-07',
     tier: 'T1',
@@ -219,7 +227,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-08',
     module: 'M-06',
-    name: 'Patient Instructions & Education',
+    name: 'Patient instructions',
     route: '/encounter/:id/instructions',
     archetype: 'ARC-15',
     tier: 'T2',
@@ -238,7 +246,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-09',
     module: 'M-06',
-    name: 'Co-Sign & Amendment Queue',
+    name: 'Co-sign',
     route: '/clinician/cosign',
     archetype: 'ARC-08',
     tier: 'T3',
@@ -257,7 +265,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-06-10',
     module: 'M-06',
-    name: 'Template & Order-Set Manager',
+    name: 'Templates and order sets',
     route: '/clinician/templates',
     archetype: 'ARC-18',
     tier: 'T3',
@@ -277,7 +285,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-01',
     module: 'M-09',
-    name: 'Order Entry / Basket',
+    name: 'New orders',
     route: '/encounter/:id/orders/new',
     archetype: 'ARC-07',
     tier: 'T2',
@@ -295,7 +303,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-02',
     module: 'M-09',
-    name: 'Order Sets & Pathways',
+    name: 'Order sets',
     route: '/orders/sets',
     archetype: 'ARC-07',
     tier: 'T3',
@@ -313,7 +321,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-03',
     module: 'M-09',
-    name: 'Active Orders & Status',
+    name: 'Orders',
     route: '/encounter/:id/orders',
     archetype: 'ARC-01',
     tier: 'T2',
@@ -331,7 +339,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-04',
     module: 'M-09',
-    name: 'Results Inbox',
+    name: 'Results',
     route: '/results/inbox',
     archetype: 'ARC-01',
     tier: 'T1',
@@ -349,7 +357,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-05',
     module: 'M-09',
-    name: 'Result Detail & Trend',
+    name: 'Result detail',
     route: '/results/:id',
     archetype: 'ARC-25',
     tier: 'T2',
@@ -367,7 +375,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-06',
     module: 'M-09',
-    name: 'Critical Result Acknowledgement',
+    name: 'Critical result acknowledgement',
     route: null,
     surface: 'modal',
     archetype: 'ARC-16',
@@ -386,7 +394,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-09-08',
     module: 'M-09',
-    name: 'Duplicate & Unnecessary Test Review',
+    name: 'Test stewardship',
     route: '/orders/stewardship',
     archetype: 'ARC-08',
     tier: 'T2',
@@ -406,7 +414,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-08-03',
     module: 'M-08',
-    name: 'My Inpatients',
+    name: 'Inpatients',
     route: '/ip/patients',
     archetype: 'ARC-01',
     tier: 'T2',
@@ -424,7 +432,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-08-04',
     module: 'M-08',
-    name: 'Inpatient Progress Note',
+    name: 'Progress note',
     route: '/ip/encounter/:id/note',
     archetype: 'ARC-15',
     tier: 'T1',
@@ -444,7 +452,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-08-07',
     module: 'M-08',
-    name: 'Admission Assessment',
+    name: 'Admission assessment',
     route: '/ip/encounter/:id/assessment',
     archetype: 'ARC-15',
     tier: 'T3',
@@ -466,7 +474,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-13-01',
     module: 'M-13',
-    name: 'Discharge Readiness Board',
+    name: 'Discharge board',
     route: '/discharge/board',
     archetype: 'ARC-04',
     tier: 'T1',
@@ -484,7 +492,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-13-02',
     module: 'M-13',
-    name: 'Discharge Summary Authoring',
+    name: 'Discharge summary',
     route: '/encounter/:id/discharge-summary',
     archetype: 'ARC-15',
     tier: 'T2',
@@ -503,7 +511,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-13-03',
     module: 'M-13',
-    name: 'Discharge Medication Reconciliation',
+    name: 'Medication reconciliation',
     route: '/encounter/:id/med-rec',
     archetype: 'ARC-09',
     tier: 'T2',
@@ -521,7 +529,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-13-06',
     module: 'M-13',
-    name: 'Death, MCCD & Body Handover',
+    name: 'Death and MCCD',
     route: '/encounter/:id/death',
     archetype: 'ARC-03',
     tier: 'T2',
@@ -542,7 +550,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-05-03',
     module: 'M-05',
-    name: 'OP Queue & Token Board',
+    name: 'OPD queue',
     route: '/op-queue',
     archetype: 'ARC-04',
     tier: 'T1',
@@ -560,7 +568,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-05-04',
     module: 'M-05',
-    name: 'Clinician Session Template Setup',
+    name: 'Session templates',
     route: '/schedule/templates',
     archetype: 'ARC-18',
     tier: 'T3',
@@ -578,7 +586,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-05-05',
     module: 'M-05',
-    name: 'Leave, Block & Override',
+    name: 'Blocks and leave',
     route: '/schedule/blocks',
     archetype: 'ARC-05',
     tier: 'T3',
@@ -596,7 +604,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-05-06',
     module: 'M-05',
-    name: 'Referral Inbox',
+    name: 'Referrals',
     route: '/referrals',
     archetype: 'ARC-01',
     tier: 'T2',
@@ -612,11 +620,36 @@ export const SCREENS: ScreenSpec[] = [
     permission: 'referral.read',
   },
 
-  // ══════════════════════════════════════════════ M-02 · Break-glass
+  // ══════════════════════════════════════════════ M-02 · Access
+  {
+    id: 'S-02-01',
+    module: 'M-02',
+    name: 'Sign in',
+    route: '/login',
+    archetype: 'ARC-15',
+    tier: 'T3',
+    personas: ['P-04', 'P-05', 'P-06', 'P-13', 'P-35', 'P-36', 'P-38'],
+    ai: ['AI-908'],
+    zones: ['Z5'],
+    density: 'comfortable',
+    nightDefault: false,
+    // Deviation from the spec's zone line, reasoned at `bare` above.
+    z7b: 'absent',
+    bare: true,
+    patientScoped: false,
+    oneLiner: 'Sign in — and nothing else is decided here.',
+    navSection: null,
+    // The one public screen. Everything after it is default-deny per request.
+    permission: 'public',
+    statesNotApplicable: {
+      BREAKGLASS: 'break-glass is never federated and never pre-auth',
+      'AI-ABSTAIN': 'nothing here is scored',
+    },
+  },
   {
     id: 'S-02-05',
     module: 'M-02',
-    name: 'Break-Glass Access Request',
+    name: 'Break-glass access',
     route: null,
     surface: 'modal',
     archetype: 'ARC-16',
@@ -638,7 +671,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-01',
     module: 'M-18',
-    name: 'Stroke Network Command Wall',
+    name: 'Stroke network wall',
     route: '/stroke/wall',
     archetype: 'ARC-12',
     tier: 'T1',
@@ -657,7 +690,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-02',
     module: 'M-18',
-    name: 'Single-Case Expand View',
+    name: 'Case view',
     route: null,
     surface: 'in-place',
     archetype: 'ARC-13',
@@ -676,7 +709,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-03',
     module: 'M-18',
-    name: 'Spoke-Site Readiness Strip',
+    name: 'Site readiness',
     route: '/stroke/network/sites',
     archetype: 'ARC-20',
     tier: 'T2',
@@ -694,7 +727,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-04',
     module: 'M-18',
-    name: 'Code Stroke Activation',
+    name: 'Code stroke',
     route: '/stroke/activate',
     archetype: 'ARC-15',
     tier: 'T2',
@@ -712,7 +745,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-05',
     module: 'M-18',
-    name: 'Activation Intake',
+    name: 'Intake',
     route: '/stroke/case/:id/intake',
     archetype: 'ARC-15',
     tier: 'T2',
@@ -730,7 +763,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-06',
     module: 'M-18',
-    name: 'Live Case Clock',
+    name: 'Case clock',
     route: '/stroke/case/:id/clock',
     archetype: 'ARC-13',
     tier: 'T1',
@@ -748,7 +781,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-07',
     module: 'M-18',
-    name: 'Parallel Task Board',
+    name: 'Task board',
     route: '/stroke/case/:id/tasks',
     archetype: 'ARC-04',
     tier: 'T2',
@@ -766,7 +799,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-08',
     module: 'M-18',
-    name: 'Event Stamping & Timestamp Reconciliation',
+    name: 'Timestamps',
     route: '/stroke/case/:id/events',
     archetype: 'ARC-09',
     tier: 'T2',
@@ -784,7 +817,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-09',
     module: 'M-18',
-    name: 'Team Paging & Acknowledgement',
+    name: 'Team',
     route: '/stroke/case/:id/team',
     archetype: 'ARC-01',
     tier: 'T2',
@@ -802,7 +835,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-10',
     module: 'M-18',
-    name: 'Telestroke Request Queue',
+    name: 'Telestroke queue',
     route: '/stroke/telestroke/queue',
     archetype: 'ARC-01',
     tier: 'T2',
@@ -820,7 +853,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-11',
     module: 'M-18',
-    name: 'Telestroke Session',
+    name: 'Telestroke session',
     route: '/stroke/case/:id/telestroke',
     archetype: 'ARC-22',
     tier: 'T2',
@@ -838,7 +871,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-12',
     module: 'M-18',
-    name: 'Remote NIHSS Assessment',
+    name: 'NIHSS',
     route: '/stroke/case/:id/nihss',
     archetype: 'ARC-14',
     tier: 'T2',
@@ -856,14 +889,14 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-13',
     module: 'M-18',
-    name: 'Spoke-Site Simplified Console',
+    name: 'Spoke console',
     route: '/stroke/spoke',
     archetype: 'ARC-15',
     tier: 'T1',
     personas: ['P-38'],
     ai: ['AI-209', 'AI-203'],
     zones: ['Z1', 'Z2', 'Z4', 'Z5', 'Z7a', 'Z7b'],
-    // Deliberately comfortable: "a general physician in Nashik, alone, at 02:00."
+    // Deliberately comfortable: "a general physician in Pollachi, alone, at 02:00."
     density: 'comfortable',
     nightDefault: true,
     z7b: 'GP-17',
@@ -875,7 +908,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-14',
     module: 'M-18',
-    name: 'Imaging AI Triage Card',
+    name: 'Imaging triage',
     route: '/stroke/case/:id/imaging',
     archetype: 'ARC-11',
     tier: 'T1',
@@ -893,7 +926,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-15',
     module: 'M-18',
-    name: 'ASPECTS Scoring Workspace',
+    name: 'ASPECTS',
     route: '/stroke/case/:id/aspects',
     archetype: 'ARC-11',
     tier: 'T2',
@@ -911,7 +944,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-16',
     module: 'M-18',
-    name: 'Perfusion & Mismatch Review',
+    name: 'Perfusion',
     route: '/stroke/case/:id/perfusion',
     archetype: 'ARC-11',
     tier: 'T2',
@@ -929,7 +962,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-17',
     module: 'M-18',
-    name: 'Thrombolysis Eligibility & Dosing',
+    name: 'Thrombolysis',
     route: '/stroke/case/:id/thrombolysis',
     archetype: 'ARC-14',
     tier: 'T1',
@@ -948,7 +981,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-18',
     module: 'M-18',
-    name: 'EVT Selection & Cath Lab Decision',
+    name: 'EVT selection',
     route: '/stroke/case/:id/evt',
     archetype: 'ARC-14',
     tier: 'T2',
@@ -966,7 +999,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-18-19',
     module: 'M-18',
-    name: 'Transfer, DIDO Clock & Single-Act Reservation',
+    name: 'Transfer',
     route: '/stroke/case/:id/transfer',
     archetype: 'ARC-08',
     tier: 'T2',
@@ -982,9 +1015,27 @@ export const SCREENS: ScreenSpec[] = [
     permission: 'stroke.transfer.approve',
   },
   {
+    id: 'S-18-21',
+    module: 'M-18',
+    name: 'Stroke-AI Console',
+    route: '/stroke/ai-console',
+    archetype: 'ARC-11',
+    tier: 'T1',
+    personas: ['P-35', 'P-36', 'P-38'],
+    ai: ['AI-403', 'AI-404', 'AI-405', 'AI-406', 'AI-407'],
+    zones: SHELL,
+    density: 'comfortable',
+    nightDefault: true,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'The scan, the reading, and the decision it unlocks — on one surface.',
+    navSection: 'stroke',
+    permission: 'stroke.case.read',
+  },
+  {
     id: 'S-18-20',
     module: 'M-18',
-    name: 'Stroke Outcomes, mRS-90 & Registry',
+    name: 'Stroke registry',
     route: '/stroke/registry',
     archetype: 'ARC-19',
     tier: 'T2',
@@ -1004,7 +1055,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-28-02',
     module: 'M-28',
-    name: 'Clinician Assistant',
+    name: 'Clinician assistant',
     route: '/assistant/clinician',
     archetype: 'ARC-21',
     tier: 'T1',
@@ -1026,7 +1077,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-28-09',
     module: 'M-28',
-    name: 'Stroke Command Assistant',
+    name: 'Stroke command assistant',
     route: '/assistant/stroke',
     archetype: 'ARC-21',
     tier: 'T2',
@@ -1047,7 +1098,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-15-04',
     module: 'M-15',
-    name: 'Image Viewer with AI Overlay',
+    name: 'Imaging',
     route: '/radiology/study/:id/view',
     archetype: 'ARC-11',
     tier: 'T1',
@@ -1065,7 +1116,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-15-06',
     module: 'M-15',
-    name: 'Critical Finding Escalation',
+    name: 'Critical finding escalation',
     route: null,
     surface: 'modal',
     archetype: 'ARC-16',
@@ -1084,7 +1135,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-27-02',
     module: 'M-27',
-    name: 'Clinician Teleconsult Queue',
+    name: 'Teleconsult queue',
     route: '/tele/queue',
     archetype: 'ARC-01',
     tier: 'T3',
@@ -1102,7 +1153,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-27-03',
     module: 'M-27',
-    name: 'Teleconsult Session',
+    name: 'Teleconsult session',
     route: '/tele/session/:id',
     archetype: 'ARC-22',
     tier: 'T2',
@@ -1120,7 +1171,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-27-04',
     module: 'M-27',
-    name: 'Tele-Prescription & Category Gate',
+    name: 'Tele-prescription',
     route: '/tele/session/:id/rx',
     archetype: 'ARC-07',
     tier: 'T2',
@@ -1139,7 +1190,7 @@ export const SCREENS: ScreenSpec[] = [
   {
     id: 'S-16-08',
     module: 'M-16',
-    name: 'ADR Reporting (PvPI)',
+    name: 'ADR reporting',
     route: '/pharmacy/adr',
     archetype: 'ARC-15',
     tier: 'T3',
@@ -1203,6 +1254,26 @@ export function buildPath(id: string, params: Record<string, string> = {}): stri
   })
 }
 
+/**
+ * Where a citation points. Sources read like `S-27-03 · M-27.10`; the screen
+ * id is what can be opened, with the §8 sample ids filled the way the route
+ * walk fills them. Returns undefined where the source is not a screen in this
+ * build, so the caller can say so instead of pretending.
+ */
+export function routeForSource(source: string): string | undefined {
+  const m = /S-\d\d-\d\d/.exec(source)
+  const spec = m ? maybeScreen(m[0]) : undefined
+  const route = spec?.route
+  if (!route) return undefined
+  if (route.startsWith('/patient/')) return route.replace(':id', 'ICH-0044051')
+  if (route.startsWith('/stroke/case/')) return route.replace(':id', '0141')
+  if (route.startsWith('/radiology/study/')) return route.replace(':id', 'ST-4471')
+  if (route === '/results/:id') return '/results/R-88410'
+  if (route.startsWith('/tele/session/')) return route.replace(':id', 'E-118430')
+  if (route.startsWith('/ip/encounter/')) return route.replace(':id', 'E-118366')
+  return route.replace(':id', 'E-118402')
+}
+
 /** Which of the seven selectable personas can reach this screen. */
 export function selectablePersonas(spec: ScreenSpec): PersonaId[] {
   return PERSONAS.filter((p) => (spec.personas as string[]).includes(p))
@@ -1216,9 +1287,12 @@ export function screensInSection(section: NavSection): ScreenSpec[] {
   return SCREENS.filter((s) => s.navSection === section)
 }
 
-/** ARC-12 walls and kiosks carry no shell and no assistant bubble. */
+/**
+ * Screens that carry no shell and no assistant bubble — `ARC-12` walls, which
+ * get it from the archetype, and `S-02-01`, which declares it on the row.
+ */
 export function isBare(spec: ScreenSpec): boolean {
-  return ARCHETYPE_SPECS[spec.archetype].bare === true
+  return spec.bare === true || ARCHETYPE_SPECS[spec.archetype].bare === true
 }
 
 /** §6.1 — the bubble renders only where the screen's Z7b line says GP-17. */

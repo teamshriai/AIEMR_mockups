@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
 # Visits every routed screen in headless Chrome and asserts it rendered.
 #
-# A rendered screen prints its own id in the Z4 breadcrumb and in the footer
-# line, so finding the id in the DOM proves the component mounted rather than
-# falling through to the router's fallback.
+# A rendered screen carries `data-screen-id` on its root, so finding it in the
+# DOM proves the component mounted rather than falling through to the router's
+# fallback. It used to grep the footer spec line, which the calm screens do not
+# print — an assertion resting on visible copy breaks when the copy changes.
+#
+# `?e2e=1` is a DEV-only hook in `src/main.tsx`: --dump-dom cannot type into the
+# sign-in form, so without it every route redirects to /login. It is compiled
+# out of production builds.
 #
 # The one expected miss is S-18-01: ARC-12 command walls strip the shell
-# entirely ("Z5 only, no Z1, no Z2"), so there is no breadcrumb to print.
+# entirely ("Z5 only, no Z1, no Z2") and render their own frame.
 #
 # Usage:  npm run dev   # in another terminal
 #         ./scripts/walk-routes.sh
 set -u
-BASE="${1:-http://localhost:5173}"
+BASE="${1:-http://localhost:5180}"
 CHROME="${CHROME:-google-chrome}"
 
 # Sensible params so every screen lands on real sample data.
 route_for() {
   case "$1" in
-    /patient/*)          echo "${1/:id/AWF-0044051}" ;;
+    /patient/*)          echo "${1/:id/ICH-0044051}" ;;
     /stroke/case/*)      echo "${1/:id/0141}" ;;
     /radiology/study/*)  echo "${1/:id/ST-4471}" ;;
     /results/:id)        echo "/results/R-88410" ;;
@@ -41,9 +46,11 @@ pass=0; fail=0
 for row in "${rows[@]}"; do
   id="${row%% *}"; pattern="${row##* }"
   route="$(route_for "$pattern")"
+  # Routes with their own query string need & rather than ?.
+  case "$route" in *\?*) sep='&' ;; *) sep='?' ;; esac
   dom="$(timeout 40 "$CHROME" --headless --disable-gpu --no-sandbox \
-          --virtual-time-budget=4500 --dump-dom "${BASE}${route}" 2>/dev/null)"
-  if grep -q "$id" <<< "$dom" && ! grep -qE 'has no component|No screen at this address' <<< "$dom"; then
+          --virtual-time-budget=4500 --dump-dom "${BASE}${route}${sep}e2e=1" 2>/dev/null)"
+  if grep -q "data-screen-id=\"$id\"" <<< "$dom" && ! grep -qE 'has no component|No screen at this address' <<< "$dom"; then
     pass=$((pass + 1))
   else
     printf 'FAIL  %-9s %s\n' "$id" "$route"

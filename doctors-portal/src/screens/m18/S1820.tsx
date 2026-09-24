@@ -7,31 +7,26 @@
  * finished three months ago, and what is left is a phone call somebody has to
  * make. AI-708 prioritises the outreach; the fallback is a scheduled call list,
  * which is what most registries actually run on.
+ *
+ * Calm pass: the default slice is the calls due now. The seven-column table is
+ * a calm worklist whose status column is the chip and the call button. The
+ * hard 90-day deadline is stated once, on the alert; the class-3 audit rule is
+ * stated once, behind Why.
  */
 
 import { useState } from 'react'
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 
-import { Diamond, RowBadge } from '@/components/ai'
+import { Worklist } from '@/archetypes'
+import type { WorklistColumn } from '@/archetypes'
+import { ScopeTabs, SectionCard, Why, useScope } from '@/components/calm'
 import { IndicatorBars } from '@/components/charts'
-import {
-  Alert,
-  Button,
-  Card,
-  Chip,
-  Icon,
-  KeyValue,
-  Select,
-  Table,
-  Td,
-  Th,
-  Tr,
-  cx,
-} from '@/components/primitives'
+import { Alert, Button, Chip, Icon, Select, cx } from '@/components/primitives'
 import { OUTCOMES, REGISTRY_INDICATORS } from '@/data/stroke'
 import type { OutcomeRow } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useUI } from '@/store/ui'
-import { Screen, ScreenSection } from '@/shell/Screen'
+import { Screen } from '@/shell/Screen'
 
 const MRS_LABEL: Record<number, string> = {
   0: 'No symptoms',
@@ -43,17 +38,58 @@ const MRS_LABEL: Record<number, string> = {
   6: 'Died',
 }
 
+type Scope = 'due' | 'open' | 'complete'
+const SCOPES: readonly Scope[] = ['due', 'open', 'complete']
+
+/** An action inside a calm worklist row — a span, because the row is already a button. */
+function RowAction({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  const fire = (e: MouseEvent | KeyboardEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onClick()
+  }
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={fire}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') fire(e)
+      }}
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-pill bg-brand px-3.5 text-[0.88em] font-semibold text-brand-on transition-colors hover:bg-brand-dark"
+    >
+      <Icon name={icon} size={14} />
+      {children}
+    </span>
+  )
+}
+
 export function S1820() {
   const toast = useUI((s) => s.toast)
   const aiActive = useAI(selectAiActive)
   const [period, setPeriod] = useState('Last 90 days')
   const [called, setCalled] = useState<string[]>([])
+  const [scope, setScope] = useScope(SCOPES, 'due')
 
-  const outstanding = OUTCOMES.filter(
-    (o) => o.mrs90 === null && o.followUpStatus !== 'Window open' && !called.includes(o.caseNo),
+  const isDone = (o: OutcomeRow) => o.mrs90 !== null || called.includes(o.caseNo)
+
+  /** The three slices of the follow-up field. Calls due is the one acted on now. */
+  const due = OUTCOMES.filter(
+    (o) => !isDone(o) && (o.followUpStatus === 'Call due' || o.followUpStatus === 'Unreachable — 3 attempts'),
   )
-  const complete = OUTCOMES.filter((o) => o.mrs90 !== null || called.includes(o.caseNo))
+  const open = OUTCOMES.filter((o) => !isDone(o) && o.followUpStatus === 'Window open')
+  const complete = OUTCOMES.filter(isDone)
   const completeness = Math.round((complete.length / OUTCOMES.length) * 100)
+
+  const rows = scope === 'due' ? due : scope === 'open' ? open : complete
 
   const indicators = REGISTRY_INDICATORS.map((i) => {
     /** Fraction of the target, capped for the bar. */
@@ -66,15 +102,111 @@ export function S1820() {
     return { label: i.label, value: i.value, target: i.target, met: i.met, fraction: Math.min(1, fraction) }
   })
 
+  const call = (o: OutcomeRow) => {
+    setCalled((c) => [...c, o.caseNo])
+    toast({
+      tone: 'success',
+      title: `${o.patientInitials} reached`,
+      detail: 'mRS recorded. Completeness has moved.',
+    })
+  }
+
+  const columns: WorklistColumn<OutcomeRow>[] = [
+    {
+      key: 'case',
+      label: 'Case',
+      role: 'lead',
+      cell: (o) => <span title={o.caseNo}>{o.caseNo.split('/').pop()}</span>,
+    },
+    {
+      key: 'site',
+      label: 'Site',
+      role: 'primary',
+      cell: (o) => (
+        <>
+          {o.site} · {o.treatedWith}
+          <span className="font-normal text-ink-3"> · {o.patientInitials}</span>
+        </>
+      ),
+    },
+    {
+      key: 'dtn',
+      label: 'DTN',
+      role: 'context',
+      cell: (o) => (o.dtnMin === null ? null : <span className="tabular">DTN {o.dtnMin} min</span>),
+    },
+    {
+      key: 'ditg',
+      label: 'Door to groin',
+      role: 'context',
+      cell: (o) => (o.ditgMin === null ? null : <span className="tabular">door-to-groin {o.ditgMin} min</span>),
+    },
+    {
+      key: 'mrs',
+      label: 'mRS at 90 days',
+      role: 'context',
+      cell: (o) =>
+        o.mrs90 !== null ? (
+          <span className="tabular">
+            mRS {o.mrs90} · {MRS_LABEL[o.mrs90]}
+          </span>
+        ) : called.includes(o.caseNo) ? (
+          'mRS collected'
+        ) : (
+          'mRS not yet recorded'
+        ),
+    },
+    {
+      key: 'reason',
+      label: 'Why now',
+      role: 'context',
+      cell: (o) => (aiActive && !isDone(o) && o.outreachReason ? o.outreachReason : null),
+    },
+    {
+      key: 'status',
+      label: 'Follow-up',
+      role: 'status',
+      cell: (o) =>
+        isDone(o) ? (
+          <Chip tone="normal" icon="Check">
+            Complete
+          </Chip>
+        ) : o.followUpStatus === 'Window open' ? (
+          <Chip tone="neutral" icon="Clock">
+            Window open
+          </Chip>
+        ) : (
+          <Chip
+            tone={o.followUpStatus.startsWith('Unreachable') ? 'abnormal' : 'caution'}
+            icon={o.followUpStatus.startsWith('Unreachable') ? 'TriangleAlert' : 'PhoneCall'}
+          >
+            {o.followUpStatus}
+          </Chip>
+        ),
+    },
+    {
+      key: 'action',
+      label: '',
+      role: 'status',
+      cell: (o) =>
+        isDone(o) || o.followUpStatus === 'Window open' ? null : (
+          <RowAction icon="PhoneCall" onClick={() => call(o)}>
+            Call now
+          </RowAction>
+        ),
+    },
+  ]
+
   return (
     <Screen
       screenId="S-18-20"
       loadingShape="list"
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN']}
-      chips={
+      heading="Stroke registry"
+      subheading={
         <>
-          <Chip tone={completeness >= 90 ? 'normal' : 'caution'}>{completeness}% follow-up complete</Chip>
-          {outstanding.length > 0 && <Chip tone="abnormal">{outstanding.length} calls outstanding</Chip>}
+          {completeness}% follow-up complete against a 90% target · {due.length} call
+          {due.length === 1 ? '' : 's'} due
         </>
       }
       actions={
@@ -95,7 +227,7 @@ export function S1820() {
               toast({
                 tone: 'info',
                 title: 'Registry export prepared',
-                detail: 'Every export is an audited event. The recipient and the fields are recorded.',
+                detail: 'The recipient and the fields are recorded.',
               })
             }
           >
@@ -105,160 +237,82 @@ export function S1820() {
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Completeness</h3>
-            <p className="tabular mt-1 text-4xl font-bold">{completeness}%</p>
+          <SectionCard title="Completeness" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+            <p className={cx('tabular text-4xl font-bold', completeness >= 90 ? 'text-normal' : 'text-caution')}>
+              {completeness}%
+            </p>
             <p className="text-[0.9em] text-ink-3">target 90%</p>
-            <dl className="mt-3 divide-y divide-glass-hairline">
-              <KeyValue label="Cases in period">{OUTCOMES.length}</KeyValue>
-              <KeyValue label="mRS recorded">{complete.length}</KeyValue>
-              <KeyValue label="Calls outstanding">{outstanding.length}</KeyValue>
-            </dl>
             <p className="mt-2.5 text-[0.88em] text-ink-2">
               Incomplete follow-up is the single commonest reason a stroke centre loses its accreditation, and it has
               nothing to do with the quality of the care.
             </p>
-          </Card>
+          </SectionCard>
 
           {aiActive && (
-            <Card className="p-4">
-              <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-                <Diamond size={10} />
-                AI-708 · outreach priority
+            <Why label="How the call list is ordered">
+              <p className="text-ink-2">
+                AI-708 orders the call list by how close each case is to the end of its 90-day window, and suggests
+                which contact to try. The fallback is a scheduled call list in date order.
               </p>
-              <p className="mt-1.5 text-[0.9em] text-ink-2">
-                Orders the call list by how close each case is to the end of its 90-day window, and suggests which
-                contact to try. The fallback is a scheduled call list in date order.
-              </p>
-            </Card>
+            </Why>
           )}
         </div>
       }
       railTitle="Registry"
     >
       <div className="space-y-5">
-        {outstanding.length > 0 && (
-          <Alert tone="caution" title={`${outstanding.length} follow-up call${outstanding.length === 1 ? '' : 's'} outstanding`}>
-            {outstanding[0].outreachReason} Once the 90-day window closes the outcome cannot be recorded at all, and
-            the case counts against completeness for good.
+        {/* The one statement of the hard deadline. */}
+        {due.length > 0 && (
+          <Alert tone="caution" title={`${due.length} follow-up call${due.length === 1 ? '' : 's'} outstanding`}>
+            {due[0].outreachReason} Once the 90-day window closes the outcome cannot be recorded at all, and the case
+            counts against completeness for good.
           </Alert>
         )}
 
-        <ScreenSection title="Indicators" subtitle="Against target, one measure per bar">
-          <Card className="p-5">
-            <IndicatorBars rows={indicators} />
-            <p className="mt-4 flex items-start gap-2 text-[0.86em] text-ink-3">
-              <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-              Two are missed: DIDO at the spokes, and follow-up completeness. Both are coordination problems rather
-              than clinical ones, which is the whole argument for the module.
+        <Worklist
+          rows={rows}
+          columns={columns}
+          rowKey={(o) => o.caseNo}
+          caption="Stroke cases and their 90-day outcomes"
+          noun="cases"
+          emptyWhy={
+            scope === 'due'
+              ? 'No case is waiting on a call right now. The ones whose window is still open are one tap away.'
+              : scope === 'open'
+                ? 'Every case in this period is either called or due — none is still inside its window.'
+                : 'No outcome has been recorded in this period yet.'
+          }
+          filters={
+            <ScopeTabs
+              value={scope}
+              onChange={setScope}
+              options={[
+                { key: 'due', label: 'Calls due', icon: 'PhoneCall', count: due.length },
+                { key: 'open', label: 'Window open', icon: 'Clock', count: open.length },
+                { key: 'complete', label: 'Done', icon: 'Check', count: complete.length },
+              ]}
+            />
+          }
+        />
+
+        <SectionCard
+          title="Indicators"
+          meta={<span className="text-[0.88em] text-ink-3">against target, one measure per bar</span>}
+          bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+        >
+          <IndicatorBars rows={indicators} />
+          <Why label="Which two are missed, and what gets exported" className="mt-3">
+            <p className="text-ink-2">
+              Two are missed: DIDO at the spokes, and follow-up completeness. Both are coordination problems rather than
+              clinical ones, which is the whole argument for the module.
             </p>
-          </Card>
-        </ScreenSection>
-
-        <ScreenSection title="Cases and outcomes" subtitle="mRS at 90 days, and who still needs a call">
-          <Card className="overflow-hidden">
-            <Table
-              caption="Stroke cases and their 90-day outcomes"
-              rowCount={`${OUTCOMES.length} cases · ${complete.length} with an outcome recorded`}
-              head={
-                <>
-                  <Th>Case</Th>
-                  <Th>Site</Th>
-                  <Th>Treated with</Th>
-                  <Th>DTN</Th>
-                  <Th className="hidden md:table-cell">Door to groin</Th>
-                  <Th>mRS at 90 days</Th>
-                  <Th>Follow-up</Th>
-                </>
-              }
-            >
-              {OUTCOMES.map((o: OutcomeRow) => {
-                const done = o.mrs90 !== null || called.includes(o.caseNo)
-                return (
-                  <Tr key={o.caseNo} className={cx(!done && o.followUpStatus !== 'Window open' && 'bg-caution-soft/30')}>
-                    <Td>
-                      <span className="tabular block font-medium">{o.caseNo}</span>
-                      <span className="block text-[0.86em] text-ink-3">{o.patientInitials}</span>
-                    </Td>
-                    <Td className="tabular">{o.site}</Td>
-                    <Td>
-                      <Chip tone={o.treatedWith === 'Conservative' ? 'inactive' : 'brand'}>{o.treatedWith}</Chip>
-                    </Td>
-                    <Td className="tabular">{o.dtnMin ?? '—'}</Td>
-                    <Td className="tabular hidden md:table-cell">{o.ditgMin ?? '—'}</Td>
-                    <Td>
-                      {o.mrs90 !== null ? (
-                        <span className="flex flex-col">
-                          <span className="tabular font-semibold">{o.mrs90}</span>
-                          <span className="text-[0.84em] text-ink-3">{MRS_LABEL[o.mrs90]}</span>
-                        </span>
-                      ) : called.includes(o.caseNo) ? (
-                        <Chip tone="normal" icon="Check">
-                          collected
-                        </Chip>
-                      ) : (
-                        <Chip tone="caution" icon="CircleHelp">
-                          not yet
-                        </Chip>
-                      )}
-                    </Td>
-                    <Td>
-                      {done ? (
-                        <Chip tone="normal" icon="Check">
-                          Complete
-                        </Chip>
-                      ) : o.followUpStatus === 'Window open' ? (
-                        <Chip tone="neutral" icon="Clock">
-                          Window open
-                        </Chip>
-                      ) : (
-                        <span className="flex flex-col gap-1.5">
-                          {aiActive && o.outreachReason ? (
-                            <RowBadge
-                              label={o.followUpStatus}
-                              reason={o.outreachReason}
-                              tone={o.followUpStatus.startsWith('Unreachable') ? 'abnormal' : 'caution'}
-                              band="HIGH"
-                            />
-                          ) : (
-                            <Chip tone={o.followUpStatus.startsWith('Unreachable') ? 'abnormal' : 'caution'}>
-                              {o.followUpStatus}
-                            </Chip>
-                          )}
-                          <Button
-                            size="sm"
-                            tone="primary"
-                            icon="PhoneCall"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setCalled((c) => [...c, o.caseNo])
-                              toast({
-                                tone: 'success',
-                                title: `${o.patientInitials} reached`,
-                                detail: 'mRS recorded. Completeness has moved.',
-                              })
-                            }}
-                          >
-                            Call now
-                          </Button>
-                        </span>
-                      )}
-                    </Td>
-                  </Tr>
-                )
-              })}
-            </Table>
-          </Card>
-        </ScreenSection>
-
-        <Card className="p-4">
-          <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">What gets exported</h3>
-          <p className="mt-1.5 text-[0.9em] text-ink-2">
-            Clocks, treatment, outcome and site — with de-identified case references. Every export is a class-3 audit
-            event: the recipient, the fields and the reason are all recorded, because a registry submission is a
-            disclosure of patient data however aggregated it looks.
-          </p>
-        </Card>
+            <p className="text-ink-2">
+              An export carries clocks, treatment, outcome and site, with de-identified case references. Every export is
+              a class-3 audit event: the recipient, the fields and the reason are all recorded, because a registry
+              submission is a disclosure of patient data however aggregated it looks.
+            </p>
+          </Why>
+        </SectionCard>
       </div>
     </Screen>
   )

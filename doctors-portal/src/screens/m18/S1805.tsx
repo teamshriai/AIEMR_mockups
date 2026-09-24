@@ -6,14 +6,19 @@
  * The hub's counterpart to the spoke console: the same six questions, plus the
  * rest that the hub can afford to collect. AI-112 extracts structure from the
  * free text already written at triage, so the same fact is not typed twice.
+ *
+ * Calm pass: the triage note is rendered once, in the rail; the exclusions
+ * (four selects, all "No") fold behind one line; the consent-mode note and the
+ * hub/spoke rationale fold behind Why.
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { FieldGroup, FormGroups } from '@/archetypes'
-import { Diamond, FieldChip } from '@/components/ai'
-import { Alert, Button, Card, Chip, Field, Icon, Select, TextArea, TextInput } from '@/components/primitives'
+import { FieldChip } from '@/components/ai'
+import { Disclosure, SectionCard, Why } from '@/components/calm'
+import { Button, Chip, Field, Select, TextArea, TextInput } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { strokeCase } from '@/data/stroke'
@@ -41,6 +46,8 @@ const EXTRACTED = [
   },
 ]
 
+const EXCLUSIONS = ['Recent major surgery', 'Prior intracranial haemorrhage', 'Known bleeding disorder', 'Recent stroke within 3 months']
+
 export function S1805({ id }: { id?: string }) {
   const navigate = useNavigate()
   const toast = useUI((s) => s.toast)
@@ -54,6 +61,7 @@ export function S1805({ id }: { id?: string }) {
   const [fields, setFields] = useState<Record<string, string>>({})
 
   const accepted = EXTRACTED.filter((e) => dispositions[`intake:${e.key}`]).length
+  const lowBand = EXTRACTED.filter((e) => e.band === 'LOW').length
 
   return (
     <Screen
@@ -62,10 +70,23 @@ export function S1805({ id }: { id?: string }) {
       bannerExtra={<CaseClockStrip caseId={c.id} />}
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'AI-OFF', 'AI-LOW']}
+      heading="Intake"
+      subheading={
+        aiActive ? (
+          <>
+            {accepted} of {EXTRACTED.length} extracted fields confirmed
+            {lowBand > 0 && ` · ${lowBand} at low confidence`}
+          </>
+        ) : (
+          <>Six fields, entered by hand · the AI is off</>
+        )
+      }
       chips={
-        <Chip tone={accepted === EXTRACTED.length ? 'normal' : 'caution'}>
-          {accepted} of {EXTRACTED.length} extracted fields confirmed
-        </Chip>
+        accepted === EXTRACTED.length && aiActive ? (
+          <Chip tone="normal" icon="Check">
+            all confirmed
+          </Chip>
+        ) : undefined
       }
       actions={
         <Button icon="Syringe" onClick={() => navigate(`/stroke/case/${c.id}/thrombolysis`)}>
@@ -74,35 +95,36 @@ export function S1805({ id }: { id?: string }) {
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Triage note, as written</h3>
-            <p className="mt-2 rounded-panel bg-glass-fill-muted px-3 py-2.5 text-[0.9em] leading-relaxed text-ink-2">
-              {TRIAGE_TEXT}
-            </p>
-            <p className="mt-2 text-[0.86em] text-ink-3">
-              The free text is the source. Extraction saves retyping; it does not replace the note.
-            </p>
-          </Card>
+          {/* The source text, once. It opens folded; the field chips quote it in their drawers. */}
+          <SectionCard title="Triage note, as written">
+            <Disclosure label="the note" defaultOpen={false}>
+              <p className="rounded-panel bg-glass-fill-muted px-3 py-2.5 text-[0.9em] leading-relaxed text-ink-2">
+                {TRIAGE_TEXT}
+              </p>
+            </Disclosure>
+          </SectionCard>
 
-          <Card className="p-4">
-            <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-              <Diamond size={10} />
-              AI-112 · structured extraction
-            </p>
-            <p className="mt-1.5 text-[0.9em] text-ink-2">
-              One field arrives at LOW confidence on purpose — &ldquo;something for his heart&rdquo; is genuinely
-              uncertain, and the honest output is a low band with the quote attached, not a guess.
-            </p>
-          </Card>
+          {aiActive && (
+            <Why label="Why one field arrives at low confidence">
+              <p className="text-ink-2">
+                &ldquo;Something for his heart&rdquo; is genuinely uncertain, and the honest output is a low band with
+                the quote attached, not a guess. The free text is the source; extraction saves retyping and does not
+                replace the note.
+              </p>
+            </Why>
+          )}
         </div>
       }
       railTitle="Source"
       actionBar={
         <>
-          <Button icon="Save">Save</Button>
-          <span className="text-[0.88em] text-ink-3">
-            Nothing here blocks the clock — the intake runs alongside the pathway
-          </span>
+          <Button
+            icon="Save"
+            onClick={() => toast({ tone: 'info', title: 'Intake saved', detail: 'Saved as it stands. You can come back to it; the case clock is unaffected.' })}
+          >
+            Save
+          </Button>
+          <span className="text-[0.88em] text-ink-3">Nothing here blocks the clock</span>
           <Button
             tone="primary"
             className="ml-auto"
@@ -118,11 +140,6 @@ export function S1805({ id }: { id?: string }) {
       }
     >
       <div className="space-y-5">
-        <Alert tone="info" title="The same six questions, plus what the hub can afford to ask">
-          The spoke console asks six. Here, those six arrive pre-filled from the triage note and the rest is collected
-          while the imaging runs — so the extra detail costs no clock time.
-        </Alert>
-
         <FormGroups columns={2}>
           <FieldGroup title="The six that change the decision" span>
             <div className="grid gap-4 lg:grid-cols-2">
@@ -169,7 +186,7 @@ export function S1805({ id }: { id?: string }) {
                     id={`intake-${e.key}`}
                     value={fields[e.key] ?? ''}
                     onChange={(ev) => setFields((f) => ({ ...f, [e.key]: ev.target.value }))}
-                    placeholder="Type it, or accept the extraction"
+                    placeholder={aiActive ? 'Type it, or accept the extraction' : 'Type it'}
                   />
                 </Field>
               ))}
@@ -184,7 +201,7 @@ export function S1805({ id }: { id?: string }) {
             </div>
           </FieldGroup>
 
-          <FieldGroup title="Pre-stroke function" hint="Drives whether thrombectomy is offered at all">
+          <FieldGroup title="Pre-stroke function">
             <Field label="Pre-stroke modified Rankin Scale" htmlFor="intake-mrs">
               <Select id="intake-mrs" defaultValue="0 — no symptoms">
                 {[
@@ -208,18 +225,22 @@ export function S1805({ id }: { id?: string }) {
             </Field>
           </FieldGroup>
 
-          <FieldGroup title="Exclusions" hint="A no here is as useful as a yes — record it either way">
-            {['Recent major surgery', 'Prior intracranial haemorrhage', 'Known bleeding disorder', 'Recent stroke within 3 months'].map(
-              (x) => (
-                <Field key={x} label={x} htmlFor={`ex-${x}`}>
-                  <Select id={`ex-${x}`} defaultValue="No">
-                    {['No', 'Yes', 'Unknown'].map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
-                  </Select>
-                </Field>
-              ),
-            )}
+          {/* Four selects that all read "No" tonight. One line until one of them does not. */}
+          <FieldGroup title="Exclusions">
+            <p className="text-[0.92em] text-ink-2">None recorded · a no is as useful as a yes</p>
+            <Disclosure label="exclusions" count={EXCLUSIONS.length}>
+              <div className="space-y-4 pt-1">
+                {EXCLUSIONS.map((x) => (
+                  <Field key={x} label={x} htmlFor={`ex-${x}`}>
+                    <Select id={`ex-${x}`} defaultValue="No">
+                      {['No', 'Yes', 'Unknown'].map((o) => (
+                        <option key={o}>{o}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                ))}
+              </div>
+            </Disclosure>
           </FieldGroup>
 
           <FieldGroup title="Next of kin and consent" span>
@@ -231,11 +252,16 @@ export function S1805({ id }: { id?: string }) {
                 <TextArea id="intake-consent" rows={3} placeholder="Who it was discussed with, and what was said…" />
               </Field>
             </div>
-            <p className="flex items-start gap-1.5 text-[0.86em] text-ink-3">
-              <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-              A thumb impression with a witness is a first-class signature mode here, not a fallback — it is how most
-              consent at 02:00 is actually taken.
-            </p>
+            <Why label="How consent is taken at 02:00">
+              <p className="text-ink-2">
+                A thumb impression with a witness is a first-class signature mode here, not a fallback — it is how most
+                consent at 02:00 is actually taken.
+              </p>
+              <p className="text-ink-3">
+                The spoke console asks six questions. Here those six arrive pre-filled from the triage note and the rest
+                is collected while the imaging runs, so the extra detail costs no clock time.
+              </p>
+            </Why>
           </FieldGroup>
         </FormGroups>
       </div>

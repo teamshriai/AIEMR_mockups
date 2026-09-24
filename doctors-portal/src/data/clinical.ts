@@ -285,6 +285,61 @@ export const NOTE_DRAFT_SD_P_03: NoteSectionSeed[] = [
   },
 ]
 
+// ─────────────────────────────────────────── Discharge summary (AI-106, G3)
+
+export interface DischargeSectionSeed {
+  key: 'reason' | 'course' | 'diagnosis' | 'meds' | 'followup' | 'redflags'
+  label: string
+  required: boolean
+  /** AI-106's draft, shown only when the clinician asks for it. */
+  draft: string
+}
+
+/** S-13-02 · SD-P-03's discharge summary, six sections, drafted on request. */
+export const DISCHARGE_DRAFT_SD_P_03: DischargeSectionSeed[] = [
+  {
+    key: 'reason',
+    label: 'Reason for admission',
+    required: true,
+    draft:
+      'Admitted on 17-Sep-2026 with a four-day history of productive cough, fever and progressive breathlessness. Chest imaging confirmed right lower lobe consolidation. Treated as community-acquired pneumonia.',
+  },
+  {
+    key: 'course',
+    label: 'Course in hospital',
+    required: true,
+    draft:
+      'Started on piperacillin-tazobactam 4.5g IV 8-hourly on admission. Blood cultures were taken before antibiotics and showed no growth at 48 hours. Oxygen requirement rose from 2 L to 4 L overnight on 20/21-Sep with a NEWS2 of 7; CRP rose from 96 to 184 mg/L. Antibiotic cover was escalated after review of the documented penicillin allergy. Creatinine rose to 212 µmol/L, meeting stage 2 acute kidney injury, and the enoxaparin dose was renally adjusted. He improved from 22-Sep with weaning of oxygen to room air by 24-Sep.',
+  },
+  {
+    key: 'diagnosis',
+    label: 'Discharge diagnosis',
+    required: true,
+    draft: 'Community-acquired pneumonia, right lower lobe (J18.9). Acute kidney injury, stage 2, resolved. Type 2 diabetes (E11.9), pre-existing.',
+  },
+  {
+    key: 'meds',
+    label: 'Medication on discharge',
+    required: true,
+    draft:
+      'Levofloxacin 750 mg orally once daily for a further 3 days. Atorvastatin 40 mg at night, continued. Metformin 500 mg twice daily, restarted 23-Sep after renal function recovered. Enoxaparin stopped on discharge.',
+  },
+  {
+    key: 'followup',
+    label: 'Follow-up',
+    required: true,
+    draft:
+      'Chest clinic in 6 weeks with a repeat chest X-ray beforehand. Serum creatinine and electrolytes in 1 week at the local laboratory. General medicine review with Dr Iyer in 4 weeks.',
+  },
+  {
+    key: 'redflags',
+    label: 'When to come back',
+    required: true,
+    draft:
+      'Return immediately if breathlessness worsens, fever returns above 38 °C, you cough up blood, or you become confused or unusually drowsy. Attend the emergency department rather than waiting for the clinic appointment.',
+  },
+]
+
 // ──────────────────────────────────────────────────────────── Problem list
 
 export interface Problem {
@@ -294,7 +349,8 @@ export interface Problem {
   icd10: string
   snomed: string
   onset: string
-  status: 'Active' | 'Resolved'
+  /** VOCABULARY: Open, never Active — Active is reserved for stroke cases. */
+  status: 'Open' | 'Resolved'
   /** Set where AI-501 proposed the code and it awaits a G2 disposition. */
   aiSuggested?: boolean
   confidence?: number
@@ -313,7 +369,7 @@ export const PROBLEMS: Problem[] = [
     icd10: 'E03.9',
     snomed: '40930008',
     onset: '2019',
-    status: 'Active',
+    status: 'Open',
     aiSuggested: true,
     confidence: 0.94,
     band: 'HIGH',
@@ -326,7 +382,7 @@ export const PROBLEMS: Problem[] = [
     icd10: 'J18.9',
     snomed: '385093006',
     onset: '17-Sep-2026',
-    status: 'Active',
+    status: 'Open',
     aiSuggested: true,
     confidence: 0.91,
     band: 'HIGH',
@@ -339,7 +395,7 @@ export const PROBLEMS: Problem[] = [
     icd10: 'E11.9',
     snomed: '44054006',
     onset: '2014',
-    status: 'Active',
+    status: 'Open',
     leaf: true,
   },
   {
@@ -349,7 +405,7 @@ export const PROBLEMS: Problem[] = [
     icd10: 'R65.21',
     snomed: '76571007',
     onset: '15-Sep-2026',
-    status: 'Active',
+    status: 'Open',
     aiSuggested: true,
     confidence: 0.58,
     band: 'LOW',
@@ -364,7 +420,7 @@ export const PROBLEMS: Problem[] = [
     icd10: 'I63.9',
     snomed: '422504002',
     onset: '21-Sep-2026',
-    status: 'Active',
+    status: 'Open',
     aiSuggested: true,
     confidence: 0.96,
     band: 'HIGH',
@@ -1074,7 +1130,7 @@ export const REFERRALS: ReferralRow[] = [
   {
     id: 'REF-01',
     fromDoctor: 'Dr M. Venkatesh',
-    fromFacility: 'Sunrise Clinic, Whitefield',
+    fromFacility: 'Sunrise Clinic, Saibaba Colony',
     patientName: 'Abdul Rahman Sheikh',
     speciality: 'Cardiology',
     reason: 'Exertional chest pain, ECG shows lateral T-wave inversion',
@@ -1087,7 +1143,7 @@ export const REFERRALS: ReferralRow[] = [
   {
     id: 'REF-02',
     fromDoctor: 'Dr S. Kamath',
-    fromFacility: 'Indostates Hyderabad',
+    fromFacility: 'Indostates Tiruppur',
     patientName: 'Fatima Bi',
     speciality: 'Nephrology',
     reason: 'Vascular access planning for long-term haemodialysis',
@@ -1100,7 +1156,7 @@ export const REFERRALS: ReferralRow[] = [
   {
     id: 'REF-03',
     fromDoctor: 'Dr L. Pereira',
-    fromFacility: 'Nashik General Practice',
+    fromFacility: 'Pollachi General Practice',
     patientName: 'Arjun Nair',
     speciality: 'Dermatology',
     reason: 'Chronic plaque psoriasis, not responding to topical therapy',

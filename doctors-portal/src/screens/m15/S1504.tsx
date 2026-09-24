@@ -1,5 +1,5 @@
 /**
- * S-15-04 · Image Viewer with AI Overlay — `/radiology/study/:id/view` · T1 · ARC-11
+ * S-15-04 · Imaging — `/radiology/study/:id/view` · T1 · ARC-11
  *
  * "The viewer, with the AI overlay a radiologist will actually leave on."
  *
@@ -8,51 +8,109 @@
  * prominent, the unmarked image is always one click away, and the findings sit
  * beside the image rather than on top of it.
  *
+ * REAL PIXELS. The study is an imported CQ500 head CT, windowed to the brain
+ * window at import time and served as PNG slices (see `npm run ncct:import`).
+ * The findings are derived from that study's own ground-truth labels, so the
+ * words cannot contradict the image. The same viewer and report the Stroke-AI
+ * console uses are used here — one imaging surface in the product.
+ *
+ * Beside the image: the AI read, the full clinical report, a reading note that
+ * is dictated first and saved with the study, and the questions a clinician
+ * asks about a scan — answered by the assistant with citations.
+ *
  * Night theme is the default for this screen and for P-13 as a persona:
  * "no large white fields" in a reading room.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { AIActionBar, Confidence, Diamond } from '@/components/ai'
-import { Alert, Button, Card, Chip, Icon, KeyValue, Toggle, cx } from '@/components/primitives'
+import { Disclosure, SectionCard, Why } from '@/components/calm'
+import { NcctViewer } from '@/components/ncct'
+import { Alert, Button, Card, Chip, Icon, KeyValue, TextInput, cx } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
+import { promptsFor, resolveAnswer } from '@/data/assistant'
 import { formatDateTime, formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
+import { NCCT_STUDIES, NCCT_WINDOW } from '@/data/ncct.generated'
+import { IMAGING_TRIAGE, strokeCase } from '@/data/stroke'
+import { ncctFindings, overlaysFor, triageVerdict } from '@/data/strokeai'
 import { selectAiActive, useAI } from '@/store/ai'
+import { useClinical } from '@/store/clinical'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
-import { Screen, ScreenSection } from '@/shell/Screen'
+import { Screen } from '@/shell/Screen'
 
+import { StrokeAIReport } from '../m18/StrokeAIReport'
 import { S1506 } from './S1506'
 
-/** AI-402's findings on SD-P-03's chest film, plus AI-408's comparison. */
-const FINDINGS = [
-  { label: 'Right lower lobe consolidation', value: 'Present', band: 'HIGH' as const, confidence: 0.93, critical: false },
-  { label: 'Pleural effusion', value: 'Small, right', band: 'MED' as const, confidence: 0.68, critical: true },
-  { label: 'Pneumothorax', value: 'None', band: 'HIGH' as const, confidence: 0.97, critical: false },
-  { label: 'Cardiomegaly', value: 'None', band: 'HIGH' as const, confidence: 0.91, critical: false },
-]
-
-const PRIOR_COMPARISON = {
-  priorDate: '19-Sep-2026',
-  change: 'The consolidation has extended cranially by about 2 cm and a small effusion is new since 19-Sep.',
-  band: 'MED' as const,
-  confidence: 0.74,
+/** Study number → the imported series behind it. Anything else opens the index case. */
+const STUDY_CASE: Record<string, string> = {
+  'ST-9914': '0141',
+  'ST-4471': '0141',
+  'ST-9880': '0140',
 }
 
 export function S1504({ id }: { id?: string }) {
+  const navigate = useNavigate()
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
+  const openAssistant = useUI((s) => s.openAssistant)
+  const pushTurn = useUI((s) => s.pushTurn)
   const aiActive = useAI(selectAiActive)
   const dispositions = useAI((s) => s.dispositions)
+  const saveVoiceNote = useClinical((s) => s.saveVoiceNote)
+  const voiceNotes = useClinical((s) => s.voiceNotes)
 
-  const p = patient('SD-P-03')
-  const studyId = id ?? 'ST-4471'
-  const [overlay, setOverlay] = useState(true)
+  const studyId = id ?? 'ST-9914'
+  const caseId = STUDY_CASE[studyId] ?? '0141'
+  const study = NCCT_STUDIES[caseId]
+  const c = strokeCase(caseId)
+  const p = patient(study.patientId)
+  const findings = useMemo(() => ncctFindings(study.truth), [study])
+  const verdict = triageVerdict(study.truth, c)
+  const overlays = useMemo(() => overlaysFor(caseId, study.truth), [caseId, study])
+
+  const [sideBySide, setSideBySide] = useState(false)
   const [escalate, setEscalate] = useState(false)
-  const [window, setWindow] = useState('Lung')
+  const [note, setNote] = useState('')
+  const [noteMeta, setNoteMeta] = useState<{ model: string; band: string } | null>(null)
+  const [question, setQuestion] = useState('')
 
-  const criticalFinding = FINDINGS.find((f) => f.critical)
+  /** What needs a person told: a bleed, or on a clean scan the occlusion the triage found. */
+  const bleed = findings.find((f) => f.critical)
+  const lvo = IMAGING_TRIAGE.findings.find((f) => f.label === 'LVO')
+  const criticalFinding =
+    bleed ? { label: bleed.label, value: bleed.value } : verdict.priority === 'P1' && lvo ? { label: 'Large vessel occlusion', value: lvo.value } : undefined
   const reported = dispositions[`imaging:${studyId}:report`]
+  const savedNotes = voiceNotes[p.id] ?? []
+
+  /** The same path the ? bubble takes, seeded with a question about THIS scan. */
+  function ask(q: string) {
+    const text = q.trim()
+    if (text.length < 3) return
+    openAssistant({ screenId: 'S-15-04', patientId: p.id })
+    pushTurn({ role: 'user', text })
+    const answer = resolveAnswer(text, { screenId: 'S-15-04', patientId: p.id, patientScoped: true })
+    pushTurn({ role: 'assistant', text: answer.body, answer })
+    setQuestion('')
+  }
+
+  function saveNote() {
+    const body = note.trim()
+    if (!body) return
+    saveVoiceNote({
+      patientId: p.id,
+      body: `${studyId} · ${body}`,
+      by: me.name,
+      model: noteMeta?.model ?? 'typed',
+      band: noteMeta?.band ?? 'HIGH',
+    })
+    toast({ tone: 'success', title: 'Reading note saved', detail: `${p.name} · ${studyId} · draft, not part of the report until you sign one.` })
+    setNote('')
+    setNoteMeta(null)
+  }
 
   return (
     <Screen
@@ -61,72 +119,77 @@ export function S1504({ id }: { id?: string }) {
       loadingShape="tiles"
       states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN', 'AI-LOW']}
       wide
+      subheading={
+        <span className="tabular">
+          {studyId} · {IMAGING_TRIAGE.study} · {study.slices} of {study.seriesTotal} slices · acquired{' '}
+          {formatTime(IMAGING_TRIAGE.acquiredAt)}
+        </span>
+      }
       chips={
         <>
-          <Chip tone="neutral" className="tabular">
-            {studyId}
+          <Chip tone="neutral" icon="Scan">
+            brain window W {NCCT_WINDOW.width} / L {NCCT_WINDOW.level}
           </Chip>
-          <Chip tone="neutral">Chest X-ray PA</Chip>
-          {aiActive && (
-            <Chip tone="caution" icon="ShieldAlert">
-              G3 · standard queue is the fallback
+          {reported && (
+            <Chip tone="normal" icon="Check">
+              Attested
             </Chip>
           )}
         </>
       }
       actions={
         <>
-          <Button icon="Columns2">Compare with {PRIOR_COMPARISON.priorDate}</Button>
-          <Button tone="primary" icon="Mic" onClick={() => toast({ tone: 'info', title: 'Dictation started' })}>
-            Dictate the report
+          <Button icon="Columns2" aria-pressed={sideBySide} onClick={() => setSideBySide((v) => !v)}>
+            {sideBySide ? 'Single view' : 'Original beside overlay'}
+          </Button>
+          <Button tone="primary" icon="Brain" onClick={() => navigate(`/stroke/case/${caseId}/imaging`)}>
+            Stroke triage card
           </Button>
         </>
       }
       rail={
         <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Study</h3>
-            <dl className="mt-2 divide-y divide-glass-hairline">
+          <SectionCard title="Study" bodyClassName="px-4 pb-3 sm:px-5 sm:pb-4">
+            <dl className="divide-y divide-glass-hairline text-[0.92em]">
               <KeyValue label="Acquired">
-                <span className="tabular">{formatDateTime(new Date(2026, 8, 21, 8, 52))}</span>
+                <span className="tabular">{formatDateTime(IMAGING_TRIAGE.acquiredAt)}</span>
               </KeyValue>
-              <KeyValue label="Modality">DX · portable</KeyValue>
-              <KeyValue label="Ordered by">Dr Ananya Iyer</KeyValue>
-              <KeyValue label="Indication">Deterioration at 72h on antibiotics</KeyValue>
-              <KeyValue label="Prior">{PRIOR_COMPARISON.priorDate}</KeyValue>
+              <KeyValue label="Series">
+                {study.seriesDescription} · {study.sliceThickness} mm · {study.kvp} kVp
+              </KeyValue>
+              <KeyValue label="Matrix">
+                <span className="tabular">
+                  {study.rows} × {study.columns}
+                </span>
+              </KeyValue>
+              <KeyValue label="Case">{c.caseNo}</KeyValue>
+              <KeyValue label="Source">
+                <span className="tabular">{study.sourcePatientId}</span> · de-identified
+              </KeyValue>
             </dl>
-          </Card>
+          </SectionCard>
 
-          {aiActive && (
-            <Card className="p-4">
-              <p className="flex items-center gap-2 text-[0.86em] font-semibold text-ink-3">
-                <Diamond size={10} />
-                AI-408 · change since the prior
-              </p>
-              <p className="mt-1.5 text-[0.9em] text-ink-2">{PRIOR_COMPARISON.change}</p>
-              <Confidence band={PRIOR_COMPARISON.band} score={PRIOR_COMPARISON.confidence} className="mt-2" />
-              <p className="mt-2 text-[0.84em] text-ink-3">
-                Manual side-by-side is the fallback, and the prior is one click away either way.
-              </p>
-            </Card>
-          )}
-
-          <Card className="p-4">
-            <h3 className="text-[0.82em] font-semibold tracking-wide text-ink-3 uppercase">Windowing</h3>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {['Lung', 'Soft tissue', 'Bone', 'Mediastinum'].map((w) => (
-                <Button key={w} size="sm" tone={window === w ? 'primary' : 'secondary'} onClick={() => setWindow(w)}>
-                  {w}
-                </Button>
-              ))}
-            </div>
-          </Card>
+          <Why label="Why this viewer works this way">
+            <p className="text-ink-2">
+              The unmarked image is always one click away — an overlay you cannot remove is an overlay you switch off
+              for good.
+            </p>
+            <p className="text-ink-2">
+              The model marks a region and names itself on the frame. It never writes a diagnosis on the image, and
+              nothing it reports enters the record until a named clinician attests to it.
+            </p>
+            <p className="text-[0.92em] text-ink-3">
+              The reading room defaults to the night theme — {me.name} reads on a diagnostic workstation, and large
+              white fields in a darkened room cost contrast sensitivity.
+            </p>
+          </Why>
         </div>
       }
       railTitle="Study"
     >
       <div className="space-y-5">
-        {aiActive && criticalFinding && (
+        {/* The one operative alert: a critical finding that needs a person told. */}
+        {aiActive && criticalFinding && !reported && (
           <Alert
             tone="caution"
             title={`${criticalFinding.label} — ${criticalFinding.value}`}
@@ -136,160 +199,126 @@ export function S1504({ id }: { id?: string }) {
               </Button>
             }
           >
-            AI-407 has flagged this as a finding that needs a named clinician told, not left in a report queue. The
-            escalation is a separate act from the report — it reaches a person, and it records who.
+            Flagged as a finding that needs a named clinician told, not left in a report queue. The escalation reaches
+            a person, and it records who.
           </Alert>
         )}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          {/* The image. */}
-          <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-              <p className="tabular text-[0.9em] font-semibold">
-                {p.name} · {p.age}/{p.sex} · {window} window
-              </p>
-              {aiActive && (
-                <label className="flex items-center gap-2 text-[0.88em]">
-                  <Toggle checked={overlay} onChange={setOverlay} label="AI overlay" />
-                  overlay {overlay ? 'on' : 'off'}
-                </label>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+          {/* The image — real pixels, the same viewer the stroke console uses. */}
+          <div className="min-w-0 space-y-3">
+            <div className={cx('grid gap-3', sideBySide && 'md:grid-cols-2')}>
+              {sideBySide && (
+                <div className="min-w-0">
+                  <p className="mb-1.5 text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">Original</p>
+                  <NcctViewer study={study} overlays={[]} />
+                </div>
               )}
-            </div>
-
-            <div className="relative aspect-[4/5] w-full bg-[#07090e]">
-              <svg viewBox="0 0 200 250" className="absolute inset-0 size-full" role="img" aria-label="Chest radiograph, postero-anterior, with the AI region of interest at the right lower zone">
-                {/* Thorax. */}
-                <rect x="0" y="0" width="200" height="250" fill="#07090e" />
-                <path d="M62 30 Q100 18 138 30 L146 200 Q100 218 54 200 Z" fill="#1c222e" />
-                {/* Lung fields — patient's right is image left. */}
-                <ellipse cx="76" cy="110" rx="26" ry="60" fill="#0e1218" />
-                <ellipse cx="124" cy="110" rx="26" ry="60" fill="#0e1218" />
-                {/* Mediastinum and heart. */}
-                <path d="M96 60 L104 60 L108 150 Q100 162 92 150 Z" fill="#2a3242" />
-                <ellipse cx="110" cy="140" rx="24" ry="30" fill="#2a3242" />
-                {/* Diaphragm. */}
-                <path d="M54 176 Q76 166 100 176 Q124 166 146 176 L146 200 Q100 218 54 200 Z" fill="#242c3a" />
-                {/* The consolidation, right lower zone. */}
-                <ellipse cx="74" cy="152" rx="22" ry="24" fill="#4a5568" opacity="0.9" />
-                {/* The small effusion. */}
-                <path d="M54 172 Q66 168 78 174 L78 182 Q64 184 54 180 Z" fill="#5a6678" opacity="0.8" />
-
-                {overlay && aiActive && (
-                  <>
-                    <ellipse
-                      cx="74"
-                      cy="152"
-                      rx="27"
-                      ry="29"
-                      fill="none"
-                      stroke="var(--color-ai)"
-                      strokeWidth="2"
-                      strokeDasharray="5 4"
-                    />
-                    <text x="74" y="196" textAnchor="middle" className="fill-[var(--color-ai)] text-[7px] font-bold">
-                      RLL CONSOLIDATION
-                    </text>
-                    <path
-                      d="M52 170 Q66 165 80 173 L80 184 Q63 187 52 182 Z"
-                      fill="none"
-                      stroke="var(--color-caution)"
-                      strokeWidth="1.8"
-                      strokeDasharray="4 3"
-                    />
-                    <text x="40" y="196" textAnchor="middle" className="fill-[var(--color-caution)] text-[7px] font-bold">
-                      EFFUSION
-                    </text>
-                  </>
+              <div className="min-w-0">
+                {sideBySide && (
+                  <p className="mb-1.5 flex items-center gap-1.5 text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">
+                    <Diamond size={9} /> With overlay
+                  </p>
                 )}
-                <text x="12" y="240" className="fill-[#5a6478] text-[8px]">
-                  R
-                </text>
-                <text x="184" y="240" className="fill-[#5a6478] text-[8px]">
-                  L
-                </text>
-              </svg>
+                <NcctViewer study={study} overlays={aiActive ? overlays : []} />
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-              {aiActive && (
-                <>
-                  <Button size="sm" disabled={!overlay} onClick={() => setOverlay(false)}>
-                    Show the original
+            {/* The reading note: spoken first, saved with the study. */}
+            <Card className="p-4">
+              <VoiceField
+                id={`imaging-note-${studyId}`}
+                label="Reading note"
+                rows={4}
+                value={note}
+                onChange={setNote}
+                onDictated={(meta) => setNoteMeta({ model: meta.model, band: meta.band })}
+                patientId={p.id}
+                sample="Non-contrast head CT reviewed. No haemorrhage. Dense left M1 with early ischaemic change in the insula and lentiform nucleus, ASPECTS eight. Discussed with the stroke neurologist; proceeding to eligibility."
+                placeholder="What you see, and what you want the team to know…"
+                hint="Saved as a draft against the study. It becomes part of the record only when the report is signed."
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button tone="primary" icon="Save" disabled={note.trim() === ''} onClick={saveNote}>
+                  Save note
+                </Button>
+                {note.trim() !== '' && (
+                  <Button tone="tertiary" icon="X" onClick={() => setNote('')}>
+                    Discard
                   </Button>
-                  <Button size="sm" disabled={overlay} onClick={() => setOverlay(true)}>
-                    Show the overlay
-                  </Button>
-                </>
+                )}
+                {savedNotes.length > 0 && (
+                  <span className="ml-auto text-[0.86em] text-ink-3">
+                    {savedNotes.length} saved {savedNotes.length === 1 ? 'note' : 'notes'} · latest {formatTime(new Date(savedNotes[savedNotes.length - 1].at))}
+                  </span>
+                )}
+              </div>
+              {savedNotes.length > 0 && (
+                <ul className="mt-3 divide-y divide-glass-hairline">
+                  {savedNotes.slice(-3).reverse().map((n) => (
+                    <li key={n.at} className="py-2 text-[0.92em]">
+                      <p className="leading-relaxed">{n.body}</p>
+                      <p className="tabular mt-1 text-[0.86em] text-ink-3">
+                        {n.by} · {formatTime(new Date(n.at))} · {n.model === 'typed' ? 'typed' : 'dictated'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               )}
-              <span className="ml-auto text-[0.84em] text-ink-3">
-                The unmarked image is always one click away — an overlay you cannot remove is an overlay you switch off
-                for good.
-              </span>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
-          {/* The findings. */}
-          <div className="space-y-4">
+          {/* The read, the report, and the questions. */}
+          <div className="min-w-0 space-y-4">
             {aiActive ? (
-              <Card className="p-5">
-                <h2 className="flex items-center gap-2 font-semibold">
-                  <Diamond size={12} />
-                  Findings
-                </h2>
+              <SectionCard
+                title="AI read"
+                meta={<span className="tabular text-[0.86em] text-ink-3">delivered {formatTime(IMAGING_TRIAGE.deliveredAt)}</span>}
+                bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+              >
+                <p className={cx('font-semibold', verdict.tone === 'critical' ? 'text-pri-critical-ink' : 'text-normal')}>
+                  {verdict.headline}
+                </p>
+                <p className="mt-1 text-[0.92em] text-ink-2">{verdict.detail}</p>
                 <dl className="mt-3 divide-y divide-glass-hairline">
-                  {FINDINGS.map((f) => (
-                    <div key={f.label} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                      <dt className={cx('text-[0.95em]', f.critical && 'font-semibold text-caution')}>
-                        {f.label}
-                        {f.critical && (
-                          <Chip tone="caution" icon="TriangleAlert" className="ml-2">
-                            escalate
-                          </Chip>
-                        )}
+                  {findings.map((f) => (
+                    <div key={f.label} className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-2.5">
+                      <dt className="min-w-0">
+                        <span className={cx('text-[0.95em]', f.critical && 'font-semibold text-caution')}>{f.label}</span>
+                        <span className="block text-[0.86em] text-ink-3">{f.gloss}</span>
                       </dt>
                       <dd className="flex items-center gap-2">
-                        <span className={cx('font-semibold', f.value === 'None' && 'text-normal')}>{f.value}</span>
+                        <span className={cx('tabular font-semibold', f.reassuring && 'text-normal', f.critical && 'text-pri-critical-ink')}>
+                          {f.value}
+                        </span>
                         <Confidence band={f.band} score={f.confidence} />
                       </dd>
                     </div>
                   ))}
                 </dl>
 
-                <p className="tabular mt-3 flex items-center gap-2 rounded-panel bg-glass-fill-muted px-3 py-2 text-[0.86em]">
-                  <Icon name="Cpu" size={13} className="shrink-0 text-ink-3" />
-                  cxr-triage v5.4.2 · read {formatTime(new Date(2026, 8, 21, 8, 54))}
-                </p>
-
                 <AIActionBar
                   className="mt-3"
                   touchpointId={`imaging:${studyId}:report`}
-                  capabilityId="AI-402"
+                  capabilityId="AI-404"
                   gate="G3"
                   band="HIGH"
-                  score={0.93}
+                  score={0.94}
                   explain={{
                     touchpointId: `imaging:${studyId}:report`,
-                    capabilityId: 'AI-402',
-                    claim: 'Right lower lobe consolidation with a new small effusion, on a portable chest radiograph.',
-                    confidence: 0.93,
+                    capabilityId: 'AI-404',
+                    claim: verdict.detail,
+                    confidence: 0.94,
                     band: 'HIGH',
-                    computedAt: formatTime(new Date(2026, 8, 21, 8, 54)),
+                    computedAt: formatTime(IMAGING_TRIAGE.deliveredAt),
                     inputs: [
-                      { label: `Study ${studyId}, PA projection`, source: 'Acquired 08:52' },
-                      { label: `Prior study ${PRIOR_COMPARISON.priorDate}`, source: 'Comparison series' },
-                      { label: 'Clinical indication from the order', source: 'Order O-5501' },
+                      { label: `Study ${studyId}, ${study.slices} slices`, source: `Acquired ${formatTime(IMAGING_TRIAGE.acquiredAt)}` },
+                      { label: 'Ground-truth labels of the imported series', source: study.sourcePatientId },
+                      { label: 'Case clock and last known well', source: 'S-18-06 · M-18.10' },
                     ],
-                    evidence: [
-                      'Homogeneous opacity in the right lower zone with an air bronchogram.',
-                      'Blunting of the right costophrenic angle, new since the prior.',
-                    ],
-                    model: 'cxr-triage v5.4.2',
-                    limits: [
-                      'Validated on frontal chest radiographs in adults. Portable films are within scope but lower performing.',
-                      'It does not distinguish consolidation from atelectasis reliably.',
-                      'At G3 the finding does not enter the report until a radiologist attests to it.',
-                      'The standard reporting queue is the fallback.',
-                    ],
+                    evidence: findings.map((f) => `${f.label}: ${f.value} — ${f.gloss}`),
+                    model: IMAGING_TRIAGE.model,
+                    limits: IMAGING_TRIAGE.limits,
                   }}
                 />
 
@@ -298,47 +327,79 @@ export function S1504({ id }: { id?: string }) {
                     Attested by {reported.by}. It is now part of the report.
                   </p>
                 )}
-              </Card>
+              </SectionCard>
             ) : (
-              <Card className="p-5">
-                <h2 className="font-semibold">No automated findings</h2>
-                <p className="mt-2 text-ink-2">
-                  The AI is off, so this study sits in the standard reporting queue in chronological order. That is
-                  AI-402&rsquo;s documented fallback — you lose the prioritisation, not the study.
+              <SectionCard title="AI read" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+                <p className="font-semibold">No automated read</p>
+                <p className="mt-1.5 text-[0.95em] text-ink-2">
+                  The AI is off, so this study sits in the standard reporting queue in arrival order. You lose the
+                  prioritisation, not the study.
                 </p>
-              </Card>
+              </SectionCard>
             )}
 
-            <ScreenSection title="Report">
-              <Card className="p-4">
-                <p className="text-[0.9em] text-ink-2">
-                  Dictation opens the report authoring screen, where the drafted narrative and the codes are a separate
-                  G3 touchpoint. A finding confirmed here does not write itself into the report.
-                </p>
-                <Button
-                  className="mt-3 w-full"
-                  tone="primary"
-                  icon="FileText"
-                  onClick={() => toast({ tone: 'info', title: 'Report authoring', detail: 'S-15-05 is outside this build’s scope.' })}
+            {/* The full report — a document, folded. */}
+            <SectionCard title="Clinical report" meta={<span className="text-[0.86em] text-ink-3">{c.caseNo}</span>}>
+              <Disclosure label="the full report">
+                <StrokeAIReport strokeCase={c} study={study} />
+              </Disclosure>
+            </SectionCard>
+
+            {/* Questions about THIS scan, answered with citations by the assistant. */}
+            {aiActive && (
+              <SectionCard
+                title={
+                  <span className="flex items-center gap-2">
+                    <Diamond size={10} /> Ask about this scan
+                  </span>
+                }
+                bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+              >
+                <ul className="flex flex-wrap gap-2">
+                  {promptsFor('S-15-04').map((q) => (
+                    <li key={q}>
+                      <button
+                        type="button"
+                        onClick={() => ask(q)}
+                        className="inline-flex min-h-9 items-center gap-1.5 rounded-pill bg-ai-soft px-3 text-[0.9em] font-medium text-ai hover:brightness-95"
+                      >
+                        <Icon name="MessageSquare" size={13} />
+                        {q}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <form
+                  className="mt-3 flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    ask(question)
+                  }}
                 >
-                  Author the report
-                </Button>
-              </Card>
-            </ScreenSection>
+                  <TextInput
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder={`Ask about ${p.name.split(' ')[0]}’s scan…`}
+                    aria-label="Ask the assistant about this scan"
+                  />
+                  <Button type="submit" tone="ai" icon="Send" disabled={question.trim().length < 3}>
+                    Ask
+                  </Button>
+                </form>
+                <p className="mt-2 text-[0.86em] text-ink-3">
+                  Answers come from cited documentation. A clinical question is routed to the capability that owns it —
+                  the assistant never reads the scan for you.
+                </p>
+              </SectionCard>
+            )}
           </div>
         </div>
-
-        <p className="flex items-start gap-2 text-[0.86em] text-ink-3">
-          <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-          Reading room defaults to the night theme — {me.name} reads on a diagnostic workstation, and large white
-          fields in a darkened room cost contrast sensitivity.
-        </p>
       </div>
 
       {/* S-15-06, the modal it is specified to be. */}
       <S1506
         open={escalate}
-        finding={criticalFinding?.label ?? ''}
+        finding={criticalFinding ? `${criticalFinding.label} — ${criticalFinding.value}` : ''}
         studyId={studyId}
         onClose={() => setEscalate(false)}
       />

@@ -10,14 +10,20 @@
  * wrong: acknowledging records that you SAW it. Acting on it is documented
  * separately. So the modal offers both, and does not pretend the first is the
  * second.
+ *
+ * Calm pass: everything that gates is untouched — undismissable, the value, the
+ * escalation clock, the fixed attestation, the three dispositions. Only the
+ * prose moved: why the alert fired and why it cannot be dismissed are one `Why`,
+ * and acknowledge-versus-act is said once, on the field it governs.
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Diamond } from '@/components/ai'
+import { Why } from '@/components/calm'
 import { Modal } from '@/components/overlays'
-import { Button, Checkbox, Chip, ClinicalFlag, Icon, KeyValue, TextArea } from '@/components/primitives'
+import { Button, Checkbox, ClinicalFlag, Icon, KeyValue, TextArea } from '@/components/primitives'
 import type { ResultRow } from '@/data/clinical'
 import { encounterForPatient } from '@/data/clinical'
 import { formatDateTime, formatTime, NOW } from '@/data/format'
@@ -118,18 +124,6 @@ export function S0906({ result, onClose }: { result: ResultRow | null; onClose: 
           </KeyValue>
         </dl>
 
-        <div className="rounded-panel bg-glass-fill-muted px-4 py-3">
-          <p className="flex items-center gap-2 text-[0.88em] font-semibold text-ink-2">
-            <Diamond size={10} />
-            AI-213 · why this fired
-          </p>
-          <p className="mt-1 text-[0.92em] text-ink-2">{result.aiReason}</p>
-          <p className="mt-2 text-[0.86em] text-ink-3">
-            The threshold is rule-based and never fully off. The model ranks and explains; it does not decide what
-            counts as critical.
-          </p>
-        </div>
-
         <Checkbox
           checked={attested}
           onChange={setAttested}
@@ -142,7 +136,10 @@ export function S0906({ result, onClose }: { result: ResultRow | null; onClose: 
 
         <div>
           <p className="mb-1.5 text-[0.92em] font-medium text-ink-2">
-            What you are doing about it <span className="text-ink-3">(optional here, required in the record)</span>
+            What you are doing about it{' '}
+            <span className="font-normal text-ink-3">
+              optional here, required in the record — acknowledging records only that you saw it
+            </span>
           </p>
           <TextArea
             rows={2}
@@ -150,21 +147,22 @@ export function S0906({ result, onClose }: { result: ResultRow | null; onClose: 
             onChange={(e) => setAction(e.target.value)}
             placeholder="Calcium gluconate and insulin-dextrose given, ECG requested, repeat in 1 hour…"
           />
-          <p className="mt-1.5 flex items-start gap-1.5 text-[0.86em] text-ink-3">
-            <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-            Acknowledging records that you saw it. What you did about it belongs in an addendum or a new note —
-            &ldquo;Acknowledge and document&rdquo; takes you straight there.
-          </p>
         </div>
 
-        <p className="flex flex-wrap items-center gap-2">
-          <Chip tone="critical" icon="OctagonAlert">
-            G2 gate
-          </Chip>
-          <span className="text-[0.86em] text-ink-3">
-            This dialog cannot be dismissed without a disposition. Reassigning is a disposition; closing it is not.
-          </span>
-        </p>
+        <Why label="Why this fired, and why it cannot be dismissed">
+          <p className="flex flex-wrap items-center gap-2 text-ink-2">
+            <Diamond size={10} />
+            {result.aiReason}
+          </p>
+          <p className="text-ink-2">
+            The threshold is rule-based and never fully off. The model ranks and explains; it does not decide what
+            counts as critical.
+          </p>
+          <p className="text-[0.92em] text-ink-3">
+            AI-213 · G2 gate. This dialog cannot be dismissed without a disposition — reassigning is a disposition,
+            closing it is not.
+          </p>
+        </Why>
       </div>
     </Modal>
   )

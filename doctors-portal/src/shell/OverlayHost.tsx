@@ -82,7 +82,7 @@ function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }
         autoFocus
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="R. Lakshmanan · AWF-0044051 · results inbox · patients on my list deteriorating"
+        placeholder="R. Lakshmanan · ICH-0044051 · results inbox · patients on my list deteriorating"
       />
 
       {natural && (
@@ -173,7 +173,7 @@ function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }
 
 /** Sensible default route params so search results land somewhere real. */
 export function defaultIdFor(route: string): string {
-  if (route.startsWith('/patient/')) return 'AWF-0044051'
+  if (route.startsWith('/patient/')) return 'ICH-0044051'
   if (route.startsWith('/stroke/case/')) return '0141'
   if (route.startsWith('/radiology/study/')) return 'ST-4471'
   if (route.startsWith('/results/')) return 'R-88410'
