@@ -212,7 +212,7 @@ function RiskStrip({ patientId }: { patientId: string }) {
 
 function initials(name: string): string {
   return name
-    .replace(/^(Dr|Sr\.|Mr|Ms|Mrs)\s+/i, '')
+    .replace(/^(Dr\.?|Sr\.|Mr|Ms|Mrs)\s+/i, '')
     .split(/[\s.]+/)
     .filter(Boolean)
     .slice(0, 2)

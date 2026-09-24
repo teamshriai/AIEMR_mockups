@@ -201,7 +201,6 @@ export function S0807({ id }: { id?: string }) {
               onChange={(v) => setSectionText(noteId, 'history', v, carried && v.trim() !== '' ? 'carried' : undefined)}
               onDictated={(meta) => setSectionText(noteId, 'history', meta.text, 'dictated')}
               patientId={p.id}
-              sample={NOTE_DRAFT_SD_P_03[0].draft}
               disabled={locked}
               labelExtra={
                 carried && (

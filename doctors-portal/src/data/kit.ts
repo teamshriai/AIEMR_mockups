@@ -127,7 +127,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 58,
   },
   {
@@ -144,7 +144,7 @@ export const PATIENTS: Patient[] = [
     bed: '2A-04',
     facilityCode: 'ICH',
     losDays: 2,
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 74,
   },
   {
@@ -167,7 +167,7 @@ export const PATIENTS: Patient[] = [
     bed: '4B-12',
     facilityCode: 'ICH',
     losDays: 4,
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 66,
   },
   {
@@ -184,7 +184,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 68,
   },
   {
@@ -202,7 +202,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: 'ED-02',
     facilityCode: 'IPL',
-    consultant: 'Dr Priya Menon',
+    consultant: 'Dr. Priya Menon',
     weightKg: 78,
   },
   {
@@ -218,7 +218,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 19,
   },
   {
@@ -235,28 +235,8 @@ export const PATIENTS: Patient[] = [
     bed: 'ICU-1',
     facilityCode: 'ICH',
     losDays: 6,
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 62,
-  },
-  {
-    /**
-     * "Exists to force the hard cases." An unidentified patient breaks ABHA
-     * linkage, consent, payer identification, and any design that assumes a name.
-     */
-    id: 'SD-P-08',
-    name: 'Unidentified male',
-    age: 40,
-    sex: 'M',
-    uhid: 'ICH-0044221',
-    scenario: 'MLC, road traffic accident, identity pending',
-    payer: 'None yet',
-    abha: null,
-    abhaStatus: 'Not linked',
-    allergies: [],
-    bed: 'ED-01',
-    facilityCode: 'ICH',
-    mlc: true,
-    unidentified: true,
   },
   {
     id: 'SD-P-09',
@@ -271,7 +251,7 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 54,
   },
   {
@@ -287,8 +267,125 @@ export const PATIENTS: Patient[] = [
     allergies: [],
     bed: null,
     facilityCode: 'ICH',
-    consultant: 'Dr Ananya Iyer',
+    consultant: 'Dr. Ananya Iyer',
     weightKg: 70,
+  },
+
+  // ── The CT patients. Each stands behind one real, de-identified CQ500 head
+  //    CT (scripts/ncct-import.mjs), and each story is chosen to fit that
+  //    study's own ground-truth labels — so the words never contradict the
+  //    pixels.
+  {
+    /** CQ500-CT-61 · SDH + mass effect + midline shift. Seen today three weeks after evacuation. */
+    id: 'SD-P-11',
+    name: 'Selvi Murugan',
+    nameNative: 'செல்வி முருகன்',
+    age: 76,
+    sex: 'F',
+    uhid: 'ICH-0044262',
+    scenario: 'OPD follow-up, 3 weeks after right subdural haematoma evacuation',
+    payer: 'PM-JAY',
+    abha: 'selvi.murugan@abdm',
+    abhaStatus: 'Linked',
+    allergies: ['Aspirin'],
+    bed: null,
+    facilityCode: 'ICH',
+    consultant: 'Dr. Ananya Iyer',
+    weightKg: 52,
+  },
+  {
+    /** CQ500-CT-10 · ICH + IPH. A small deep bleed, blood-pressure pathway. */
+    id: 'SD-P-12',
+    name: 'Kumar Subramanian',
+    nameNative: 'குமார் சுப்பிரமணியன்',
+    age: 58,
+    sex: 'M',
+    uhid: 'ICH-0044275',
+    scenario: 'IP, left thalamic haemorrhage, hypertensive, stroke unit day 3',
+    payer: 'CGHS',
+    abha: 'kumar.subramanian@abdm',
+    abhaStatus: 'Linked',
+    allergies: [],
+    bed: '4B-08',
+    facilityCode: 'ICH',
+    losDays: 3,
+    consultant: 'Dr. Ananya Iyer',
+    weightKg: 81,
+  },
+  {
+    /** CQ500-CT-366 · mass effect + midline shift, no blood. A late, large infarct. */
+    id: 'SD-P-13',
+    name: 'Priya Raman',
+    nameNative: 'பிரியா ராமன்',
+    age: 44,
+    sex: 'F',
+    uhid: 'ICH-0044281',
+    scenario: 'IP, large right MCA infarct with mass effect, neurosurgery review',
+    payer: 'TPA cashless',
+    abha: 'priya.raman@abdm',
+    abhaStatus: 'Linked',
+    allergies: [],
+    bed: '4B-15',
+    facilityCode: 'ICH',
+    losDays: 1,
+    consultant: 'Dr. Ananya Iyer',
+    weightKg: 63,
+  },
+  {
+    /** CQ500-CT-48 · IPH + IVH + SAH + mass effect + shift. The anticoagulated bleed. */
+    id: 'SD-P-14',
+    name: 'Santhosh Babu',
+    nameNative: 'சந்தோஷ் பாபு',
+    age: 69,
+    sex: 'M',
+    uhid: 'ITP-0021934',
+    scenario: 'Code stroke at Tiruppur, large right basal ganglia haemorrhage on warfarin',
+    payer: 'ESI',
+    abha: 'santhosh.babu@abdm',
+    abhaStatus: 'Linked',
+    allergies: ['Sulfa'],
+    bed: 'ICU-2',
+    facilityCode: 'ITP',
+    consultant: 'Dr. Rohit Desai',
+    weightKg: 70,
+  },
+  {
+    /** CQ500-CT-25 · normal. The reassuring scan. */
+    id: 'SD-P-15',
+    name: 'Lakshmi Narayanan',
+    nameNative: 'லக்ஷ்மி நாராயணன்',
+    age: 38,
+    sex: 'F',
+    uhid: 'ICH-0044290',
+    scenario: 'OPD follow-up, migraine without aura, CT head normal',
+    payer: 'Self-pay (UPI)',
+    abha: 'lakshmi.narayanan@abdm',
+    abhaStatus: 'Linked',
+    allergies: [],
+    bed: null,
+    facilityCode: 'ICH',
+    consultant: 'Dr. Ananya Iyer',
+    weightKg: 60,
+  },
+  {
+    /** CQ500-CT-50 · normal. A partial thin series — 8 images. */
+    id: 'SD-P-16',
+    name: 'Rahul Verma',
+    nameNative: 'राहुल वर्मा',
+    age: 22,
+    sex: 'M',
+    uhid: 'ICH-0044297',
+    scenario: 'OPD follow-up, minor head injury, CT head normal',
+    payer: 'ESI',
+    abha: 'rahul.verma@abdm',
+    abhaStatus: 'Consent pending',
+    allergies: [],
+    bed: null,
+    facilityCode: 'ICH',
+    /** Road-traffic head injury — a medico-legal case, flagged in the banner. */
+    mlc: true,
+    consultant: 'Dr. Ananya Iyer',
+    weightKg: 72,
   },
 ]
 
@@ -296,7 +393,7 @@ const patientsById = new Map(PATIENTS.map((p) => [p.id, p]))
 
 export function patient(id: string): Patient {
   const p = patientsById.get(id)
-  if (!p) throw new Error(`Unknown patient ${id} — §8.2 lists ten and only ten`)
+  if (!p) throw new Error(`Unknown patient ${id} — the sample-data kit lists ${PATIENTS.length}`)
   return p
 }
 
@@ -327,7 +424,7 @@ export interface Staff {
 export const STAFF: Staff[] = [
   {
     id: 'SD-S-01',
-    name: 'Dr Ananya Iyer',
+    name: 'Dr. Ananya Iyer',
     persona: 'P-04',
     personaLabel: 'Consultant, general medicine',
     facilityCode: 'ICH',
@@ -337,7 +434,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-02',
-    name: 'Dr Rohit Desai',
+    name: 'Dr. Rohit Desai',
     persona: 'P-35',
     personaLabel: 'Stroke neurologist (on-call)',
     facilityCode: 'ICH',
@@ -347,7 +444,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-03',
-    name: 'Dr Priya Menon',
+    name: 'Dr. Priya Menon',
     persona: 'P-38',
     personaLabel: 'Spoke physician (general medicine)',
     facilityCode: 'IPL',
@@ -357,7 +454,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-04',
-    name: 'Dr Samir Kulkarni',
+    name: 'Dr. Samir Kulkarni',
     persona: 'P-36',
     personaLabel: 'Neuro-interventionist',
     facilityCode: 'ICH',
@@ -385,7 +482,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-07',
-    name: 'Dr Neha Bhatt',
+    name: 'Dr. Neha Bhatt',
     persona: 'P-13',
     personaLabel: 'Radiologist',
     facilityCode: 'ICH',
@@ -422,7 +519,7 @@ export const STAFF: Staff[] = [
   },
   {
     id: 'SD-S-11',
-    name: 'Dr Vivek Sharma',
+    name: 'Dr. Vivek Sharma',
     persona: 'P-02',
     personaLabel: 'Medical superintendent',
     facilityCode: 'ICH',
@@ -448,7 +545,7 @@ export function staff(id: string): Staff {
 
 /**
  * The staff member who is signed in when the app runs as a given persona.
- * SD-S-01 Dr Ananya Iyer is the default; the resident has no §8.3 entry, so
+ * SD-S-01 Dr. Ananya Iyer is the default; the resident has no §8.3 entry, so
  * she is presented as a registrar under her own name rather than inventing a
  * thirteenth cast member (§8.6).
  */

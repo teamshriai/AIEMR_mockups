@@ -6,14 +6,18 @@
  * are real, and the window is the clinical one rather than whatever the file
  * happened to carry.
  *
- * Source: /home/shriai/STROKE-AI/server/test_data/<folder>/*.dcm  (CQ500,
- * de-identified) with ground_truth_labels.csv beside it. A study is matched to
- * one of the §8 sample-kit stroke cases by its ground truth — a case whose
- * story is "ICH negative" gets a study whose label says ICH is negative, so
- * nothing on screen contradicts the pixels behind it.
+ * Sources (CQ500, de-identified):
+ *   /home/shriai/STROKE-AI/server/test_data/<folder>/*.dcm, with
+ *     ground_truth_labels.csv beside it
+ *   the loose *.dcm files in the repository root — two partial series, told
+ *     apart by their DICOM PatientID; their labels are the CQ500 reads.csv
+ *     majority vote, written into CASES below because no CSV sits beside them
  *
- * Usage:  node scripts/ncct-import.mjs [--all]
- *         --all  also emits the studies no case currently uses
+ * A study is matched to a sample-kit patient by its ground truth — a case
+ * whose story is "ICH negative" gets a study whose label says ICH is negative,
+ * so nothing on screen contradicts the pixels behind it.
+ *
+ * Usage:  node scripts/ncct-import.mjs
  */
 
 import { spawnSync } from 'node:child_process'
@@ -21,6 +25,8 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const SOURCE = '/home/shriai/STROKE-AI/server/test_data'
+/** The repository root, where the two loose partial series sit. */
+const LOOSE = new URL('../..', import.meta.url).pathname
 const OUT_IMAGES = 'public/ncct'
 const OUT_MANIFEST = 'src/data/ncct.generated.ts'
 
@@ -30,18 +36,40 @@ const SLICES = 28
 const WINDOW = { width: 80, level: 40 }
 
 /**
- * Which study stands behind which §8 stroke case.
+ * Which study stands behind which sample-kit patient.
  *
  * `0141` is a hyperacute left-M1 occlusion thrombolysed at 02:52 — its NCCT
  * MUST be haemorrhage-negative, and early ischaemic change at ASPECTS 8 is
  * subtle to absent, which is exactly what an all-negative study looks like.
  * `0140` is the de-activated mimic (seizure with post-ictal deficit), so its
- * scan is normal.
+ * scan is normal. `0137`, `0138` and `0142` are the haemorrhage and
+ * mass-effect code strokes, each given to a patient whose story the labels fit.
+ *
+ * `N-` keys are head CTs outside the stroke pathway — no stroke case, just a
+ * study on a patient's record. N-061 is a subdural after a fall: blood on the
+ * scan, but a trauma presentation rather than a code stroke.
  */
 const CASES = [
-  { caseId: '0141', folder: 'Ranjith', patientId: 'SD-P-05' },
-  { caseId: '0140', folder: 'Rani', patientId: 'SD-P-08' },
+  { key: '0141', folder: 'Ranjith', patientId: 'SD-P-05', strokeCase: true },
+  { key: '0140', folder: 'Rani', patientId: 'SD-P-03', strokeCase: true },
+  { key: '0137', folder: 'Kumar', patientId: 'SD-P-12', strokeCase: true },
+  { key: '0138', folder: 'Priya', patientId: 'SD-P-13', strokeCase: true },
+  { key: '0142', folder: 'Santhosh', patientId: 'SD-P-14', strokeCase: true },
+  { key: 'N-061', folder: 'Selvi', patientId: 'SD-P-11', strokeCase: false },
+  { key: 'N-025', source: LOOSE, filterPatientId: 'CQ500-CT-25', patientId: 'SD-P-15', strokeCase: false, truth: 'negative' },
+  { key: 'N-050', source: LOOSE, filterPatientId: 'CQ500-CT-50', patientId: 'SD-P-16', strokeCase: false, truth: 'negative' },
 ]
+
+const NEGATIVE = {
+  ich: false,
+  iph: false,
+  ivh: false,
+  sdh: false,
+  edh: false,
+  sah: false,
+  massEffect: false,
+  midlineShift: false,
+}
 
 const PY = `
 import sys, json, glob, os
@@ -49,6 +77,7 @@ import pydicom, numpy as np
 from PIL import Image
 
 src, out_dir, want, win_w, win_l = sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5])
+only_patient = sys.argv[6] if len(sys.argv) > 6 and sys.argv[6] else None
 
 files = sorted(glob.glob(os.path.join(src, '*.dcm')))
 if not files:
@@ -62,8 +91,13 @@ for f in files:
         d = pydicom.dcmread(f, stop_before_pixels=True)
     except Exception:
         continue
+    if only_patient and str(getattr(d, 'PatientID', '')) != only_patient:
+        continue
     uid = getattr(d, 'SeriesInstanceUID', 'none')
     series.setdefault(uid, []).append((f, d))
+
+if not series:
+    print(json.dumps({'error': 'no matching series in ' + src})); sys.exit(0)
 
 def rank(item):
     uid, rows = item
@@ -82,11 +116,15 @@ def order_key(pair):
 rows.sort(key=order_key)
 
 # The middle 70% of the stack — the vertex and the skull base carry no brain.
+# A partial series shorter than the slice budget is kept whole.
 n = len(rows)
-lo, hi = int(n * 0.15), int(n * 0.85)
-band = rows[lo:hi] or rows
-step = max(1, len(band) // want)
-chosen = band[::step][:want]
+if n <= want:
+    chosen = list(rows)
+else:
+    lo, hi = int(n * 0.15), int(n * 0.85)
+    band = rows[lo:hi] or rows
+    step = max(1, len(band) // want)
+    chosen = band[::step][:want]
 chosen.reverse()  # superior slice first, the way a radiologist scrolls
 
 os.makedirs(out_dir, exist_ok=True)
@@ -122,27 +160,29 @@ meta['seriesTotal'] = n
 print(json.dumps(meta))
 `
 
-function importStudy({ caseId, folder }) {
-  const dir = join(OUT_IMAGES, caseId)
+function importStudy({ key, folder, source, filterPatientId }) {
+  const dir = join(OUT_IMAGES, key)
+  const from = source ?? join(SOURCE, folder)
+  const label = folder ?? filterPatientId
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
 
   const r = spawnSync(
     'python3',
-    ['-c', PY, join(SOURCE, folder), dir, String(SLICES), String(WINDOW.width), String(WINDOW.level)],
+    ['-c', PY, from, dir, String(SLICES), String(WINDOW.width), String(WINDOW.level), filterPatientId ?? ''],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
   )
   if (r.status !== 0) {
-    console.error(`FAILED  ${folder}\n${r.stderr}`)
+    console.error(`FAILED  ${label}\n${r.stderr}`)
     return null
   }
   const meta = JSON.parse(r.stdout.trim().split('\n').pop())
   if (meta.error) {
-    console.error(`FAILED  ${folder}: ${meta.error}`)
+    console.error(`FAILED  ${label}: ${meta.error}`)
     return null
   }
   console.log(
-    `OK  ${caseId} ← ${folder.padEnd(9)} ${String(meta.slices).padStart(3)} slices of ${meta.seriesTotal} · ${meta.seriesDescription} · ${meta.sliceThickness} mm · ${meta.kvp} kV`,
+    `OK  ${key.padEnd(5)} ← ${label.padEnd(11)} ${String(meta.slices).padStart(3)} slices of ${meta.seriesTotal} · ${meta.seriesDescription} · ${meta.sliceThickness} mm · ${meta.kvp} kV`,
   )
   return meta
 }
@@ -174,7 +214,13 @@ const truth = groundTruth()
 const studies = []
 for (const c of CASES) {
   const meta = importStudy(c)
-  if (meta) studies.push({ ...c, ...meta, truth: truth[c.folder] })
+  if (!meta) continue
+  const labels = c.truth === 'negative' ? NEGATIVE : truth[c.folder]
+  if (!labels) {
+    console.error(`FAILED  ${c.key}: no ground-truth row for ${c.folder}`)
+    continue
+  }
+  studies.push({ ...c, ...meta, truth: labels })
 }
 
 const ts = `/**
@@ -202,10 +248,12 @@ export interface NcctTruth {
 }
 
 export interface NcctStudy {
-  /** The §8 stroke case this study stands behind. */
-  caseId: string
+  /** The folder under /ncct. Equals the stroke case id where there is one. */
+  key: string
+  /** The stroke case this study stands behind — absent for a CT outside the pathway. */
+  strokeCaseId?: string
   patientId: string
-  /** Slice files are /ncct/<caseId>/slice-01.png … slice-NN.png */
+  /** Slice files are <base>ncct/<key>/slice-01.png … slice-NN.png */
   slices: number
   rows: number
   columns: number
@@ -225,8 +273,8 @@ export const NCCT_WINDOW = { width: ${WINDOW.width}, level: ${WINDOW.level} } as
 export const NCCT_STUDIES: Record<string, NcctStudy> = {
 ${studies
   .map(
-    (s) => `  '${s.caseId}': {
-    caseId: '${s.caseId}',
+    (s) => `  '${s.key}': {
+    key: '${s.key}',${s.strokeCase ? `\n    strokeCaseId: '${s.key}',` : ''}
     patientId: '${s.patientId}',
     slices: ${s.slices},
     rows: ${s.rows},
@@ -243,9 +291,12 @@ ${studies
   .join('\n')}
 }
 
-/** The slice path a viewer requests. 1-based, zero-padded to two digits. */
-export function slicePath(caseId: string, index: number): string {
-  return \`/ncct/\${caseId}/slice-\${String(index).padStart(2, '0')}.png\`
+/**
+ * The slice path a viewer requests. 1-based, zero-padded to two digits. Built
+ * on Vite's base URL so the app works when it is served from a sub-path.
+ */
+export function slicePath(key: string, index: number): string {
+  return \`\${import.meta.env.BASE_URL}ncct/\${key}/slice-\${String(index).padStart(2, '0')}.png\`
 }
 `
 

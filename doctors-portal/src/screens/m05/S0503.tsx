@@ -203,10 +203,9 @@ export function S0503() {
             rows={listRows}
             columns={columns}
             rowKey={(r) => r.token}
-            onOpen={(r) => {
-              const enc = encounterForPatient(r.patientId)
-              navigate(enc ? `/encounter/${enc.id}/note` : `/patient/${patient(r.patientId).uhid}/chart`)
-            }}
+            // Opening a row opens the patient's record — earlier reports, results, notes, medicines and the next
+            // appointment, one tile each. "Call" is the action that starts the consultation.
+            onOpen={(r) => navigate(`/patient/${patient(r.patientId).uhid}/record`)}
             caption="Today's outpatient session"
             noun="patients"
             emptyWhy={

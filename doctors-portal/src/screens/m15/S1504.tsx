@@ -28,13 +28,17 @@ import { useNavigate } from 'react-router-dom'
 import { AIActionBar, Confidence, Diamond } from '@/components/ai'
 import { Disclosure, SectionCard, Why } from '@/components/calm'
 import { NcctViewer } from '@/components/ncct'
-import { Alert, Button, Card, Chip, Icon, KeyValue, TextInput, cx } from '@/components/primitives'
+import { Alert, Button, Card, Chip, EmptyState, Icon, KeyValue, TextInput, cx } from '@/components/primitives'
+import { PatientRecordLinks } from '@/components/recordlinks'
 import { VoiceField } from '@/components/voicefield'
 import { promptsFor, resolveAnswer } from '@/data/assistant'
 import { formatDateTime, formatTime } from '@/data/format'
+import { maybeImagingStudy, ncctFor } from '@/data/imaging'
+import type { ImagingStudy } from '@/data/imaging'
 import { patient } from '@/data/kit'
-import { NCCT_STUDIES, NCCT_WINDOW } from '@/data/ncct.generated'
-import { IMAGING_TRIAGE, strokeCase } from '@/data/stroke'
+import { NCCT_WINDOW } from '@/data/ncct.generated'
+import type { NcctStudy } from '@/data/ncct.generated'
+import { IMAGING_TRIAGE, maybeStrokeCase } from '@/data/stroke'
 import { ncctFindings, overlaysFor, triageVerdict } from '@/data/strokeai'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useClinical } from '@/store/clinical'
@@ -45,14 +49,90 @@ import { Screen } from '@/shell/Screen'
 import { StrokeAIReport } from '../m18/StrokeAIReport'
 import { S1506 } from './S1506'
 
-/** Study number → the imported series behind it. Anything else opens the index case. */
-const STUDY_CASE: Record<string, string> = {
-  'ST-9914': '0141',
-  'ST-4471': '0141',
-  'ST-9880': '0140',
-}
+/** A read the AI makes on any head CT that is not a stroke case — the haemorrhage and mass-effect classifiers. */
+const NCCT_MODEL = 'ncct-ich v3.1.0'
 
 export function S1504({ id }: { id?: string }) {
+  const record = maybeImagingStudy(id ?? 'ST-9914')
+  const series = record ? ncctFor(record) : undefined
+  if (!record) return <StudyNotFound id={id} />
+  if (!series) return <ReportOnly study={record} />
+  return <Viewer record={record} study={series} />
+}
+
+/** An address that names no study. Says so, rather than opening someone else's scan. */
+function StudyNotFound({ id }: { id?: string }) {
+  const navigate = useNavigate()
+  return (
+    <Screen
+      screenId="S-15-04"
+      subheading="No study at this address."
+      actions={
+        <Button tone="primary" icon="List" onClick={() => navigate('/radiology/worklist')}>
+          Imaging worklist
+        </Button>
+      }
+    >
+      <Card className="max-w-2xl">
+        <EmptyState
+          icon="Scan"
+          why={`There is no study “${id ?? ''}” on the record. The imaging worklist lists every study there is.`}
+        />
+      </Card>
+    </Screen>
+  )
+}
+
+/** A study whose report is on the record but whose pixels are not in this demo. */
+function ReportOnly({ study: s }: { study: ImagingStudy }) {
+  const navigate = useNavigate()
+  const p = patient(s.patientId)
+  return (
+    <Screen
+      screenId="S-15-04"
+      patient={p}
+      subheading={
+        <span className="tabular">
+          {s.id} · {s.description} · acquired {formatDateTime(s.acquiredAt)}
+        </span>
+      }
+      chips={
+        <Chip tone="neutral" icon="FileText">
+          report only
+        </Chip>
+      }
+      actions={
+        <Button icon="List" onClick={() => navigate('/radiology/worklist')}>
+          Imaging worklist
+        </Button>
+      }
+    >
+      <div className="max-w-3xl space-y-5">
+        <SectionCard title="Report" meta={<span className="text-[0.86em] text-ink-3">{s.status}</span>} bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+          <p className="text-[0.8em] font-bold tracking-[0.08em] text-ink-3 uppercase">Impression</p>
+          <p className="mt-1 text-lg leading-relaxed">{s.impression}</p>
+          {s.findings && (
+            <ul className="mt-3 space-y-1 text-ink-2">
+              {s.findings.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          )}
+          <p className="tabular mt-3 text-[0.86em] text-ink-3">
+            {s.reportedBy ?? 'Awaiting radiologist'} · {formatDateTime(s.acquiredAt)}
+          </p>
+        </SectionCard>
+        <Alert tone="info" title="Images for this study are not in this demo">
+          The report is on the record; the pixels are not loaded here. Only the head CTs carry real images — open one
+          from the worklist.
+        </Alert>
+        <PatientRecordLinks patient={p} />
+      </div>
+    </Screen>
+  )
+}
+
+function Viewer({ record, study }: { record: ImagingStudy; study: NcctStudy }) {
   const navigate = useNavigate()
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
@@ -63,14 +143,14 @@ export function S1504({ id }: { id?: string }) {
   const saveVoiceNote = useClinical((s) => s.saveVoiceNote)
   const voiceNotes = useClinical((s) => s.voiceNotes)
 
-  const studyId = id ?? 'ST-9914'
-  const caseId = STUDY_CASE[studyId] ?? '0141'
-  const study = NCCT_STUDIES[caseId]
-  const c = strokeCase(caseId)
-  const p = patient(study.patientId)
-  const findings = useMemo(() => ncctFindings(study.truth), [study])
+  const studyId = record.id
+  const c = maybeStrokeCase(study.strokeCaseId)
+  const p = patient(record.patientId)
+  const findings = useMemo(() => ncctFindings(study.truth, c), [study, c])
   const verdict = triageVerdict(study.truth, c)
-  const overlays = useMemo(() => overlaysFor(caseId, study.truth), [caseId, study])
+  const overlays = useMemo(() => overlaysFor(study.key, c), [study, c])
+  const deliveredAt = c?.imaging.deliveredAt ?? new Date(record.acquiredAt.getTime() + 4 * 60000)
+  const model = c?.imaging.lvo ? IMAGING_TRIAGE.model : NCCT_MODEL
 
   const [sideBySide, setSideBySide] = useState(false)
   const [escalate, setEscalate] = useState(false)
@@ -78,13 +158,21 @@ export function S1504({ id }: { id?: string }) {
   const [noteMeta, setNoteMeta] = useState<{ model: string; band: string } | null>(null)
   const [question, setQuestion] = useState('')
 
-  /** What needs a person told: a bleed, or on a clean scan the occlusion the triage found. */
-  const bleed = findings.find((f) => f.critical)
+  /** What needs a person told: a bleed or shift, or on a clean scan the occlusion the triage found. */
+  /** The one to escalate first: blood, then shift, then mass effect, then anything else flagged. */
+  const ORDER = ['Intracranial haemorrhage', 'Midline shift', 'Mass effect']
+  const bleed =
+    ORDER.map((label) => findings.find((f) => f.critical && f.label === label)).find(Boolean) ??
+    findings.find((f) => f.critical)
   const lvo = IMAGING_TRIAGE.findings.find((f) => f.label === 'LVO')
-  const criticalFinding =
-    bleed ? { label: bleed.label, value: bleed.value } : verdict.priority === 'P1' && lvo ? { label: 'Large vessel occlusion', value: lvo.value } : undefined
+  const criticalFinding = bleed
+    ? { label: bleed.label, value: bleed.value }
+    : c?.imaging.lvo && lvo
+      ? { label: 'Large vessel occlusion', value: lvo.value }
+      : undefined
   const reported = dispositions[`imaging:${studyId}:report`]
-  const savedNotes = voiceNotes[p.id] ?? []
+  /** Only this study's reading notes — a patient with two scans keeps them apart. */
+  const savedNotes = (voiceNotes[p.id] ?? []).filter((n) => n.body.startsWith(`${studyId} ·`))
 
   /** The same path the ? bubble takes, seeded with a question about THIS scan. */
   function ask(q: string) {
@@ -121,8 +209,8 @@ export function S1504({ id }: { id?: string }) {
       wide
       subheading={
         <span className="tabular">
-          {studyId} · {IMAGING_TRIAGE.study} · {study.slices} of {study.seriesTotal} slices · acquired{' '}
-          {formatTime(IMAGING_TRIAGE.acquiredAt)}
+          {studyId} · {record.description} · {study.slices} of {study.seriesTotal} slices · acquired{' '}
+          {formatDateTime(record.acquiredAt)}
         </span>
       }
       chips={
@@ -139,12 +227,17 @@ export function S1504({ id }: { id?: string }) {
       }
       actions={
         <>
+          <Button icon="List" onClick={() => navigate('/radiology/worklist')}>
+            Worklist
+          </Button>
           <Button icon="Columns2" aria-pressed={sideBySide} onClick={() => setSideBySide((v) => !v)}>
             {sideBySide ? 'Single view' : 'Original beside overlay'}
           </Button>
-          <Button tone="primary" icon="Brain" onClick={() => navigate(`/stroke/case/${caseId}/imaging`)}>
-            Stroke triage card
-          </Button>
+          {c && (
+            <Button tone="primary" icon="Brain" onClick={() => navigate(`/stroke/ai-console?case=${c.id}`)}>
+              Stroke-AI console
+            </Button>
+          )}
         </>
       }
       rail={
@@ -152,7 +245,7 @@ export function S1504({ id }: { id?: string }) {
           <SectionCard title="Study" bodyClassName="px-4 pb-3 sm:px-5 sm:pb-4">
             <dl className="divide-y divide-glass-hairline text-[0.92em]">
               <KeyValue label="Acquired">
-                <span className="tabular">{formatDateTime(IMAGING_TRIAGE.acquiredAt)}</span>
+                <span className="tabular">{formatDateTime(record.acquiredAt)}</span>
               </KeyValue>
               <KeyValue label="Series">
                 {study.seriesDescription} · {study.sliceThickness} mm · {study.kvp} kVp
@@ -162,7 +255,8 @@ export function S1504({ id }: { id?: string }) {
                   {study.rows} × {study.columns}
                 </span>
               </KeyValue>
-              <KeyValue label="Case">{c.caseNo}</KeyValue>
+              <KeyValue label="Case">{c ? c.caseNo : 'Not a stroke case'}</KeyValue>
+              <KeyValue label="Report">{record.status}</KeyValue>
               <KeyValue label="Source">
                 <span className="tabular">{study.sourcePatientId}</span> · de-identified
               </KeyValue>
@@ -183,6 +277,8 @@ export function S1504({ id }: { id?: string }) {
               white fields in a darkened room cost contrast sensitivity.
             </p>
           </Why>
+
+          <PatientRecordLinks patient={p} exclude={['imaging']} label={null} className="px-1" />
         </div>
       }
       railTitle="Study"
@@ -234,7 +330,6 @@ export function S1504({ id }: { id?: string }) {
                 onChange={setNote}
                 onDictated={(meta) => setNoteMeta({ model: meta.model, band: meta.band })}
                 patientId={p.id}
-                sample="Non-contrast head CT reviewed. No haemorrhage. Dense left M1 with early ischaemic change in the insula and lentiform nucleus, ASPECTS eight. Discussed with the stroke neurologist; proceeding to eligibility."
                 placeholder="What you see, and what you want the team to know…"
                 hint="Saved as a draft against the study. It becomes part of the record only when the report is signed."
               />
@@ -256,7 +351,7 @@ export function S1504({ id }: { id?: string }) {
               {savedNotes.length > 0 && (
                 <ul className="mt-3 divide-y divide-glass-hairline">
                   {savedNotes.slice(-3).reverse().map((n) => (
-                    <li key={n.at} className="py-2 text-[0.92em]">
+                    <li key={n.id} className="py-2 text-[0.92em]">
                       <p className="leading-relaxed">{n.body}</p>
                       <p className="tabular mt-1 text-[0.86em] text-ink-3">
                         {n.by} · {formatTime(new Date(n.at))} · {n.model === 'typed' ? 'typed' : 'dictated'}
@@ -273,10 +368,15 @@ export function S1504({ id }: { id?: string }) {
             {aiActive ? (
               <SectionCard
                 title="AI read"
-                meta={<span className="tabular text-[0.86em] text-ink-3">delivered {formatTime(IMAGING_TRIAGE.deliveredAt)}</span>}
+                meta={<span className="tabular text-[0.86em] text-ink-3">delivered {formatTime(deliveredAt)}</span>}
                 bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
               >
-                <p className={cx('font-semibold', verdict.tone === 'critical' ? 'text-pri-critical-ink' : 'text-normal')}>
+                <p
+                  className={cx(
+                    'font-semibold',
+                    verdict.tone === 'critical' ? 'text-pri-critical-ink' : verdict.tone === 'caution' ? 'text-caution' : 'text-normal',
+                  )}
+                >
                   {verdict.headline}
                 </p>
                 <p className="mt-1 text-[0.92em] text-ink-2">{verdict.detail}</p>
@@ -310,14 +410,14 @@ export function S1504({ id }: { id?: string }) {
                     claim: verdict.detail,
                     confidence: 0.94,
                     band: 'HIGH',
-                    computedAt: formatTime(IMAGING_TRIAGE.deliveredAt),
+                    computedAt: formatTime(deliveredAt),
                     inputs: [
-                      { label: `Study ${studyId}, ${study.slices} slices`, source: `Acquired ${formatTime(IMAGING_TRIAGE.acquiredAt)}` },
+                      { label: `Study ${studyId}, ${study.slices} slices`, source: `Acquired ${formatDateTime(record.acquiredAt)}` },
                       { label: 'Ground-truth labels of the imported series', source: study.sourcePatientId },
-                      { label: 'Case clock and last known well', source: 'S-18-06 · M-18.10' },
+                      ...(c ? [{ label: 'Case clock and last known well', source: 'S-18-06 · M-18.10' }] : []),
                     ],
                     evidence: findings.map((f) => `${f.label}: ${f.value} — ${f.gloss}`),
-                    model: IMAGING_TRIAGE.model,
+                    model,
                     limits: IMAGING_TRIAGE.limits,
                   }}
                 />
@@ -338,12 +438,30 @@ export function S1504({ id }: { id?: string }) {
               </SectionCard>
             )}
 
-            {/* The full report — a document, folded. */}
-            <SectionCard title="Clinical report" meta={<span className="text-[0.86em] text-ink-3">{c.caseNo}</span>}>
-              <Disclosure label="the full report">
-                <StrokeAIReport strokeCase={c} study={study} />
-              </Disclosure>
-            </SectionCard>
+            {/* The full report — a document, folded. A stroke case gets the stroke report; any other CT, the radiology report. */}
+            {c ? (
+              <SectionCard title="Clinical report" meta={<span className="text-[0.86em] text-ink-3">{c.caseNo}</span>}>
+                <Disclosure label="the full report">
+                  <StrokeAIReport strokeCase={c} study={study} />
+                </Disclosure>
+              </SectionCard>
+            ) : (
+              <SectionCard
+                title="Radiology report"
+                meta={<span className="text-[0.86em] text-ink-3">{record.status}</span>}
+                bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
+              >
+                <p className="leading-relaxed">{record.impression}</p>
+                {record.findings && (
+                  <ul className="mt-2 space-y-1 text-[0.92em] text-ink-2">
+                    {record.findings.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="tabular mt-2 text-[0.86em] text-ink-3">{record.reportedBy ?? 'Awaiting radiologist'}</p>
+              </SectionCard>
+            )}
 
             {/* Questions about THIS scan, answered with citations by the assistant. */}
             {aiActive && (
@@ -399,6 +517,7 @@ export function S1504({ id }: { id?: string }) {
       {/* S-15-06, the modal it is specified to be. */}
       <S1506
         open={escalate}
+        patientId={p.id}
         finding={criticalFinding ? `${criticalFinding.label} — ${criticalFinding.value}` : ''}
         studyId={studyId}
         onClose={() => setEscalate(false)}

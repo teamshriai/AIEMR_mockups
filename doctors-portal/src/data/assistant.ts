@@ -489,7 +489,7 @@ const MARK_SEEN: AssistantAnswer = {
 const ATTENTION_LIST: AssistantAnswer = {
   kind: 'cited',
   body:
-    'Three things put a patient on that list, and they are ranked in this order:\n\n• **Critical lab** — a value past a rule-based threshold that no named clinician has acknowledged yet. This one escalates on a clock.\n• **New deterioration** — AI-201 scoring a rising risk from charted observations.\n• **Pending** — something waiting on you rather than on the patient: a note needing your signature, or a score the model could not produce.\n\nThe list is capped at five. Anything below the cut is on the full inpatient list, which is what **See all** opens.',
+    'Three things put a patient on that list, and they are ranked in this order:\n\n• **Critical lab report identified** — a value past a rule-based threshold that no named clinician has acknowledged yet. This one escalates on a clock.\n• **New deterioration** — AI-201 scoring a rising risk from charted observations.\n• **Pending** — something waiting on you rather than on the patient: a note needing your signature, or a score the model could not produce.\n\nThe list is capped at five. Anything below the cut is on the full inpatient list, which is what **See all** opens.',
   citations: [
     { n: 1, label: 'Deterioration risk — abstains below the vitals-recency floor', source: 'AI-201 · §4.2' },
     { n: 2, label: 'Critical values interrupt a NAMED clinician, not a pool', source: 'AI-213 · §4.2' },

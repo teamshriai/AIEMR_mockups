@@ -232,7 +232,7 @@ export function S1813() {
                 toast({
                   tone: 'critical',
                   title: 'Code stroke activated',
-                  detail: 'The clock has started and the hub has been paged. Dr Rohit Desai is on call.',
+                  detail: 'The clock has started and the hub has been paged. Dr. Rohit Desai is on call.',
                 })
               }}
               className="ai-surface mx-auto mt-6 flex min-h-20 w-full max-w-md items-center justify-center gap-3 rounded-card px-8 text-lg font-bold shadow-bubble hover:brightness-110 active:scale-[0.99] md:text-xl"
@@ -244,7 +244,7 @@ export function S1813() {
         ) : (
           <>
             <Alert tone="normal" title="Activated — the clock is running and the hub is paged">
-              STROKE/26-27/{ACTIVE_CASE.id} · Dr Rohit Desai has acknowledged. Answer the six questions below while you
+              STROKE/26-27/{ACTIVE_CASE.id} · Dr. Rohit Desai has acknowledged. Answer the six questions below while you
               wait for the video call; each one saves as you go.
             </Alert>
 
@@ -377,11 +377,11 @@ export function S1813() {
       <ConfirmDialog
         open={calling}
         title={`Call the stroke hub at ${facility('ICH').name}?`}
-        consequence="Rings the on-call stroke neurologist, Dr Rohit Desai, on the hub's stroke line. The call is logged against this case with the time."
+        consequence="Rings the on-call stroke neurologist, Dr. Rohit Desai, on the hub's stroke line. The call is logged against this case with the time."
         confirmLabel="Call now"
         onConfirm={() => {
           setCalling(false)
-          toast({ tone: 'info', title: 'Calling Dr Rohit Desai', detail: `Hub stroke line · logged against the case at ${formatTime(caseNow)}.` })
+          toast({ tone: 'info', title: 'Calling Dr. Rohit Desai', detail: `Hub stroke line · logged against the case at ${formatTime(caseNow)}.` })
         }}
         onCancel={() => setCalling(false)}
       />

@@ -23,7 +23,8 @@ import { useNavigate } from 'react-router-dom'
 import { Diamond } from '@/components/ai'
 import { Why } from '@/components/calm'
 import { Modal } from '@/components/overlays'
-import { Button, Checkbox, ClinicalFlag, Icon, KeyValue, TextArea } from '@/components/primitives'
+import { Button, Checkbox, ClinicalFlag, Icon, KeyValue } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import type { ResultRow } from '@/data/clinical'
 import { encounterForPatient } from '@/data/clinical'
 import { formatDateTime, formatTime, NOW } from '@/data/format'
@@ -134,20 +135,16 @@ export function S0906({ result, onClose }: { result: ResultRow | null; onClose: 
           }
         />
 
-        <div>
-          <p className="mb-1.5 text-[0.92em] font-medium text-ink-2">
-            What you are doing about it{' '}
-            <span className="font-normal text-ink-3">
-              optional here, required in the record — acknowledging records only that you saw it
-            </span>
-          </p>
-          <TextArea
-            rows={2}
-            value={action}
-            onChange={(e) => setAction(e.target.value)}
-            placeholder="Calcium gluconate and insulin-dextrose given, ECG requested, repeat in 1 hour…"
-          />
-        </div>
+        <VoiceField
+          id={`critical-action-${result.id}`}
+          label="What you are doing about it"
+          rows={2}
+          value={action}
+          onChange={setAction}
+          patientId={p.id}
+          placeholder="Calcium gluconate and insulin-dextrose given, ECG requested, repeat in 1 hour…"
+          hint="Optional here, required in the record — acknowledging records only that you saw it."
+        />
 
         <Why label="Why this fired, and why it cannot be dismissed">
           <p className="flex flex-wrap items-center gap-2 text-ink-2">

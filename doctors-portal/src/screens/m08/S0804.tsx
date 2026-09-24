@@ -19,10 +19,12 @@ import { useNavigate } from 'react-router-dom'
 import { SuggestionCard } from '@/components/ai'
 import { SectionCard, Why } from '@/components/calm'
 import { Alert, Button, Icon, KeyValue } from '@/components/primitives'
-import { NOTE_DRAFT_SD_P_03, ORDER_SUGGESTIONS, RISK_STRIPS, VITALS, encounter } from '@/data/clinical'
+import { PatientRecordLinks } from '@/components/recordlinks'
+import { ORDER_SUGGESTIONS, RISK_STRIPS, VITALS, encounter, noteSeedsFor } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
 import { useClinical } from '@/store/clinical'
+import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { S0604 } from '../m06/S0604'
@@ -33,12 +35,16 @@ export function S0804({ id }: { id?: string }) {
   const toast = useUI((s) => s.toast)
   const placeOrders = useClinical((s) => s.placeOrders)
   const applyScribeDraft = useClinical((s) => s.applyScribeDraft)
+  const me = useCurrentStaff()
   const [scribeOpen, setScribeOpen] = useState(false)
 
   const enc = encounter(id ?? 'E-118366')
   const p = patient(enc.patientId)
   const risk = RISK_STRIPS[p.id]
   const vitals = VITALS[p.id] ?? []
+  const seeds = noteSeedsFor(p.id)
+  /** AI-301's suggestions are drawn from R. Lakshmanan's plan; nobody else inherits them. */
+  const suggestions = p.id === 'SD-P-03' ? ORDER_SUGGESTIONS.slice(0, 3) : []
 
   return (
     <>
@@ -46,7 +52,7 @@ export function S0804({ id }: { id?: string }) {
       screenId="S-08-04"
       encounter={enc}
       patient={p}
-      seeds={NOTE_DRAFT_SD_P_03}
+      seeds={seeds}
       scribeModel="round-scribe v3.7.0"
       onSigned={() => navigate('/ip/patients')}
       onDraftAll={() => setScribeOpen(true)}
@@ -61,12 +67,17 @@ export function S0804({ id }: { id?: string }) {
         </>
       }
       banner={
-        p.allergies.length > 0 && (
-          <Alert tone="caution" title={`Documented allergy: ${p.allergies.join(', ')}`}>
-            This constrains prescribing. A beta-lactam on this patient is a deterministic hard stop, not a warning —
-            the Prescribe action will show it.
-          </Alert>
-        )
+        <>
+          {/* Results, reports and the scan are one tap from the note — the ward round needs them beside it. */}
+          <PatientRecordLinks patient={p} />
+          {p.allergies.length > 0 && (
+            <Alert tone="caution" title={`Documented allergy: ${p.allergies.join(', ')}`}>
+              {p.allergies.includes('Penicillin')
+                ? 'This constrains prescribing. A beta-lactam on this patient is a deterministic hard stop, not a warning — the Prescribe action will show it.'
+                : 'This constrains prescribing. The Prescribe action checks every drug against it and stops a match.'}
+            </Alert>
+          )}
+        </>
       }
       rail={
         <div className="space-y-4">
@@ -116,7 +127,12 @@ export function S0804({ id }: { id?: string }) {
             <h3 className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">
               Orders this plan implies
             </h3>
-            {ORDER_SUGGESTIONS.slice(0, 3).map((s, i) => (
+            {suggestions.length === 0 && (
+              <p className="text-[0.92em] text-ink-3">
+                Nothing to suggest yet — suggestions follow from the plan once it is written.
+              </p>
+            )}
+            {suggestions.map((s, i) => (
               <SuggestionCard
                 key={s.item}
                 touchpointId={`${enc.id}:round-order-${i}`}
@@ -126,7 +142,7 @@ export function S0804({ id }: { id?: string }) {
                 band={s.band}
                 score={s.confidence}
                 gate="G2"
-                onAccept={() => placeOrders([{ id: `RO-${i}`, item: s.item }], p.id, 'Dr Ananya Iyer')}
+                onAccept={() => placeOrders([{ id: `RO-${i}`, item: s.item }], p.id, me.name)}
                 explain={{
                   touchpointId: `${enc.id}:round-order-${i}`,
                   capabilityId: 'AI-301',
@@ -159,7 +175,7 @@ export function S0804({ id }: { id?: string }) {
           </Why>
         </div>
       }
-      railBadge={ORDER_SUGGESTIONS.slice(0, 3).length}
+      railBadge={suggestions.length || undefined}
     />
 
     {/* The round scribe, on request. Same overlay as the consultation; this patient's own lines. */}
@@ -167,11 +183,11 @@ export function S0804({ id }: { id?: string }) {
       open={scribeOpen}
       patientId={p.id}
       patientName={p.name}
-      sections={NOTE_DRAFT_SD_P_03}
+      sections={seeds}
       onClose={() => setScribeOpen(false)}
-      onFinish={(keys) => {
+      onFinish={(keys, drafts) => {
         setScribeOpen(false)
-        const drafted = applyScribeDraft(enc.id, keys)
+        const drafted = applyScribeDraft(enc.id, keys, drafts)
         const kept = keys.length - drafted.length
         toast({
           tone: 'info',

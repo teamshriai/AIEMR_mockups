@@ -24,7 +24,7 @@ route_for() {
   case "$1" in
     /patient/*)          echo "${1/:id/ICH-0044051}" ;;
     /stroke/case/*)      echo "${1/:id/0141}" ;;
-    /radiology/study/*)  echo "${1/:id/ST-4471}" ;;
+    /radiology/study/*)  echo "${1/:id/ST-9914}" ;;
     /results/:id)        echo "/results/R-88410" ;;
     /tele/session/*)     echo "${1/:id/E-118430}" ;;
     /ip/encounter/*)     echo "${1/:id/E-118366}" ;;

@@ -22,6 +22,7 @@ import { useNavigate } from 'react-router-dom'
 import { Confidence, WhyLink } from '@/components/ai'
 import { CountPill, Disclosure, PillLink, ScopeTabs, SectionCard, Why, useScope } from '@/components/calm'
 import { Button, Chip, ClinicalFlag, TextInput, cx } from '@/components/primitives'
+import { PatientRecordLinks } from '@/components/recordlinks'
 import { ORDERS, PROBLEMS, RESULTS, VITALS, encounterForPatient, timelineFor } from '@/data/clinical'
 import { formatDate, formatDateTime, formatTime, NOW } from '@/data/format'
 import { patientByAnyId } from '@/data/kit'
@@ -171,6 +172,9 @@ export function S0602({ id }: { id?: string }) {
       railTitle="Chart"
     >
       <div className="space-y-5">
+        {/* The full record, one part per screen — reports, results, notes, medicines, appointments. */}
+        <PatientRecordLinks patient={p} />
+
         {/* AI-105's summary — two lines by default, with its provenance. */}
         {aiActive && summaryOpen && summary && (
           <SectionCard

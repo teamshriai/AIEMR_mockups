@@ -23,10 +23,12 @@ export interface NcctTruth {
 }
 
 export interface NcctStudy {
-  /** The §8 stroke case this study stands behind. */
-  caseId: string
+  /** The folder under /ncct. Equals the stroke case id where there is one. */
+  key: string
+  /** The stroke case this study stands behind — absent for a CT outside the pathway. */
+  strokeCaseId?: string
   patientId: string
-  /** Slice files are /ncct/<caseId>/slice-01.png … slice-NN.png */
+  /** Slice files are <base>ncct/<key>/slice-01.png … slice-NN.png */
   slices: number
   rows: number
   columns: number
@@ -45,7 +47,8 @@ export const NCCT_WINDOW = { width: 80, level: 40 } as const
 
 export const NCCT_STUDIES: Record<string, NcctStudy> = {
   '0141': {
-    caseId: '0141',
+    key: '0141',
+    strokeCaseId: '0141',
     patientId: 'SD-P-05',
     slices: 28,
     rows: 512,
@@ -59,8 +62,9 @@ export const NCCT_STUDIES: Record<string, NcctStudy> = {
     truth: { ich: false, iph: false, ivh: false, sdh: false, edh: false, sah: false, massEffect: false, midlineShift: false },
   },
   '0140': {
-    caseId: '0140',
-    patientId: 'SD-P-08',
+    key: '0140',
+    strokeCaseId: '0140',
+    patientId: 'SD-P-03',
     slices: 28,
     rows: 512,
     columns: 512,
@@ -72,9 +76,99 @@ export const NCCT_STUDIES: Record<string, NcctStudy> = {
     manufacturer: '',
     truth: { ich: false, iph: false, ivh: false, sdh: false, edh: false, sah: false, massEffect: false, midlineShift: false },
   },
+  '0137': {
+    key: '0137',
+    strokeCaseId: '0137',
+    patientId: 'SD-P-12',
+    slices: 28,
+    rows: 512,
+    columns: 512,
+    sliceThickness: 0.625,
+    kvp: 120,
+    seriesDescription: 'PLAIN THIN',
+    seriesTotal: 224,
+    sourcePatientId: 'CQ500-CT-10',
+    manufacturer: '',
+    truth: { ich: true, iph: true, ivh: false, sdh: false, edh: false, sah: false, massEffect: false, midlineShift: false },
+  },
+  '0138': {
+    key: '0138',
+    strokeCaseId: '0138',
+    patientId: 'SD-P-13',
+    slices: 28,
+    rows: 512,
+    columns: 512,
+    sliceThickness: 1,
+    kvp: 120,
+    seriesDescription: 'Plain THIN',
+    seriesTotal: 166,
+    sourcePatientId: 'CQ500-CT-366',
+    manufacturer: '',
+    truth: { ich: false, iph: false, ivh: false, sdh: false, edh: false, sah: false, massEffect: true, midlineShift: true },
+  },
+  '0142': {
+    key: '0142',
+    strokeCaseId: '0142',
+    patientId: 'SD-P-14',
+    slices: 28,
+    rows: 512,
+    columns: 512,
+    sliceThickness: 0.625,
+    kvp: 120,
+    seriesDescription: 'PLAIN THIN',
+    seriesTotal: 272,
+    sourcePatientId: 'CQ500-CT-48',
+    manufacturer: '',
+    truth: { ich: true, iph: true, ivh: true, sdh: false, edh: false, sah: true, massEffect: true, midlineShift: true },
+  },
+  'N-061': {
+    key: 'N-061',
+    patientId: 'SD-P-11',
+    slices: 28,
+    rows: 512,
+    columns: 512,
+    sliceThickness: 3,
+    kvp: 120,
+    seriesDescription: 'Plain 3mm',
+    seriesTotal: 58,
+    sourcePatientId: 'CQ500-CT-61',
+    manufacturer: '',
+    truth: { ich: true, iph: false, ivh: false, sdh: true, edh: false, sah: false, massEffect: true, midlineShift: true },
+  },
+  'N-025': {
+    key: 'N-025',
+    patientId: 'SD-P-15',
+    slices: 12,
+    rows: 512,
+    columns: 512,
+    sliceThickness: 5,
+    kvp: 140,
+    seriesDescription: '5/5mm Plain',
+    seriesTotal: 12,
+    sourcePatientId: 'CQ500-CT-25',
+    manufacturer: '',
+    truth: { ich: false, iph: false, ivh: false, sdh: false, edh: false, sah: false, massEffect: false, midlineShift: false },
+  },
+  'N-050': {
+    key: 'N-050',
+    patientId: 'SD-P-16',
+    slices: 8,
+    rows: 512,
+    columns: 512,
+    sliceThickness: 0.625,
+    kvp: 120,
+    seriesDescription: '0.625mm',
+    seriesTotal: 8,
+    sourcePatientId: 'CQ500-CT-50',
+    manufacturer: '',
+    truth: { ich: false, iph: false, ivh: false, sdh: false, edh: false, sah: false, massEffect: false, midlineShift: false },
+  },
 }
 
-/** The slice path a viewer requests. 1-based, zero-padded to two digits. */
-export function slicePath(caseId: string, index: number): string {
-  return `/ncct/${caseId}/slice-${String(index).padStart(2, '0')}.png`
+/**
+ * The slice path a viewer requests. 1-based, zero-padded to two digits. Built
+ * on Vite's base URL so the app works when it is served from a sub-path.
+ */
+export function slicePath(key: string, index: number): string {
+  return `${import.meta.env.BASE_URL}ncct/${key}/slice-${String(index).padStart(2, '0')}.png`
 }

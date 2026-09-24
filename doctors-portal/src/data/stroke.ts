@@ -23,6 +23,11 @@ function at(h: number, m: number): Date {
   return new Date(2026, 8, 21, h, m, 0)
 }
 
+/** A stamp on an earlier night — the closed cases happened before today. */
+function on(day: number, h: number, m: number): Date {
+  return new Date(2026, 8, day, h, m, 0)
+}
+
 // ────────────────────────────────────────────────────────── The case itself
 
 export interface StrokeCase {
@@ -41,6 +46,37 @@ export interface StrokeCase {
   breakGlassBy?: string
   nihss: number
   payer: string
+  /** What happened to a closed case, in one line. */
+  outcome?: string
+  /** The scan-side facts the study's labels cannot carry. */
+  imaging: CaseImaging
+}
+
+/**
+ * What the imaging showed beyond the haemorrhage labels, per case. The labels
+ * (`ncct.generated.ts`) say WHETHER there is blood or shift; this says where,
+ * how much, and what the next step is — the parts a report reads for.
+ */
+export interface CaseImaging {
+  acquiredAt: Date
+  deliveredAt: Date
+  /** ASPECTS where it applies. null on a haemorrhage, where it is not scored. */
+  aspects: number | null
+  hyperdenseVessel: string
+  /** A CTA-confirmed large-vessel occlusion. Only then do the CTA and CTP blocks read. */
+  lvo: boolean
+  lesion?: { site: string; volumeMl?: number; shiftMm?: number; extension?: string }
+  /** ICH score, 0–6, for a haemorrhage. */
+  ichScore?: number
+  bp: string
+  /** Anticoagulant on board, if any — a thrombolysis contraindication in its own right. */
+  anticoagulant?: string
+  /** Where CTA/CTP were not done, why — so the report does not look incomplete. */
+  notPerformed?: string
+  /** The next step, as the verdict ends it. */
+  recommendation: string
+  /** Who takes the patient next. */
+  receiving: string
 }
 
 export const STROKE_CASES: StrokeCase[] = [
@@ -52,35 +88,159 @@ export const STROKE_CASES: StrokeCase[] = [
     destinationFacility: 'ICH',
     lkw: at(1, 20),
     activatedAt: at(2, 16),
-    activatedBy: 'Dr Priya Menon',
+    activatedBy: 'Dr. Priya Menon',
     status: 'active',
-    breakGlassBy: 'Dr Rohit Desai',
+    breakGlassBy: 'Dr. Rohit Desai',
     nihss: 14,
     payer: 'TPA cashless',
+    imaging: {
+      acquiredAt: at(2, 32),
+      deliveredAt: at(2, 40),
+      aspects: 8,
+      hyperdenseVessel: 'PRESENT — left MCA',
+      lvo: true,
+      bp: '168/94',
+      recommendation: 'IV tenecteplase now, then transfer for mechanical thrombectomy.',
+      receiving: 'Stroke unit · cath lab on standby',
+    },
   },
   {
     /** The mimic. A network that only shows true strokes is not being honest. */
     id: '0140',
     caseNo: 'STROKE/26-27/0140',
-    patientId: 'SD-P-08',
+    patientId: 'SD-P-03',
     originFacility: 'ICH',
     destinationFacility: 'ICH',
     lkw: at(0, 35),
     activatedAt: at(0, 52),
-    activatedBy: 'Dr Ananya Iyer',
+    activatedBy: 'Dr. Ananya Iyer',
     status: 'de-activated',
     deactivationReason: 'Seizure with post-ictal deficit — stroke mimic. De-activated 01:12.',
     nihss: 4,
-    payer: 'None yet',
+    payer: 'PM-JAY',
+    imaging: {
+      acquiredAt: at(0, 58),
+      deliveredAt: at(1, 2),
+      aspects: 10,
+      hyperdenseVessel: 'Absent',
+      lvo: false,
+      bp: '138/82',
+      notPerformed: 'CTA not performed — the deficit was resolving and the history pointed to a seizure.',
+      recommendation: 'Stand down. Neurology review for the seizure; no stroke treatment is indicated.',
+      receiving: 'Ward 4B · general medicine',
+    },
+  },
+  {
+    /** A deep hypertensive bleed — small, no extension, a blood-pressure pathway. */
+    id: '0137',
+    caseNo: 'STROKE/26-27/0137',
+    patientId: 'SD-P-12',
+    originFacility: 'ICH',
+    destinationFacility: 'ICH',
+    lkw: on(18, 22, 5),
+    activatedAt: on(18, 22, 31),
+    activatedBy: 'Dr. Ananya Iyer',
+    status: 'closed',
+    outcome: 'Haemorrhage on CT — thrombolysis contraindicated. Admitted to the stroke unit for blood-pressure control.',
+    nihss: 7,
+    payer: 'CGHS',
+    imaging: {
+      acquiredAt: on(18, 22, 44),
+      deliveredAt: on(18, 22, 48),
+      aspects: null,
+      hyperdenseVessel: 'Absent',
+      lvo: false,
+      lesion: { site: 'Left thalamus', volumeMl: 6, shiftMm: 0, extension: 'No intraventricular extension' },
+      ichScore: 0,
+      bp: '212/118',
+      notPerformed: 'CTA not performed — a small deep bleed with a clear hypertensive cause; the NCCT decided the pathway.',
+      recommendation: 'Lower systolic BP to 140 within the hour; stroke-unit care and a repeat CT at 24 hours.',
+      receiving: 'Stroke unit · 4B',
+    },
+  },
+  {
+    /** Late and large — outside every window, the danger now is swelling. */
+    id: '0138',
+    caseNo: 'STROKE/26-27/0138',
+    patientId: 'SD-P-13',
+    originFacility: 'ICH',
+    destinationFacility: 'ICH',
+    lkw: on(19, 12, 0),
+    activatedAt: on(20, 17, 52),
+    activatedBy: 'Dr. Ananya Iyer',
+    status: 'closed',
+    outcome: 'Established infarct about 30 hours after last seen well — no reperfusion option. Admitted; neurosurgery informed.',
+    nihss: 18,
+    payer: 'TPA cashless',
+    imaging: {
+      acquiredAt: on(20, 18, 5),
+      deliveredAt: on(20, 18, 9),
+      aspects: 2,
+      hyperdenseVessel: 'Absent',
+      lvo: false,
+      lesion: { site: 'Right MCA territory', shiftMm: 6, extension: 'Right lateral ventricle and sulci effaced' },
+      bp: '164/92',
+      notPerformed:
+        'CTA and perfusion not performed — last seen well about 30 hours earlier with an established infarct, so no reperfusion decision depends on them.',
+      recommendation:
+        'Neurosurgery review for decompressive hemicraniectomy (under 60, within 48 hours); keep sodium at or above 140.',
+      receiving: 'Stroke unit · neurosurgery informed',
+    },
+  },
+  {
+    /** The anticoagulated bleed. The hour belongs to reversal and neurosurgery, not to lysis. */
+    id: '0142',
+    caseNo: 'STROKE/26-27/0142',
+    patientId: 'SD-P-14',
+    originFacility: 'ITP',
+    destinationFacility: 'ICH',
+    lkw: at(1, 50),
+    activatedAt: at(2, 24),
+    activatedBy: 'Dr. Rohit Desai',
+    status: 'active',
+    nihss: 21,
+    payer: 'ESI',
+    imaging: {
+      acquiredAt: at(2, 34),
+      deliveredAt: at(2, 38),
+      aspects: null,
+      hyperdenseVessel: 'Absent',
+      lvo: false,
+      lesion: {
+        site: 'Right basal ganglia and thalamus',
+        volumeMl: 48,
+        shiftMm: 8,
+        extension: 'Intraventricular and subarachnoid extension',
+      },
+      ichScore: 3,
+      bp: '196/104',
+      anticoagulant: 'Warfarin — INR 3.8',
+      notPerformed: 'CTA and perfusion not performed — the NCCT shows a haemorrhage, so no reperfusion decision depends on them.',
+      recommendation:
+        'Reverse warfarin now (PCC + vitamin K), lower systolic BP to 140, and transfer to the hub for neurosurgery and neuro-ICU.',
+      receiving: 'Neuro-ICU · neurosurgery on call',
+    },
   },
 ]
 
 export const ACTIVE_CASE = STROKE_CASES[0]
 
 export function strokeCase(id: string): StrokeCase {
-  const c = STROKE_CASES.find((x) => x.id === id || x.caseNo.endsWith(id))
+  const c = maybeStrokeCase(id)
   if (!c) throw new Error(`Unknown stroke case ${id}`)
   return c
+}
+
+export function maybeStrokeCase(id: string | undefined): StrokeCase | undefined {
+  if (!id) return undefined
+  return STROKE_CASES.find((x) => x.id === id || x.caseNo.endsWith(id))
+}
+
+/** The stroke case, if any, a patient is on. Newest first. */
+export function strokeCaseForPatient(patientId: string): StrokeCase | undefined {
+  return STROKE_CASES.filter((c) => c.patientId === patientId).sort(
+    (a, b) => b.activatedAt.getTime() - a.activatedAt.getTime(),
+  )[0]
 }
 
 // ─────────────────────────────────────────── S-18-06 · the interval clocks
@@ -163,7 +323,7 @@ export const CASE_INTERVALS: ClockInterval[] = [
     stampedAt: null,
     state: 'RUNNING',
     nextAction: 'Administer tenecteplase and stamp the needle',
-    owner: 'Dr Rohit Desai',
+    owner: 'Dr. Rohit Desai',
   },
   {
     key: 'dido',
@@ -185,7 +345,7 @@ export const CASE_INTERVALS: ClockInterval[] = [
     stampedAt: null,
     state: 'PENDING',
     nextAction: 'Cath lab CATH-1 reserved from 03:40',
-    owner: 'Dr Samir Kulkarni',
+    owner: 'Dr. Samir Kulkarni',
   },
 ]
 
@@ -354,7 +514,7 @@ export const THROMBOLYSIS_DOSE = {
   unit: 'mg/kg',
   weightKg: 78,
   weightCapturedAt: at(2, 22),
-  weightSource: 'Estimated by Dr Priya Menon — no bed scale at IPL',
+  weightSource: 'Estimated by Dr. Priya Menon — no bed scale at IPL',
   totalMg: 19.5,
   administration: 'single IV bolus over 5 seconds',
   /** "Show the independent second dose check as mandatory even when the AI is off." */
@@ -438,7 +598,7 @@ export const TRANSFER_RESERVATION: Reservation[] = [
   {
     key: 'anaesthetist',
     resource: 'Anaesthetist',
-    detail: 'On-call rota · Dr S. Iyengar, 12 min from site',
+    detail: 'On-call rota · Dr. S. Iyengar, 12 min from site',
     status: 'available',
     ownerModule: 'M-23 HR & Rostering',
   },
@@ -470,7 +630,7 @@ export const NETWORK_SITES = [
     name: 'Indostates Health Hospital, Coimbatore',
     role: 'hub' as const,
     ctStatus: 'free' as const,
-    neurologist: 'Dr Rohit Desai (phone)',
+    neurologist: 'Dr. Rohit Desai (phone)',
     strokeBeds: { free: 2, total: 4 },
     cathLab: 'free' as const,
     /** AI-816 / AI-622 readiness signals for S-18-03. */
@@ -544,12 +704,12 @@ export interface StrokeTask {
 
 export const STROKE_TASKS: StrokeTask[] = [
   { id: 'T-01', label: 'NCCT + CTA acquired', owner: 'Radiographer, IPL', column: 'Done', dueInMin: null },
-  { id: 'T-02', label: 'AI triage reviewed and confirmed', owner: 'Dr Rohit Desai', column: 'Done', dueInMin: null },
-  { id: 'T-03', label: 'NIHSS scored over video', owner: 'Dr Rohit Desai', column: 'Done', dueInMin: null },
+  { id: 'T-02', label: 'AI triage reviewed and confirmed', owner: 'Dr. Rohit Desai', column: 'Done', dueInMin: null },
+  { id: 'T-03', label: 'NIHSS scored over video', owner: 'Dr. Rohit Desai', column: 'Done', dueInMin: null },
   {
     id: 'T-04',
     label: 'BP treated to target < 185/110',
-    owner: 'Dr Priya Menon',
+    owner: 'Dr. Priya Menon',
     column: 'In progress',
     dueInMin: 6,
     reason: 'Blocks thrombolysis — highest-value next action',
@@ -557,7 +717,7 @@ export const STROKE_TASKS: StrokeTask[] = [
   {
     id: 'T-05',
     label: 'Consent for thrombolysis',
-    owner: 'Dr Priya Menon',
+    owner: 'Dr. Priya Menon',
     column: 'In progress',
     dueInMin: 8,
     reason: 'Family reached by phone at 02:44',
@@ -619,11 +779,11 @@ export const TIMESTAMP_CONFLICTS = [
 // ───────────────────────── S-18-09 · Team paging & acknowledgement
 
 export const PAGING_LOG = [
-  { role: 'Stroke neurologist', name: 'Dr Rohit Desai', pagedAt: at(2, 16), ackAt: at(2, 18), channel: 'Push + call' },
+  { role: 'Stroke neurologist', name: 'Dr. Rohit Desai', pagedAt: at(2, 16), ackAt: at(2, 18), channel: 'Push + call' },
   { role: 'Stroke coordinator', name: 'Sr. Grace Fernandes', pagedAt: at(2, 16), ackAt: at(2, 17), channel: 'Push' },
   { role: 'Radiographer, IPL', name: 'On duty', pagedAt: at(2, 16), ackAt: at(2, 21), channel: 'Ward phone' },
-  { role: 'Neuro-interventionist', name: 'Dr Samir Kulkarni', pagedAt: at(2, 38), ackAt: null, channel: 'Push + call' },
-  { role: 'Anaesthetist on call', name: 'Dr S. Iyengar', pagedAt: at(2, 38), ackAt: at(2, 44), channel: 'Push' },
+  { role: 'Neuro-interventionist', name: 'Dr. Samir Kulkarni', pagedAt: at(2, 38), ackAt: null, channel: 'Push + call' },
+  { role: 'Anaesthetist on call', name: 'Dr. S. Iyengar', pagedAt: at(2, 38), ackAt: at(2, 44), channel: 'Push' },
 ]
 
 // ────────────────────── S-18-10 · Telestroke request queue

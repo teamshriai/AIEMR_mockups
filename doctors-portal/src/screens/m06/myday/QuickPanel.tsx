@@ -22,6 +22,7 @@ import { Sparkline } from '@/components/charts'
 import { DictationPanel } from '@/components/dictation'
 import { Drawer } from '@/components/overlays'
 import { Button, Chip, Icon, TextArea, cx } from '@/components/primitives'
+import { PatientRecordLinks } from '@/components/recordlinks'
 import { RESULT_TRENDS, RESULTS, RISK_STRIPS } from '@/data/clinical'
 import { NOW, formatDateTime, formatElapsed, formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
@@ -60,6 +61,7 @@ export function QuickPanel({
   const seenAt = useClinical((s) => s.seenAt)
   const pendingSeen = useClinical((s) => s.pendingSeen)
   const markSeen = useClinical((s) => s.markSeen)
+  const voiceNotes = useClinical((s) => s.voiceNotes)
   const grantBreakGlass = useSession((s) => s.grantBreakGlass)
   const breakGlassPatients = useSession((s) => s.breakGlassPatients)
   const record = useAudit((s) => s.record)
@@ -80,8 +82,8 @@ export function QuickPanel({
   const queued = pendingSeen.includes(it.patientId)
 
   /**
-   * SD-P-08 is the unidentified MLC patient — nobody holds a care relationship
-   * with them yet, which is exactly the case GP-11 exists for.
+   * A patient nobody holds a care relationship with is sealed until
+   * break-glass — the case GP-11 exists for.
    */
   const noRelationship = p.consultant === undefined
   const broken = Boolean(breakGlassPatients[it.patientId])
@@ -92,7 +94,25 @@ export function QuickPanel({
   const sameDay = lastSeen.toDateString() === NOW.toDateString()
   const deltas = sealed ? [] : deltasFor(it.patientId, lastSeen)
   const card = sealed ? null : cardFor(it.patientId, lastSeen, it.urgency)
-  const lastNote = sealed ? undefined : lastNoteFor(it.patientId)
+  const charted = sealed ? undefined : lastNoteFor(it.patientId)
+  /** A note dictated in this session is the last thing written, once it is newer than the charted one. */
+  const dictated = sealed ? [] : (voiceNotes[it.patientId] ?? []).slice().sort((a, b) => b.at.localeCompare(a.at))
+  const latestDictated = dictated[0]
+  const lastNote =
+    latestDictated && (!charted || new Date(latestDictated.at) > charted.at)
+      ? {
+          label: latestDictated.status === 'signed' ? 'Dictated note · signed' : 'Dictated note · draft',
+          detail: latestDictated.body,
+          by: latestDictated.by,
+          initials: latestDictated.by
+            .replace(/^(Dr\.?|Sr\.?|Mr|Ms)\s+/, '')
+            .split(' ')
+            .map((w) => w[0])
+            .join('')
+            .slice(0, 2),
+          at: new Date(latestDictated.at),
+        }
+      : charted
   const risk = RISK_STRIPS[it.patientId]
   const subjectAudit = auditRows.filter((r) => r.subject === it.patientId).slice().reverse()
 
@@ -151,7 +171,7 @@ export function QuickPanel({
                   {p.name}
                 </h2>
                 <p className="tabular mt-0.5 text-[0.9em] text-ink-3">
-                  {p.age}/{p.sex} · {card?.room ?? 'ED-01'} · {p.uhid}
+                  {p.age}/{p.sex} · {card?.room ?? p.bed ?? '—'} · {p.uhid}
                 </p>
               </div>
               <button
@@ -241,6 +261,9 @@ export function QuickPanel({
                 </span>
                 <span>· {formatElapsed((NOW.getTime() - lastSeen.getTime()) / 60000)} ago</span>
               </p>
+
+              {/* The rest of the record, one tap away — results, reports, the scan. */}
+              <PatientRecordLinks patient={p} label={null} />
 
               {/* What changed since then. Three, by priority. */}
               <section>
@@ -334,7 +357,19 @@ export function QuickPanel({
               {/* The last thing written on this record. */}
               {lastNote && (
                 <section>
-                  <h3 className="mb-2 text-[0.8em] font-semibold tracking-wider text-ink-3 uppercase">Last note</h3>
+                  <h3 className="mb-2 flex items-center justify-between gap-2 text-[0.8em] font-semibold tracking-wider text-ink-3 uppercase">
+                    Last note
+                    {dictated.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/patient/${p.uhid}/notes`)}
+                        className="inline-flex min-h-8 items-center gap-1 rounded-pill px-2 font-semibold tracking-normal text-brand normal-case hover:bg-brand-soft"
+                      >
+                        {dictated.length} dictated
+                        <Icon name="ChevronRight" size={12} />
+                      </button>
+                    )}
+                  </h3>
                   <div className="flex gap-2.5">
                     <span
                       title={lastNote.by}
@@ -361,7 +396,7 @@ export function QuickPanel({
 
         {/* The three actions, plus dictation. One tap each. */}
         {!sealed && card && (
-          <footer className="sticky bottom-0 border-t border-glass-hairline bg-glass-fill-strong px-5 py-3 backdrop-blur-glass">
+          <footer className="sticky bottom-0 border-t border-glass-hairline bg-[var(--color-menu)] px-5 py-3">
             {queued && (
               <p className="mb-2 flex items-center gap-2 text-[0.86em] font-medium text-caution">
                 <Icon name="WifiOff" size={13} />

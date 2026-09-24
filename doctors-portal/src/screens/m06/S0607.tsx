@@ -35,12 +35,12 @@ import {
   Icon,
   KeyValue,
   Select,
-  TextArea,
   TextInput,
   Toggle,
   cx,
 } from '@/components/primitives'
 import { LockedBanner } from '@/components/states'
+import { VoiceField } from '@/components/voicefield'
 import {
   FORMULARY,
   PENICILLIN_HARD_STOP,
@@ -370,6 +370,7 @@ export function S0607({ id }: { id?: string }) {
                     key={line.id}
                     line={line}
                     encounterId={enc.id}
+                    patientId={p.id}
                     patientWeight={p.weightKg ?? 70}
                     locked={locked}
                     hardStop={hardStopFor(line.drug, p.allergies)}
@@ -504,6 +505,7 @@ export function S0607({ id }: { id?: string }) {
 function RxLineCard({
   line,
   encounterId,
+  patientId,
   patientWeight,
   locked,
   hardStop,
@@ -512,6 +514,7 @@ function RxLineCard({
 }: {
   line: RxLine
   encounterId: string
+  patientId?: string
   patientWeight: number
   locked: boolean
   hardStop?: typeof PENICILLIN_HARD_STOP
@@ -641,19 +644,18 @@ function RxLineCard({
         </label>
       </div>
 
-      <Field
+      <VoiceField
+        id={`${encounterId}:${line.id}:instructions`}
         label="Instructions for the patient"
         className="mt-3"
+        rows={2}
+        disabled={locked}
+        value={instructions}
+        onChange={setInstructions}
+        patientId={patientId}
+        placeholder="How to take it, and what to avoid…"
         hint="Printed bilingually — English plus the patient's language"
-      >
-        <TextArea
-          rows={2}
-          disabled={locked}
-          value={instructions}
-          onChange={(e) => setInstructions(e.target.value)}
-          placeholder="How to take it, and what to avoid…"
-        />
-      </Field>
+      />
     </Card>
   )
 }

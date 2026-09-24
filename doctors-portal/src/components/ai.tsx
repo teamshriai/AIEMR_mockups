@@ -891,9 +891,10 @@ export function AIBanner({
       role="status"
       className={className}
       title={
-        <span className="flex items-center gap-2">
-          <Diamond />
-          {title}
+        <span className="flex items-start gap-2">
+          <Diamond className="mt-[0.4em]" />
+          {/* One wrapping run of text — as separate flex items the words squeeze into columns at phone width. */}
+          <span className="min-w-0">{title}</span>
         </span>
       }
       action={

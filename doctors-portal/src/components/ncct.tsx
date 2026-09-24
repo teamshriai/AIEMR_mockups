@@ -98,7 +98,7 @@ export function NcctViewer({
         className="relative aspect-square w-full overflow-hidden rounded-card bg-black ring-1 ring-white/10 focus-visible:ring-2 focus-visible:ring-ai"
       >
         <img
-          src={slicePath(study.caseId, slice)}
+          src={slicePath(study.key, slice)}
           alt={`Axial non-contrast CT, slice ${slice} of ${study.slices}`}
           draggable={false}
           style={{ transform: `scale(${zoom})` }}

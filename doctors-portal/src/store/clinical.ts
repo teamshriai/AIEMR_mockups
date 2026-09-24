@@ -99,17 +99,24 @@ interface ClinicalState {
    * OFFLINE rule: name what is queued, and never lose it.
    */
   pendingSeen: string[]
-  /** A free dictated note, per patient. `null` key holds an unattached one. */
-  voiceNotes: Record<string, { body: string; at: string; by: string; model: string; band: string }[]>
+  /**
+   * Dictated notes, per patient. The `'unattached'` key holds the doctor's own
+   * to-do notes, which belong to no patient.
+   */
+  voiceNotes: Record<string, VoiceNote[]>
 
   setSectionText: (encounterId: string, key: string, text: string, provenance?: SectionProvenance) => void
   /**
    * Marks sections as AI-drafted by the scribe, so they need a disposition.
    * Text lands on Accept/Edit. A section the clinician has already dictated or
    * typed is LEFT ALONE — the scribe never overwrites the clinician's words.
+   * `drafts`, when given, is what the scribe heard for each section: a key with
+   * no drafted text is not marked, because there would be nothing to decide
+   * on. The text itself is held by `useScribeDrafts` (data/scribe.ts), which
+   * S-06-04 writes at the same moment, and it — not a seed — is the ghost.
    * Returns the keys it actually drafted.
    */
-  applyScribeDraft: (encounterId: string, keys: string[]) => string[]
+  applyScribeDraft: (encounterId: string, keys: string[], drafts?: Partial<Record<string, string>>) => string[]
   clearSection: (encounterId: string, key: string) => void
   setNoteCode: (encounterId: string, code: string | undefined) => void
   saveDraft: (encounterId: string, how?: 'manual' | 'auto') => void
@@ -143,17 +150,70 @@ interface ClinicalState {
    */
   markSeen: (patientId: string, at: string, offline?: boolean) => void
   flushPendingSeen: (at: string) => void
+  /** Returns the new note's id. */
   saveVoiceNote: (args: {
     patientId: string
     body: string
     by: string
     model: string
     band: string
-  }) => void
+  }) => string
+  /** A patient's dictated draft becomes part of the record once signed. */
+  signVoiceNote: (patientId: string, id: string, by: string) => void
+  /** Ticks a to-do note off (or back on). */
+  toggleVoiceNoteDone: (patientId: string, id: string) => void
+  deleteVoiceNote: (patientId: string, id: string) => void
 
   note: (encounterId: string) => NoteRecord
   rx: (encounterId: string) => RxRecord
   reset: () => void
+}
+
+/** The key that holds notes attached to no patient — the doctor's to-do list. */
+export const UNATTACHED = 'unattached'
+
+export interface VoiceNote {
+  id: string
+  body: string
+  /** ISO timestamp of the save. */
+  at: string
+  by: string
+  model: string
+  band: string
+  /** A patient's dictated note is a draft until signed. To-do notes stay drafts. */
+  status: 'draft' | 'signed'
+  signedAt?: string
+  signedBy?: string
+  /** To-do notes only: ticked off. */
+  done?: boolean
+}
+
+let voiceSeq = 0
+function voiceId(): string {
+  voiceSeq += 1
+  return `VN-${Date.now().toString(36)}-${voiceSeq}`
+}
+
+/** Notes saved before ids and status existed are given both on load. */
+function normaliseVoiceNotes(raw: unknown): Record<string, VoiceNote[]> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, VoiceNote[]> = {}
+  for (const [key, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) continue
+    out[key] = list.map((n: Partial<VoiceNote>, i) => ({
+      id: n.id ?? `VN-legacy-${key}-${i}`,
+      body: n.body ?? '',
+      at: n.at ?? new Date().toISOString(),
+      by: n.by ?? '',
+      model: n.model ?? '',
+      band: n.band ?? 'MED',
+      status: n.status ?? 'draft',
+      signedAt: n.signedAt,
+      signedBy: n.signedBy,
+      done: n.done,
+    }))
+  }
+  return out
 }
 
 function blankNote(encounterId: string): NoteRecord {
@@ -206,12 +266,13 @@ export const useClinical = create<ClinicalState>()(
         })
       },
 
-      applyScribeDraft: (encounterId, keys) => {
+      applyScribeDraft: (encounterId, keys, drafts) => {
         const current = get().note(encounterId)
         if (current.status === 'signed') return []
         const provenance = { ...current.provenance }
         const applied: string[] = []
         for (const k of keys) {
+          if (drafts && (drafts[k] ?? '').trim() === '') continue
           const own = current.provenance[k]
           if ((current.text[k] ?? '').trim() !== '' && own !== undefined && own !== 'scribe') continue
           provenance[k] = 'scribe'
@@ -427,14 +488,43 @@ export const useClinical = create<ClinicalState>()(
         set({ seenAt, pendingSeen: [] })
       },
 
-      saveVoiceNote: ({ patientId, body, by, model, band }) =>
+      saveVoiceNote: ({ patientId, body, by, model, band }) => {
+        const id = voiceId()
         set({
           voiceNotes: {
             ...get().voiceNotes,
             [patientId]: [
               ...(get().voiceNotes[patientId] ?? []),
-              { body, at: new Date().toISOString(), by, model, band },
+              { id, body, at: new Date().toISOString(), by, model, band, status: 'draft' },
             ],
+          },
+        })
+        return id
+      },
+
+      signVoiceNote: (patientId, id, by) =>
+        set({
+          voiceNotes: {
+            ...get().voiceNotes,
+            [patientId]: (get().voiceNotes[patientId] ?? []).map((n) =>
+              n.id === id ? { ...n, status: 'signed', signedAt: new Date().toISOString(), signedBy: by } : n,
+            ),
+          },
+        }),
+
+      toggleVoiceNoteDone: (patientId, id) =>
+        set({
+          voiceNotes: {
+            ...get().voiceNotes,
+            [patientId]: (get().voiceNotes[patientId] ?? []).map((n) => (n.id === id ? { ...n, done: !n.done } : n)),
+          },
+        }),
+
+      deleteVoiceNote: (patientId, id) =>
+        set({
+          voiceNotes: {
+            ...get().voiceNotes,
+            [patientId]: (get().voiceNotes[patientId] ?? []).filter((n) => n.id !== id),
           },
         }),
 
@@ -453,6 +543,15 @@ export const useClinical = create<ClinicalState>()(
           voiceNotes: {},
         }),
     }),
-    { name: 'indostates.clinical' },
+    {
+      name: 'indostates.clinical',
+      version: 1,
+      // v0 stored voice notes without an id or status.
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Partial<ClinicalState>
+        if (version < 1) state.voiceNotes = normaliseVoiceNotes(state.voiceNotes)
+        return state as ClinicalState
+      },
+    },
   ),
 )

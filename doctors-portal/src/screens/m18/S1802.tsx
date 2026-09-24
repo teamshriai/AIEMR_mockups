@@ -21,6 +21,7 @@ import { Button, Chip, Icon } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { IMAGING_TRIAGE, PAGING_LOG, STROKE_TASKS, strokeCase } from '@/data/stroke'
+import { triageHeadline } from '@/data/strokeai'
 import { selectAiActive, useAI } from '@/store/ai'
 
 import { atRisk, useCaseNow, useLiveIntervals } from './CaseClock'
@@ -52,9 +53,9 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
   )
 
   return (
-    <div className="fixed inset-0 z-90 overflow-y-auto bg-[rgb(10_14_26/0.55)] backdrop-blur-[3px]">
+    <div className="fixed inset-0 z-90 overflow-y-auto bg-[rgb(10_14_26/0.55)] backdrop-blur-[4px]">
       <div className="mx-auto max-w-5xl p-4 md:p-8">
-        <div className="glass-strong glass-card p-5 shadow-glass-lg md:p-7">
+        <div className="overlay-surface glass-card p-5 md:p-7">
           <header className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="tabular text-lg font-bold tracking-tight md:text-2xl">{c.caseNo}</h2>
@@ -109,7 +110,17 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
 
           {/* Imaging and team, one line each, each linking to the screen that owns it. */}
           <ul className="mt-5 divide-y divide-glass-hairline rounded-panel bg-glass-fill-muted">
-            {aiActive && lvo && ich && (
+            {aiActive && !c.imaging.lvo && (
+              <li className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-4 py-2">
+                <span className="flex items-center gap-2 text-[0.95em]">
+                  <Diamond size={10} />
+                  <span className="font-semibold">{triageHeadline(c)}</span>
+                  <span className="text-[0.86em] text-ink-3">· G3 confirm required</span>
+                </span>
+                <PillLink to={`/stroke/case/${c.id}/imaging`}>Imaging</PillLink>
+              </li>
+            )}
+            {aiActive && c.imaging.lvo && lvo && ich && (
               <li className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-4 py-2">
                 <span className="flex items-center gap-2 text-[0.95em]">
                   <Diamond size={10} />

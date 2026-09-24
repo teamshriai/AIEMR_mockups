@@ -92,7 +92,7 @@ export function App() {
   }, [])
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route element={<AppShell />}>
           {/* The one public route. It sits OUTSIDE the session gate. */}

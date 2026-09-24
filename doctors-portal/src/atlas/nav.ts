@@ -27,8 +27,9 @@ export interface NavItem {
    * Behind "More". The brief's rule is that no core flow may depend on the
    * sidebar, which My Day satisfies by carrying the whole day and every
    * attention item itself. This goes one step further and demotes the two rail
-   * items that are not day-to-day destinations for a doctor: order-set
-   * governance, and a deep link into one study. GP-02 is untouched — these are
+   * items that are not day-to-day destinations for a general physician:
+   * order-set governance, and the imaging worklist (a radiologist's home, and
+   * reachable from every patient's record). GP-02 is untouched — these are
    * still present and still capability-scoped, just not surfaced by default.
    */
   secondary?: boolean
@@ -89,7 +90,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Imaging',
     short: 'Imaging',
     icon: 'Scan',
-    to: '/radiology/study/ST-4471/view',
+    to: '/radiology/worklist',
     permission: 'imaging.read',
     secondary: true,
   },

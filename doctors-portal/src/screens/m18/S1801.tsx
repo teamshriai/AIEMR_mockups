@@ -33,12 +33,12 @@ import { Card, Chip, Icon, cx } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import {
-  IMAGING_TRIAGE,
   INBOUND_AMBULANCES,
   NETWORK_SITES,
   NETWORK_TODAY,
   STROKE_CASES,
 } from '@/data/stroke'
+import { triageHeadline } from '@/data/strokeai'
 import { selectAiActive, useAI } from '@/store/ai'
 
 import { atRisk, CaseClockStrip, useCaseClock, useLiveIntervals } from './CaseClock'
@@ -156,7 +156,7 @@ export function S1801() {
                     {aiActive && (
                       <p className="mt-3 flex flex-wrap items-center gap-2 text-[0.92em] font-semibold text-isolation md:text-lg">
                         <Diamond size={11} />
-                        LVO {IMAGING_TRIAGE.findings[1].value} · HIGH
+                        {triageHeadline(c)}
                       </p>
                     )}
 
@@ -244,7 +244,7 @@ export function S1801() {
               <dl className="space-y-1 px-1">
                 {[
                   { label: 'CATH-1', value: 'free', tone: 'normal' as const, icon: 'Check' },
-                  { label: 'On call', value: 'Dr R. Desai (phone)', tone: 'neutral' as const, icon: 'Phone' },
+                  { label: 'On call', value: 'Dr. R. Desai (phone)', tone: 'neutral' as const, icon: 'Phone' },
                 ].map((r) => (
                   <div key={r.label} className="flex min-h-9 items-center justify-between gap-3">
                     <dt className="text-[0.92em] text-ink-2 md:text-lg">{r.label}</dt>

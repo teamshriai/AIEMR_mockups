@@ -52,8 +52,13 @@ export function studyFor(caseId: string): NcctStudy | undefined {
 /**
  * The NCCT table. Haemorrhage first, because it is the finding that decides
  * whether the next hour is thrombolysis or neurosurgery.
+ *
+ * The labels decide every POSITIVE/NEGATIVE; the case's own imaging block adds
+ * what the labels cannot carry (ASPECTS, the vessel sign, millimetres of
+ * shift). A study with no stroke case — a head CT outside the pathway — reads
+ * the haemorrhage and mass-effect rows only.
  */
-export function ncctFindings(truth: NcctTruth): AiFinding[] {
+export function ncctFindings(truth: NcctTruth, c?: StrokeCase): AiFinding[] {
   const bleedSubtypes: [keyof NcctTruth, string][] = [
     ['iph', 'IPH'],
     ['ivh', 'IVH'],
@@ -62,11 +67,17 @@ export function ncctFindings(truth: NcctTruth): AiFinding[] {
     ['sah', 'SAH'],
   ]
   const present = bleedSubtypes.filter(([k]) => truth[k]).map(([, l]) => l)
+  const img = c?.imaging
+  const shiftMm = img?.lesion?.shiftMm
 
-  return [
+  const rows: AiFinding[] = [
     {
       label: 'Intracranial haemorrhage',
-      gloss: truth.ich ? 'acute blood is present' : 'no acute intracranial blood',
+      gloss: truth.ich
+        ? img?.lesion
+          ? `acute blood — ${img.lesion.site.toLowerCase()}${img.lesion.volumeMl ? `, about ${img.lesion.volumeMl} mL` : ''}`
+          : 'acute blood is present'
+        : 'no acute intracranial blood',
       value: truth.ich ? 'POSITIVE' : 'NEGATIVE',
       confidence: truth.ich ? 0.96 : 0.97,
       band: 'HIGH',
@@ -84,18 +95,30 @@ export function ncctFindings(truth: NcctTruth): AiFinding[] {
       critical: present.length > 0,
       concordant: true,
     },
-    {
+  ]
+
+  if (img) {
+    rows.push({
       label: 'ASPECTS',
-      gloss: 'early ischaemic change; 6 or more supports thrombectomy',
-      value: `${IMAGING_TRIAGE.findings.find((f) => f.label === 'ASPECTS')?.value ?? '8'} / 10`,
-      confidence: 0.89,
+      gloss:
+        img.aspects === null
+          ? 'not scored on a haemorrhage'
+          : img.aspects >= 6
+            ? 'early ischaemic change; 6 or more supports thrombectomy'
+            : 'extensive established infarct; below 6 argues against reperfusion',
+      value: img.aspects === null ? 'n/a' : `${img.aspects} / 10`,
+      confidence: img.aspects === null ? 0.99 : 0.89,
       band: 'HIGH',
+      critical: img.aspects !== null && img.aspects < 6,
       concordant: true,
-    },
+    })
+  }
+
+  rows.push(
     {
       label: 'Midline shift',
       gloss: truth.midlineShift ? 'midline is displaced' : 'no midline deviation',
-      value: truth.midlineShift ? 'PRESENT' : '0.0 mm',
+      value: truth.midlineShift ? (shiftMm ? `${shiftMm} mm` : 'PRESENT') : '0.0 mm',
       confidence: 0.96,
       band: 'HIGH',
       reassuring: !truth.midlineShift,
@@ -104,7 +127,11 @@ export function ncctFindings(truth: NcctTruth): AiFinding[] {
     },
     {
       label: 'Mass effect',
-      gloss: truth.massEffect ? 'ventricles or cisterns effaced' : 'ventricles and basal cisterns preserved',
+      gloss: truth.massEffect
+        ? img?.lesion?.extension?.includes('effaced')
+          ? img.lesion.extension.replace(/^./, (ch) => ch.toLowerCase())
+          : 'ventricles or cisterns effaced'
+        : 'ventricles and basal cisterns preserved',
       value: truth.massEffect ? 'PRESENT' : 'Absent',
       confidence: 0.94,
       band: 'HIGH',
@@ -112,78 +139,149 @@ export function ncctFindings(truth: NcctTruth): AiFinding[] {
       critical: truth.massEffect,
       concordant: true,
     },
-    {
+  )
+
+  if (img) {
+    const vessel = img.hyperdenseVessel
+    rows.push({
       label: 'Hyperdense vessel sign',
-      gloss: 'supports a proximal thrombus',
-      value: String(IMAGING_TRIAGE.findings.find((f) => f.label === 'Hyperdense vessel sign')?.value ?? 'PRESENT — left MCA'),
-      confidence: 0.91,
-      band: 'MED',
+      gloss: vessel === 'Absent' ? 'no dense artery to suggest a proximal thrombus' : 'supports a proximal thrombus',
+      value: vessel,
+      confidence: vessel === 'Absent' ? 0.88 : 0.91,
+      band: vessel === 'Absent' ? 'HIGH' : 'MED',
+      reassuring: vessel === 'Absent' && !truth.ich,
       concordant: true,
-    },
-  ]
+    })
+  }
+
+  return rows
 }
 
-/** The one-line verdict and its triage priority. */
-export function triageVerdict(truth: NcctTruth, c: StrokeCase) {
-  if (truth.ich) {
+export interface TriageVerdict {
+  headline: string
+  detail: string
+  priority: 'P1' | 'P2' | 'P3'
+  priorityWord: string
+  tone: 'critical' | 'caution' | 'normal'
+  chips: string[]
+}
+
+/**
+ * The one-line verdict and its triage priority. Driven by the labels first —
+ * blood, then mass effect — then by the case: a stood-down activation reads as
+ * a mimic, and only a CTA-confirmed occlusion reads as LVO.
+ */
+export function triageVerdict(truth: NcctTruth, c?: StrokeCase): TriageVerdict {
+  const img = c?.imaging
+  const next = img?.recommendation
+
+  if (truth.ich && truth.sdh && !truth.iph) {
     return {
-      headline: 'HAEMORRHAGIC STROKE',
-      detail:
-        'Acute intracranial blood detected. Thrombolysis and thrombectomy are contraindicated; this is a neurosurgical and blood-pressure pathway.',
-      priority: 'P1' as const,
+      headline: 'ACUTE SUBDURAL HAEMATOMA',
+      detail: `Extra-axial blood over the convexity${truth.midlineShift ? ' with midline shift' : ''}. Anticoagulants and antiplatelets must be held; this is a neurosurgical pathway.${next ? ` ${next}` : ''}`,
+      priority: 'P1',
       priorityWord: 'IMMEDIATE',
-      tone: 'critical' as const,
-      chips: ['ICH POSITIVE', 'THROMBOLYSIS CONTRAINDICATED'],
+      tone: 'critical',
+      chips: ['ICH POSITIVE', 'SDH', ...(truth.midlineShift ? ['MIDLINE SHIFT'] : []), 'NEUROSURGERY'],
     }
   }
-  if (c.status === 'de-activated') {
+  if (truth.ich) {
+    const extension = [truth.ivh && 'IVH', truth.sah && 'SAH'].filter(Boolean) as string[]
+    return {
+      headline: extension.length > 0 ? `HAEMORRHAGIC STROKE · ${extension.join(' + ')} EXTENSION` : 'HAEMORRHAGIC STROKE',
+      detail: `Acute intracranial blood${img?.lesion ? ` in the ${img.lesion.site.toLowerCase()}` : ''}. Thrombolysis and thrombectomy are contraindicated; this is a neurosurgical and blood-pressure pathway.${next ? ` ${next}` : ''}`,
+      priority: 'P1',
+      priorityWord: 'IMMEDIATE',
+      tone: 'critical',
+      chips: [
+        'ICH POSITIVE',
+        'THROMBOLYSIS CONTRAINDICATED',
+        ...(img?.ichScore !== undefined ? [`ICH SCORE ${img.ichScore}`] : []),
+        ...(img?.anticoagulant ? ['ANTICOAGULATED'] : []),
+      ],
+    }
+  }
+  if (truth.massEffect || truth.midlineShift) {
+    return {
+      headline: 'NO HAEMORRHAGE · MASS EFFECT',
+      detail: `No acute blood, but a space-occupying process with ${truth.midlineShift ? 'midline shift' : 'mass effect'}${img?.lesion ? ` — ${img.lesion.site.toLowerCase()}` : ''}. Swelling, not reperfusion, is the danger now.${next ? ` ${next}` : ' MRI and a neurosurgical opinion are the next steps.'}`,
+      priority: 'P2',
+      priorityWord: 'URGENT',
+      tone: 'caution',
+      chips: ['ICH NEGATIVE', 'MASS EFFECT', ...(truth.midlineShift ? ['MIDLINE SHIFT'] : []), 'NO REPERFUSION'],
+    }
+  }
+  if (c?.status === 'de-activated') {
     return {
       headline: 'NO ACUTE STROKE ON THIS SCAN',
       detail:
         c.deactivationReason ??
         'No haemorrhage and no established infarct. The deficit has another cause; the activation was stood down.',
-      priority: 'P3' as const,
+      priority: 'P3',
       priorityWord: 'STAND DOWN',
-      tone: 'normal' as const,
+      tone: 'normal',
       chips: ['ICH NEGATIVE', 'NO LVO', 'MIMIC'],
     }
   }
+  if (img?.lvo) {
+    return {
+      headline: 'ISCHAEMIC STROKE · LARGE VESSEL OCCLUSION',
+      detail:
+        'No haemorrhage detected. Left M1 occlusion with a favourable core–penumbra mismatch. Candidate for IV thrombolysis and mechanical thrombectomy.',
+      priority: 'P1',
+      priorityWord: 'IMMEDIATE',
+      tone: 'critical',
+      chips: ['LVO POSITIVE', 'ICH NEGATIVE', `ASPECTS ${img.aspects ?? 8}`, `MISMATCH ${PERFUSION.mismatchRatio}×`],
+    }
+  }
   return {
-    headline: 'ISCHAEMIC STROKE · LARGE VESSEL OCCLUSION',
+    headline: 'NO ACUTE INTRACRANIAL ABNORMALITY',
     detail:
-      'No haemorrhage detected. Left M1 occlusion with a favourable core–penumbra mismatch. Candidate for IV thrombolysis and mechanical thrombectomy.',
-    priority: 'P1' as const,
-    priorityWord: 'IMMEDIATE',
-    tone: 'critical' as const,
-    chips: ['LVO POSITIVE', 'ICH NEGATIVE', 'ASPECTS 8', `MISMATCH ${PERFUSION.mismatchRatio}×`],
+      'No haemorrhage, no mass effect and no midline shift. Nothing on this scan needs urgent action; it should be read with the history and examination.',
+    priority: 'P3',
+    priorityWord: 'ROUTINE',
+    tone: 'normal',
+    chips: ['ICH NEGATIVE', 'NO MASS EFFECT', 'NO SHIFT'],
   }
 }
 
 /**
- * Where the model drew on the image. Normalised to the frame, and only on the
- * slices where the finding is actually visible — an overlay that follows you
- * up the whole stack is decoration, not a finding.
+ * Where the model drew, per study. Normalised to the 512 frame and set by
+ * reading the imported slices, and only on the slices where the finding is
+ * visible — an overlay that follows you up the whole stack is decoration, not
+ * a finding. Laterality is radiological: image left is the patient's right.
  */
-export function overlaysFor(caseId: string, truth: NcctTruth): NcctOverlay[] {
-  const study = NCCT_STUDIES[caseId]
-  if (!study || truth.ich) {
-    return truth.ich
-      ? [{ cx: 0.44, cy: 0.5, rx: 0.13, ry: 0.11, label: 'HAEMORRHAGE', from: 10, to: 20, tone: 'critical' }]
-      : []
+const LESIONS: Record<string, NcctOverlay[]> = {
+  '0137': [{ cx: 0.54, cy: 0.545, rx: 0.05, ry: 0.045, label: 'LEFT THALAMIC HAEMORRHAGE', from: 11, to: 15, tone: 'critical' }],
+  '0138': [{ cx: 0.37, cy: 0.52, rx: 0.11, ry: 0.2, label: 'RIGHT MCA INFARCT · MASS EFFECT', from: 3, to: 17, tone: 'ai' }],
+  '0142': [
+    { cx: 0.42, cy: 0.5, rx: 0.11, ry: 0.19, label: 'RIGHT BASAL GANGLIA HAEMORRHAGE', from: 3, to: 11, tone: 'critical' },
+    { cx: 0.33, cy: 0.68, rx: 0.06, ry: 0.07, label: 'INTRAVENTRICULAR BLOOD', from: 10, to: 15, tone: 'critical' },
+  ],
+  'N-061': [{ cx: 0.35, cy: 0.48, rx: 0.07, ry: 0.25, label: 'RIGHT SUBDURAL HAEMATOMA', from: 1, to: 14, tone: 'critical' }],
+}
+
+export function overlaysFor(key: string, c?: StrokeCase): NcctOverlay[] {
+  const study = NCCT_STUDIES[key]
+  if (!study) return []
+  if (LESIONS[key]) return LESIONS[key]
+  if (c?.imaging.lvo) {
+    const mid = Math.round(study.slices / 2)
+    return [
+      {
+        cx: 0.63,
+        cy: 0.47,
+        rx: 0.115,
+        ry: 0.105,
+        label: 'LEFT M1 TERRITORY',
+        from: Math.max(1, mid - 5),
+        to: Math.min(study.slices, mid + 5),
+        tone: 'ai',
+      },
+    ]
   }
-  const mid = Math.round(study.slices / 2)
-  return [
-    {
-      cx: 0.63,
-      cy: 0.47,
-      rx: 0.115,
-      ry: 0.105,
-      label: 'LEFT M1 TERRITORY',
-      from: Math.max(1, mid - 5),
-      to: Math.min(study.slices, mid + 5),
-      tone: 'ai',
-    },
-  ]
+  // A negative study draws nothing — there is nothing to point at.
+  return []
 }
 
 /** CTA, as the report lays it out. */
@@ -215,30 +313,57 @@ export const CTP_ANALYSIS = [
   { label: 'DEFUSE-3 criteria', value: PERFUSION.targetMismatch ? 'MET' : 'NOT MET', confidence: null },
 ]
 
+/**
+ * Minutes from last-known-well to the decision. An active case is measured to
+ * the live clock; a closed one to the moment its AI read was delivered, which
+ * is when the decision was made.
+ */
+function decisionMinutes(c: StrokeCase): number {
+  const at = c.status === 'active' ? STROKE_NOW : c.imaging.deliveredAt
+  return Math.round((at.getTime() - c.lkw.getTime()) / 60000)
+}
+
 /** Rule-based, computed on AI inputs — never a model decision. */
 export function eligibility(truth: NcctTruth, c: StrokeCase) {
-  const minutesFromOnset = Math.round((STROKE_NOW.getTime() - c.lkw.getTime()) / 60000)
+  const minutesFromOnset = decisionMinutes(c)
   const inWindow = minutesFromOnset <= 270
-  const aspects = Number(IMAGING_TRIAGE.findings.find((f) => f.label === 'ASPECTS')?.value ?? 8)
+  const img = c.imaging
+  const aspects = img.aspects
+  const [sys, dia] = img.bp.split('/').map(Number)
+  const bpOk = sys < 185 && dia < 110
+  const hours = (minutesFromOnset / 60).toFixed(minutesFromOnset < 600 ? 1 : 0)
 
   return {
     minutesFromOnset,
     inWindow,
     thrombolysis: {
-      eligible: !truth.ich && inWindow,
+      eligible: !truth.ich && inWindow && bpOk && !img.anticoagulant && !truth.massEffect,
       criteria: [
-        { met: inWindow, text: `Onset to decision ${minutesFromOnset} min — within the 4.5 h window` },
+        {
+          met: inWindow,
+          text: inWindow
+            ? `Onset to decision ${minutesFromOnset} min — within the 4.5 h window`
+            : `Onset to decision about ${hours} h — outside the 4.5 h window`,
+        },
         { met: !truth.ich, text: `Haemorrhage ${truth.ich ? 'PRESENT on NCCT — absolute contraindication' : 'excluded on NCCT (conf. 0.97)'}` },
-        { met: true, text: 'BP 168/94 — below the 185/110 threshold' },
-        { met: true, text: 'No anticoagulant use reported' },
+        { met: bpOk, text: `BP ${img.bp} — ${bpOk ? 'below' : 'above'} the 185/110 threshold` },
+        {
+          met: !img.anticoagulant,
+          text: img.anticoagulant ? `${img.anticoagulant} — contraindication until reversed` : 'No anticoagulant use reported',
+        },
       ],
     },
     thrombectomy: {
-      eligible: !truth.ich && aspects >= 6 && c.nihss >= 6,
+      eligible: !truth.ich && img.lvo && aspects !== null && aspects >= 6 && c.nihss >= 6,
       criteria: [
-        { met: !truth.ich, text: 'M1 occlusion confirmed on CTA' },
-        { met: aspects >= 6, text: `ASPECTS ${aspects} (≥ 6 required)` },
-        { met: PERFUSION.targetMismatch, text: `Core ${PERFUSION.coreMl} mL (< 70 mL), mismatch ${PERFUSION.mismatchRatio} (≥ 1.8) — DEFUSE-3 met` },
+        { met: !truth.ich && img.lvo, text: img.lvo ? 'M1 occlusion confirmed on CTA' : 'No large-vessel occlusion shown' },
+        {
+          met: aspects !== null && aspects >= 6,
+          text: aspects === null ? 'ASPECTS not scored — haemorrhage' : `ASPECTS ${aspects} (≥ 6 required)`,
+        },
+        img.lvo
+          ? { met: PERFUSION.targetMismatch, text: `Core ${PERFUSION.coreMl} mL (< 70 mL), mismatch ${PERFUSION.mismatchRatio} (≥ 1.8) — DEFUSE-3 met` }
+          : { met: false, text: 'No perfusion target — CTP not performed' },
         { met: c.nihss >= 6, text: `NIHSS ${c.nihss} (≥ 6 required)` },
       ],
     },
@@ -251,9 +376,42 @@ export function pathway(c: StrokeCase) {
   return [
     { label: 'Onset', at: c.lkw, offset: 0 },
     { label: 'Activation', at: c.activatedAt, offset: from(c.activatedAt) },
-    { label: 'Scan', at: IMAGING_TRIAGE.acquiredAt, offset: from(IMAGING_TRIAGE.acquiredAt) },
-    { label: 'AI result', at: IMAGING_TRIAGE.deliveredAt, offset: from(IMAGING_TRIAGE.deliveredAt) },
+    { label: 'Scan', at: c.imaging.acquiredAt, offset: from(c.imaging.acquiredAt) },
+    { label: 'AI result', at: c.imaging.deliveredAt, offset: from(c.imaging.deliveredAt) },
   ]
+}
+
+/**
+ * The one line a case card or a telestroke panel shows about the scan, per
+ * case. For the occlusion case it is the triage card's own findings; for any
+ * other case it is built from that case's labels, so a haemorrhage never
+ * reads "ICH NO".
+ */
+export function triageSummary(c: StrokeCase): { label: string; value: string; emphasisNegative?: boolean }[] {
+  if (c.imaging.lvo) return IMAGING_TRIAGE.findings
+  const t = NCCT_STUDIES[c.id]?.truth
+  if (!t) return []
+  const subtypes = ([['iph', 'IPH'], ['ivh', 'IVH'], ['sdh', 'SDH'], ['edh', 'EDH'], ['sah', 'SAH']] as const)
+    .filter(([k]) => t[k])
+    .map(([, l]) => l)
+  const rows: { label: string; value: string; emphasisNegative?: boolean }[] = [
+    { label: 'ICH', value: t.ich ? 'YES' : 'NO', emphasisNegative: !t.ich },
+  ]
+  if (subtypes.length > 0) rows.push({ label: 'Type', value: subtypes.join(' + ') })
+  if (t.midlineShift) rows.push({ label: 'Shift', value: c.imaging.lesion?.shiftMm ? `${c.imaging.lesion.shiftMm} mm` : 'YES' })
+  if (c.imaging.aspects !== null) rows.push({ label: 'ASPECTS', value: String(c.imaging.aspects) })
+  rows.push({ label: 'LVO', value: 'NO', emphasisNegative: !t.ich })
+  return rows
+}
+
+/** The case card's single AI line. */
+export function triageHeadline(c: StrokeCase): string {
+  if (c.imaging.lvo) return `LVO ${IMAGING_TRIAGE.findings[1].value} · HIGH`
+  const t = NCCT_STUDIES[c.id]?.truth
+  if (!t) return 'Awaiting scan'
+  if (t.ich) return `ICH ${c.imaging.lesion?.volumeMl ? `~${c.imaging.lesion.volumeMl} mL` : 'POSITIVE'}${c.imaging.anticoagulant ? ' · anticoagulated' : ''} · HIGH`
+  if (t.massEffect) return 'NO ICH · MASS EFFECT · HIGH'
+  return 'NO ICH · NO LVO · HIGH'
 }
 
 export function caseSubtitle(c: StrokeCase): string {

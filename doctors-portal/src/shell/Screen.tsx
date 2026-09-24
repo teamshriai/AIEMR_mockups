@@ -13,12 +13,19 @@
  * `ⓘ` popover (`ScreenInfo`), because a reviewer needs to trace a frame and a
  * doctor does not. The Z6 rail opens collapsed, because on 43 screens it is
  * reference material, and reference material is one tap away.
+ *
+ * Every screen carries one quiet Back control above its heading — the same
+ * place, the same look, everywhere. It steps back through the app's own
+ * history when there is some; opened cold (a pasted link, a reload), it goes
+ * to the screen this one naturally sits under, and says which.
  */
 
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { ARCHETYPE_SPECS } from '@/atlas/archetypes'
+import { PERSONA_SPECS } from '@/atlas/personas'
 import { COMPLIANCE } from '@/atlas/compliance'
 import { screen } from '@/atlas/registry'
 import type { ScreenSpec } from '@/atlas/registry'
@@ -75,6 +82,51 @@ export interface ScreenProps {
   heading?: ReactNode
   /** The quiet line — one line of the counts that matter today. */
   subheading?: ReactNode
+}
+
+/**
+ * Where Back goes when there is no earlier screen in this tab — the screen a
+ * route naturally sits under. `null` means this IS the top (the landing).
+ */
+function parentOf(pathname: string, landing: string): { to: string; label: string } | null {
+  const patient = /^\/patient\/([^/]+)\/([^/]+)/.exec(pathname)
+  if (patient) {
+    return patient[2] === 'record'
+      ? { to: landing, label: 'My Day' }
+      : { to: `/patient/${patient[1]}/record`, label: 'Patient record' }
+  }
+  if (pathname.startsWith('/radiology/study/')) return { to: '/radiology/worklist', label: 'Imaging worklist' }
+  if (/^\/results\/(?!inbox)/.test(pathname)) return { to: '/results/inbox', label: 'Results' }
+  if (pathname.startsWith('/ip/encounter/')) return { to: '/ip/patients', label: 'Inpatients' }
+  if (pathname.startsWith('/encounter/')) return { to: '/op-queue', label: 'OPD' }
+  if (pathname.startsWith('/stroke/case/')) return { to: '/stroke/ai-console', label: 'Stroke-AI Console' }
+  if (pathname.startsWith('/tele/session/')) return { to: '/tele/queue', label: 'Telehealth' }
+  if (pathname === landing) return null
+  return { to: landing, label: 'My Day' }
+}
+
+/** The one Back control. Quiet until hovered, like every tertiary action. */
+function BackLink() {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const persona = useSession((s) => s.persona)
+  const landing = PERSONA_SPECS[persona].landing
+  // React Router numbers its own history entries; above 0 there is a screen
+  // in this app to go back to.
+  const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+  const parent = parentOf(pathname, landing)
+  if (idx === 0 && !parent) return null
+
+  return (
+    <button
+      type="button"
+      onClick={() => (idx > 0 ? navigate(-1) : parent && navigate(parent.to))}
+      className="-ml-2.5 mb-1.5 inline-flex min-h-9 items-center gap-1.5 rounded-pill px-2.5 text-[0.88em] font-medium text-ink-3 transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover hover:text-ink"
+    >
+      <Icon name="ArrowLeft" size={15} />
+      {idx > 0 ? 'Back' : `Back to ${parent!.label}`}
+    </button>
+  )
 }
 
 export function Screen({
@@ -157,6 +209,7 @@ export function Screen({
       <header className="gutter shrink-0 pt-6 pb-1">
         <div className={cx('mx-auto flex flex-wrap items-start justify-between gap-x-4 gap-y-3', measure)}>
           <div className="min-w-0">
+            <BackLink />
             <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{heading ?? spec.name}</h1>
             {(subheading || chips) && (
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.95em] text-ink-3">

@@ -16,20 +16,22 @@
  *
  * One rule is kept from §5.3 rather than the brief, because it is a safety
  * rule: colour is never the only carrier. Every status renders a SHAPE and a
- * WORD as well as a hue — a filled octagon and "Critical lab", not a red dot.
+ * WORD as well as a hue — a filled octagon and "Critical lab report identified", not a red dot.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Diamond } from '@/components/ai'
-import { Icon, cx } from '@/components/primitives'
+import { Button, Icon, IconButton, cx } from '@/components/primitives'
 import type { DischargeRow as DischargeRowData } from '@/data/clinical'
 import type { DayBlock, FinishItem, PatientCount, Urgency } from '@/data/myday'
-import { NOW, formatTime } from '@/data/format'
+import { NOW, formatDateTime, formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
+import type { VoiceNote } from '@/store/clinical'
 
-import { CountPill } from '@/components/calm'
+import { CountPill, PillLink, SectionCard } from '@/components/calm'
 
 // ───────────────────────────────────────────────────────────── Status shape
 
@@ -114,7 +116,7 @@ export function StatusBlock({ urgency, size = 'md' }: { urgency: Urgency; size?:
 export function Greeting({ name }: { name: string }) {
   const h = NOW.getHours()
   const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
-  const short = name.startsWith('Dr ') ? `Dr ${name.split(' ').slice(-1)[0]}` : name
+  const short = /^Dr\.?\s/.test(name) ? `Dr. ${name.split(' ').slice(-1)[0]}` : name
   return (
     <>
       {part}, {short}
@@ -389,5 +391,156 @@ export function AttentionRow({
         <Icon name="Mic" size={16} />
       </button>
     </li>
+  )
+}
+
+// ──────────────────────────────────────────────── Today’s to-do notes
+
+/**
+ * The saved time on the note's own clock. The rest of My Day runs on the
+ * frozen demo moment, but a note is saved now, and "08:40" on something said a
+ * minute ago would be a lie.
+ */
+function savedAt(iso: string): string {
+  const at = new Date(iso)
+  const today = new Date()
+  return at.toDateString() === today.toDateString() ? `Saved ${formatTime(at)}` : `Saved ${formatDateTime(at)}`
+}
+
+/** One to-do: a tick, the words (three lines, more on tap), when it was saved, and a way to delete it. */
+export function TodoNoteRow({
+  note,
+  onToggle,
+  onDelete,
+}: {
+  note: VoiceNote
+  onToggle: () => void
+  onDelete: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [clamped, setClamped] = useState(false)
+  const textRef = useRef<HTMLParagraphElement>(null)
+  const expandedRef = useRef(expanded)
+  const done = note.done === true
+  const preview = note.body.replace(/\s+/g, ' ').slice(0, 48)
+
+  /** Whether three lines hide anything — measured, so a short note never offers "Show more". */
+  useEffect(() => {
+    expandedRef.current = expanded
+    const el = textRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (!expandedRef.current) setClamped(el.scrollHeight > el.clientHeight + 1)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [note.body, expanded])
+
+  return (
+    <li className="flex items-start gap-1 py-1">
+      <label className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-pill hover:bg-glass-fill-hover">
+        <input
+          type="checkbox"
+          checked={done}
+          onChange={onToggle}
+          aria-label={done ? `Mark as not done: ${preview}` : `Mark as done: ${preview}`}
+          className="size-4.5 cursor-pointer accent-[var(--color-brand)]"
+        />
+      </label>
+      <div className="min-w-0 flex-1 py-2.5">
+        <p
+          ref={textRef}
+          className={cx(
+            'text-[0.95em] leading-snug break-words whitespace-pre-line',
+            !expanded && 'line-clamp-3',
+            done ? 'text-ink-3 line-through decoration-ink-muted' : 'text-ink',
+          )}
+        >
+          {note.body}
+        </p>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[0.8em] text-ink-3">
+          <span className="tabular">{savedAt(note.at)}</span>
+          {done && (
+            <>
+              <span aria-hidden>·</span>
+              <span>Done</span>
+            </>
+          )}
+          {(clamped || expanded) && (
+            <>
+              <span aria-hidden>·</span>
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((v) => !v)}
+                className="min-h-8 rounded-pill px-1 font-semibold text-brand hover:underline"
+              >
+                {expanded ? 'Show less' : 'Show more'}
+              </button>
+            </>
+          )}
+        </p>
+      </div>
+      <IconButton
+        icon="Trash2"
+        label="Delete this to-do note"
+        onClick={onDelete}
+        className="mt-0.5 size-10 text-ink-3 hover:text-abnormal"
+        size={15}
+      />
+    </li>
+  )
+}
+
+/**
+ * The doctor's own reminders — dictated from "Add today’s to-do note", attached
+ * to no patient, and so never "to sign". Open ones first, newest first; ticked
+ * ones sink below them, struck through, until they are deleted.
+ */
+export function TodoNotesCard({
+  notes,
+  onAdd,
+  onToggle,
+  onDelete,
+  className,
+}: {
+  notes: VoiceNote[]
+  onAdd: () => void
+  onToggle: (id: string) => void
+  onDelete: (note: VoiceNote) => void
+  className?: string
+}) {
+  const open = notes.filter((n) => !n.done).length
+  const sorted = [...notes].sort((a, b) => Number(a.done === true) - Number(b.done === true) || b.at.localeCompare(a.at))
+
+  return (
+    <SectionCard
+      title="Today’s to-do notes"
+      lift
+      className={className}
+      meta={notes.length > 0 && <CountPill tone={open > 0 ? 'pending' : 'neutral'}>{open > 0 ? open : 'All done'}</CountPill>}
+      action={
+        notes.length > 0 && (
+          <PillLink onClick={onAdd} icon="Mic">
+            Add
+          </PillLink>
+        )
+      }
+    >
+      {sorted.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-2 py-3">
+          <p className="min-w-0 flex-1 basis-48 text-[0.95em] text-ink-2">Nothing noted for today yet.</p>
+          <Button size="sm" icon="Mic" onClick={onAdd}>
+            Add a to-do note
+          </Button>
+        </div>
+      ) : (
+        <ul aria-label="Today’s to-do notes" className="divide-y divide-glass-hairline">
+          {sorted.map((n) => (
+            <TodoNoteRow key={n.id} note={n} onToggle={() => onToggle(n.id)} onDelete={() => onDelete(n)} />
+          ))}
+        </ul>
+      )}
+    </SectionCard>
   )
 }

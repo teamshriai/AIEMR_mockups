@@ -19,7 +19,8 @@ import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
 import { Disclosure, ScopeTabs, Why, useScope } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Button, Icon, Select, TextArea, cx } from '@/components/primitives'
+import { Button, Icon, Select, cx } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import { encounter, ordersFor } from '@/data/clinical'
 import type { OrderRow } from '@/data/clinical'
 import { formatDate, formatTime, NOW } from '@/data/format'
@@ -250,10 +251,13 @@ export function S0903({ id }: { id?: string }) {
               ),
             )}
           </Select>
-          <TextArea
+          <VoiceField
+            id="cancel-order-note"
+            label="Anything to add"
             rows={2}
             value={reasonText}
-            onChange={(e) => setReasonText(e.target.value)}
+            onChange={setReasonText}
+            patientId={p.id}
             placeholder="Anything to add…"
           />
           <p className="flex items-start gap-1.5 text-[0.86em] text-ink-3">

@@ -23,15 +23,23 @@ import { Alert, Button, Card, KeyValue, cx } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { ASPECTS_REGIONS, strokeCase } from '@/data/stroke'
+import type { StrokeCase } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff } from '@/store/session'
 import { useStroke } from '@/store/stroke'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
+import { NotApplicable } from './NotLvo'
 import { CaseClockStrip, useCaseClock } from './CaseClock'
 
+/** Drawn for an occlusion under reperfusion assessment; anything else is told why it does not apply. */
 export function S1815({ id }: { id?: string }) {
+  const c = strokeCase(id ?? '0141')
+  return c.imaging.lvo ? <LvoView c={c} /> : <NotApplicable c={c} screenId="S-18-15" heading="ASPECTS" what="ASPECTS" />
+}
+
+function LvoView({ c }: { c: StrokeCase }) {
   const navigate = useNavigate()
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
@@ -39,7 +47,6 @@ export function S1815({ id }: { id?: string }) {
   const caseNow = useCaseClock()
   const { aspectsHuman, setAspectsRegion } = useStroke()
 
-  const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
   const [recorded, setRecorded] = useState(false)
 

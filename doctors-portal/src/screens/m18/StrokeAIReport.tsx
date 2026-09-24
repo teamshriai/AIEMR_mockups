@@ -26,7 +26,7 @@ import {
   pathway,
   triageVerdict,
 } from '@/data/strokeai'
-import { IMAGING_TRIAGE, PERFUSION } from '@/data/stroke'
+import { PERFUSION } from '@/data/stroke'
 import type { StrokeCase } from '@/data/stroke'
 
 function Block({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
@@ -58,7 +58,8 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
   const p = patient(strokeCase.patientId)
   const truth = study.truth
   const verdict = triageVerdict(truth, strokeCase)
-  const findings = ncctFindings(truth)
+  const findings = ncctFindings(truth, strokeCase)
+  const img = strokeCase.imaging
   const el = eligibility(truth, strokeCase)
   const steps = pathway(strokeCase)
 
@@ -70,7 +71,8 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
           Stroke-AI · acute stroke imaging and triage report
         </p>
         <p className="mt-0.5 text-[0.86em] opacity-80">
-          AI-assisted NCCT · CT angiogram · CT perfusion — hub-and-spoke emergency pathway
+          {img.lvo ? 'AI-assisted NCCT · CT angiogram · CT perfusion' : 'AI-assisted NCCT'} — hub-and-spoke emergency
+          pathway
         </p>
       </header>
 
@@ -121,7 +123,7 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
       <section
         className={cx(
           'rounded-card px-4 py-3.5',
-          verdict.tone === 'critical' ? 'bg-pri-critical-soft' : 'bg-normal-soft',
+          verdict.tone === 'critical' ? 'bg-pri-critical-soft' : verdict.tone === 'caution' ? 'bg-pri-warning-soft' : 'bg-normal-soft',
         )}
       >
         <p className="text-[0.76em] font-bold tracking-[0.08em] text-ink-2 uppercase">AI triage verdict — decision support</p>
@@ -133,7 +135,16 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
               {c}
             </Chip>
           ))}
-          <span className="tabular ml-auto inline-flex min-h-7 items-center rounded-pill bg-pri-critical-fill px-3 text-[0.86em] font-bold text-pri-on-critical">
+          <span
+            className={cx(
+              'tabular ml-auto inline-flex min-h-7 items-center rounded-pill px-3 text-[0.86em] font-bold',
+              verdict.tone === 'critical'
+                ? 'bg-pri-critical-fill text-pri-on-critical'
+                : verdict.tone === 'caution'
+                  ? 'bg-pri-warning-fill text-pri-on-warning'
+                  : 'bg-pri-safe-soft text-pri-safe-ink',
+            )}
+          >
             {verdict.priority} · {verdict.priorityWord}
           </span>
         </div>
@@ -160,48 +171,75 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
         ))}
       </Block>
 
-      <div className="grid min-w-0 gap-5 lg:grid-cols-2">
-        <Block title="CT angiography (CTA) — AI analysis">
-          {CTA_ANALYSIS.map((r) => (
-            <Row key={r.label} label={r.label} value={r.value} confidence={r.confidence} />
-          ))}
+      {img.lesion && (
+        <Block title={truth.ich ? 'Haemorrhage — characterisation' : 'Lesion — characterisation'}>
+          <Row label="Lesion site" value={img.lesion.site} />
+          {img.lesion.volumeMl !== undefined && <Row label="Volume (ABC/2)" value={`about ${img.lesion.volumeMl} mL`} confidence={0.86} />}
+          {img.lesion.shiftMm !== undefined && <Row label="Midline shift" value={`${img.lesion.shiftMm} mm`} confidence={0.9} />}
+          {img.lesion.extension && <Row label="Extension / mass effect" value={img.lesion.extension} />}
+          {img.ichScore !== undefined && <Row label="ICH score" value={`${img.ichScore} / 6`} />}
+          {img.anticoagulant && <Row label="Anticoagulant" value={img.anticoagulant} />}
+          <Row label="Blood pressure at scan" value={img.bp} />
         </Block>
+      )}
 
-        <Block title="CT perfusion (CTP) — AI analysis">
-          <div className="mb-3">
-            <SplitBar
-              parts={[
-                { label: `Core ${PERFUSION.coreMl} mL`, value: PERFUSION.coreMl, slot: 2 },
-                { label: `Penumbra ${PERFUSION.penumbraMl} mL`, value: PERFUSION.penumbraMl, slot: 1 },
-              ]}
-              unit="mL"
-              caption={`Infarct core rCBF < 30% · penumbra at risk Tmax > 6 s — ${PERFUSION.coreMl + PERFUSION.penumbraMl} mL hypoperfused in total`}
-            />
-          </div>
-          {CTP_ANALYSIS.map((r) => (
-            <Row key={r.label} label={r.label} value={r.value} confidence={r.confidence} />
-          ))}
+      {img.lvo ? (
+        <>
+        <div className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <Block title="CT angiography (CTA) — AI analysis">
+            {CTA_ANALYSIS.map((r) => (
+              <Row key={r.label} label={r.label} value={r.value} confidence={r.confidence} />
+            ))}
+          </Block>
+
+          <Block title="CT perfusion (CTP) — AI analysis">
+            <div className="mb-3">
+              <SplitBar
+                parts={[
+                  { label: `Core ${PERFUSION.coreMl} mL`, value: PERFUSION.coreMl, slot: 2 },
+                  { label: `Penumbra ${PERFUSION.penumbraMl} mL`, value: PERFUSION.penumbraMl, slot: 1 },
+                ]}
+                unit="mL"
+                caption={`Infarct core rCBF < 30% · penumbra at risk Tmax > 6 s — ${PERFUSION.coreMl + PERFUSION.penumbraMl} mL hypoperfused in total`}
+              />
+            </div>
+            {CTP_ANALYSIS.map((r) => (
+              <Row key={r.label} label={r.label} value={r.value} confidence={r.confidence} />
+            ))}
+          </Block>
+        </div>
+
+        <Block title="Occlusion site probability (CTA model)">
+          <ul className="space-y-1.5 pt-1">
+            {OCCLUSION_PROBABILITY.map((o) => (
+              <li key={o.label} className="flex items-center gap-3">
+                <span className="w-40 shrink-0 truncate text-[0.9em]">{o.label}</span>
+                <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-pill bg-glass-inset">
+                  <span
+                    style={{ width: `${o.value * 100}%` }}
+                    className={cx('block h-full rounded-pill', o.value > 0.5 ? 'bg-pri-critical-fill' : 'bg-viz-1')}
+                  />
+                </span>
+                <span className="tabular w-12 text-right text-[0.86em] font-semibold">{Math.round(o.value * 100)}%</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[0.82em] text-ink-3">
+            Per-vessel independent probabilities — they do not sum to 100%.
+          </p>
         </Block>
-      </div>
+        </>
+      ) : (
+        <Block title="CT angiography and perfusion">
+          <p className="rounded-panel bg-glass-inset px-3.5 py-3 text-[0.92em] text-ink-2">
+            {img.notPerformed ?? 'Not performed for this case.'}
+          </p>
+        </Block>
+      )}
 
-      <Block title="Occlusion site probability (CTA model)">
-        <ul className="space-y-1.5 pt-1">
-          {OCCLUSION_PROBABILITY.map((o) => (
-            <li key={o.label} className="flex items-center gap-3">
-              <span className="w-40 shrink-0 truncate text-[0.9em]">{o.label}</span>
-              <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-pill bg-glass-inset">
-                <span
-                  style={{ width: `${o.value * 100}%` }}
-                  className={cx('block h-full rounded-pill', o.value > 0.5 ? 'bg-pri-critical-fill' : 'bg-viz-1')}
-                />
-              </span>
-              <span className="tabular w-12 text-right text-[0.86em] font-semibold">{Math.round(o.value * 100)}%</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-[0.82em] text-ink-3">
-          Per-vessel independent probabilities — they do not sum to 100%.
-        </p>
+      <Block title="Next step">
+        <p className="rounded-panel border-l-4 border-l-brand bg-brand-soft px-3.5 py-3 font-medium">{img.recommendation}</p>
+        {strokeCase.outcome && <p className="mt-2 text-[0.9em] text-ink-2">{strokeCase.outcome}</p>}
       </Block>
 
       <Block title="Treatment eligibility — rule-based, computed on AI inputs">
@@ -243,9 +281,9 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
       {/* Signatures — a report without a named human is not a report. */}
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         {[
-          { role: 'Reporting radiologist', who: 'Dr Anitha Venkatesan', detail: `Reviewed ${formatTime(IMAGING_TRIAGE.deliveredAt)}` },
-          { role: 'Treating neurologist', who: strokeCase.activatedBy, detail: `Authorised ${formatTime(strokeCase.activatedAt)}` },
-          { role: 'Receiving team', who: facility(strokeCase.destinationFacility).name, detail: 'Stroke unit · cath lab on standby' },
+          { role: 'Reporting radiologist', who: 'Dr. Anitha Venkatesan', detail: `Reviewed ${formatTime(img.deliveredAt)}` },
+          { role: 'Treating clinician', who: strokeCase.activatedBy, detail: `Authorised ${formatTime(strokeCase.activatedAt)}` },
+          { role: 'Receiving team', who: facility(strokeCase.destinationFacility).name, detail: img.receiving },
         ].map((s) => (
           <div key={s.role} className="rounded-panel bg-glass-inset px-3.5 py-3">
             <p className="text-[0.74em] font-bold tracking-[0.08em] text-ink-3 uppercase">{s.role}</p>

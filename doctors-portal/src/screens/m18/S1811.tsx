@@ -19,10 +19,12 @@ import { useNavigate } from 'react-router-dom'
 import { SuggestionCard } from '@/components/ai'
 import { PillLink, SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Button, Card, Chip, Icon, TextArea, cx } from '@/components/primitives'
+import { Button, Card, Chip, Icon, cx } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import { formatTime } from '@/data/format'
 import { patient, staff } from '@/data/kit'
-import { IMAGING_TRIAGE, NIHSS_TOTAL, strokeCase } from '@/data/stroke'
+import { NIHSS_TOTAL, strokeCase } from '@/data/stroke'
+import { triageSummary } from '@/data/strokeai'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
@@ -30,7 +32,7 @@ import { Screen } from '@/shell/Screen'
 import { CaseClockStrip, useCaseClock } from './CaseClock'
 
 const TRANSCRIPT = [
-  { at: 12, who: 'Hub', text: 'Dr Menon, I can see you. Can you turn the camera to the patient?' },
+  { at: 12, who: 'Hub', text: 'Dr. Menon, I can see you. Can you turn the camera to the patient?' },
   { at: 24, who: 'Spoke', text: 'One moment. There — can you see his face?' },
   { at: 38, who: 'Hub', text: 'Yes. Mr Malhotra, can you smile for me? Good. Now show me your teeth.' },
   { at: 56, who: 'Hub', text: 'Right lower facial weakness. Now both arms out in front of you, palms up.' },
@@ -167,7 +169,7 @@ export function S1811({ id }: { id?: string }) {
               bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
             >
               <p className="text-[0.95em]">
-                {IMAGING_TRIAGE.findings.map((f, i) => (
+                {triageSummary(c).map((f, i) => (
                   <span key={f.label}>
                     {i > 0 && <span className="text-ink-3"> · </span>}
                     <span className="text-ink-3">{f.label} </span>
@@ -257,10 +259,13 @@ export function S1811({ id }: { id?: string }) {
           )}
 
           <SectionCard title="Your note" bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
-            <TextArea
+            <VoiceField
+              id={`telestroke-note-${c.id}`}
+              label="Telestroke note"
               rows={5}
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={setNotes}
+              patientId={p.id}
               placeholder="Anything the transcript will not capture — what you saw rather than what was said…"
             />
           </SectionCard>

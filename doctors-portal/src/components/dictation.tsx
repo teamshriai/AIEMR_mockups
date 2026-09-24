@@ -1,7 +1,8 @@
 /**
- * 🎙 Add note — voice to text, editable before saving.
+ * 🎙 Dictation — the clinician's own voice, turned into editable text.
  *
- * Tap → record → live transcription → editable box → edit → Save.
+ * Tap → the browser asks for the microphone → live transcription into the box
+ * → Stop → edit → Save.
  *
  * THERE IS NO AUTOSAVE HERE, and that is deliberate. `ARC-15` autosaves a
  * draft every 20 seconds everywhere else in this application, but the brief for
@@ -10,18 +11,36 @@
  * at it is a different class of problem from a half-typed one. Nothing leaves
  * this panel until Save is pressed.
  *
- * Speech recognition is REAL where the browser has it. `SpeechRecognition` is
- * still prefixed in Chromium and absent in Firefox and in most WebViews, and a
- * clinician can decline the microphone, so there is a second path: a captured
- * sample streams word by word and the panel SAYS SO in one line. A fallback
- * that pretends to be live is worse than no fallback.
+ * Speech recognition is REAL, and only real. It is the browser's own Web
+ * Speech API — `SpeechRecognition`, still prefixed in Chromium and Safari —
+ * which Chrome, Edge and Safari ship and Firefox does not. Brave ships the
+ * constructor but blocks the speech service behind it, so it fails on its
+ * first network call. Where recognition cannot run, the panel SAYS WHY in one
+ * line and offers typing instead. There is no canned fallback: text that looks
+ * like a transcription and is not one is worse than an empty box.
  *
- * Both paths report the same three things into the explainability drawer, which
- * §4.7 requires of any AI-assisted entry: what produced the text, how confident
- * it was, and what it cannot do.
+ * The permission prompt is the browser's, not ours. `getUserMedia` raises it
+ * (and feeds the waveform); the recogniser then reuses the same grant. A
+ * refusal, a missing microphone and an insecure page each get their own
+ * sentence, because each has a different fix.
+ *
+ * Chrome ends a recognition session on its own — after a few seconds of
+ * silence, and again at about a minute. The clinician did not press Stop, so
+ * the session is restarted in place, rate-limited so a recogniser that keeps
+ * dying cannot spin. `no-speech` and `aborted` are part of that normal rhythm;
+ * everything else is a real failure, and what was already heard is kept.
+ *
+ * ONE MICROPHONE AT A TIME. Every recorder in the product goes through
+ * `useVoiceArbiter`: starting one stops whichever other one is listening (its
+ * words land where they were going), so two recognisers never fight over the
+ * stream and no word lands in the wrong section.
+ *
+ * Every run reports the same three things into the explainability drawer,
+ * which §4.7 requires of any AI-assisted entry: what produced the text, how
+ * confident it was, and what it cannot do.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { create } from 'zustand'
 
 import { Confidence, Diamond, WhyLink } from '@/components/ai'
@@ -29,10 +48,12 @@ import { Modal } from '@/components/overlays'
 import { Button, Icon, TextArea, cx } from '@/components/primitives'
 import { bandFor } from '@/atlas/confidence'
 import type { ConfidenceBand } from '@/atlas/confidence'
+import { formatClock } from '@/data/format'
 import { LANGUAGES } from '@/data/kit'
 import type { LanguageCode } from '@/data/kit'
+import { joinSpeech } from '@/data/scribe'
 import { useAudit } from '@/store/audit'
-import { useClinical } from '@/store/clinical'
+import { UNATTACHED, useClinical } from '@/store/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
@@ -88,157 +109,304 @@ export const BCP47: Record<LanguageCode, string> = {
   KN: 'kn-IN',
 }
 
-// ────────────────────────────────────────── The captured-sample fallback
-
-/**
- * Seeded from each patient's own record, so the fallback is still THIS
- * patient's note rather than lorem ipsum. Kept short — this control is for a
- * bedside note, not a consultation; S-06-04 drafts those.
- */
-const SAMPLES: Record<string, string> = {
-  'SD-P-03':
-    'Reviewed at the bedside. More breathless overnight, oxygen up to four litres since four twenty. Respiratory rate twenty-six, saturations ninety-two percent, still febrile at thirty-eight four. Not turning the corner at seventy-two hours. Broadening antibiotic cover after checking the allergy record, repeating the chest film today, and I will review again at two.',
-  'SD-P-07':
-    'Potassium six point eight on the sample from this morning, up from five point four. Ventilated, on noradrenaline, urine output falling. Starting insulin dextrose and calcium gluconate now, ECG requested, and I have spoken to the renal registrar about filtration.',
-  'SD-P-02':
-    'Day two after coronary artery bypass grafting. Comfortable, drains draining serous fluid, chest clear. For physiotherapy review and drain removal tomorrow if output stays below the threshold.',
-  'SD-P-08':
-    'Unidentified male, approximately forty, brought in after a road traffic accident. Observations have not been charted since seven oh five, so I have asked the nurse in charge for a full set now. Medico-legal docket still open and identity pending.',
-  'SD-P-09': 'Stable for dialysis today at two. No fluid overload, access site clean and functioning.',
+/** The engine is the browser's, so the model line names the browser. */
+function browserName(): string {
+  const ua = navigator.userAgent
+  if ((navigator as unknown as { brave?: unknown }).brave) return 'Brave'
+  if (/Edg\//.test(ua)) return 'Edge'
+  if (/OPR\//.test(ua)) return 'Opera'
+  if (/Chrome|Chromium|CriOS/.test(ua)) return 'Chrome'
+  if (/Safari/.test(ua)) return 'Safari'
+  return 'this browser'
 }
 
-const DEFAULT_SAMPLE =
-  'Reviewed at the bedside. Observations stable, patient comfortable, no new complaints. Continuing the current plan and will review tomorrow.'
-
-/**
- * Per the atlas's own line on `AI-101`: dictation cleanup produces punctuation
- * and casing, and the confidence it reports is the recogniser's, not a
- * clinician's judgement of the content.
- */
-const FALLBACK_MODEL = 'AI-101 v3.2.0 · captured sample'
-const FALLBACK_CONFIDENCE = 0.88
-
-// ───────────────────────────────────────────────────────────── The hook
-
-type Phase = 'idle' | 'recording' | 'review'
-
-export interface DictationState {
-  phase: Phase
-  /** Text already settled — final results, or the sample as it arrives. */
-  settled: string
-  /** The words still in flight. Rendered quietly, never editable. */
-  interim: string
-  /** 0…1 bars for the waveform. */
-  bars: number[]
-  live: boolean
-  model: string
-  confidence: number
-  band: ConfidenceBand
-  /** Set where the live path could not start, so the panel can say why. */
-  notice: string | null
-  elapsedSec: number
-  start: () => void
-  stop: () => void
-  reset: () => void
+function speechModel(language: LanguageCode): string {
+  return `Web Speech API · ${browserName()} · ${BCP47[language]}`
 }
 
+// ─────────────────────────────────────────────── What to say when it cannot run
+
+const NOTICE = {
+  insecure: 'The microphone needs a secure page — open this site over https or on localhost.',
+  unsupported: 'This browser can’t turn speech into text. Use Chrome, Edge or Safari — or type instead.',
+  blocked:
+    'Microphone access was blocked. Allow it from the padlock / site settings in the address bar, then press Dictate again.',
+  noMic: 'No microphone was found on this device.',
+  network:
+    'The browser’s speech service could not be reached (Brave and some privacy settings block it). Use Chrome, Edge or Safari, or type instead.',
+  keepsStopping:
+    'Speech recognition keeps stopping on its own. What was heard is kept — press Dictate again, or type instead.',
+} as const
+
+function languageNotice(language: LanguageCode): string {
+  const label = LANGUAGES.find((l) => l.code === language)?.label ?? BCP47[language]
+  return `This browser’s speech recognition does not support ${label}. Switch your language in settings, or type instead.`
+}
+
+function mediaErrorNotice(err: unknown): string {
+  const name = err instanceof DOMException || err instanceof Error ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') return NOTICE.blocked
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return NOTICE.noMic
+  if (name === 'NotReadableError' || name === 'AbortError')
+    return 'The microphone is in use by another app or tab. Close it there, then press Dictate again — or type instead.'
+  return 'The microphone could not be opened. Press Dictate again, or type instead.'
+}
+
+// ─────────────────────────────────────────────────── One microphone at a time
+
 /**
- * One microphone at a time. Several `VoiceField`s can sit on one note, and two
- * recognisers competing for the same stream is how words land in the wrong
- * section. The first to claim it records; the others say so and wait.
+ * Several `VoiceField`s can sit on one note, and the scribe can open over
+ * them. Two recognisers competing for the same stream is how words land in the
+ * wrong section, so `take` stops whoever is listening before the next one
+ * starts — their words land where they were going — and fields render their
+ * mic as busy while another is live.
  */
 export const useVoiceArbiter = create<{
   activeId: string | null
-  claim: (id: string) => boolean
+  take: (id: string, stop: () => void) => void
   release: (id: string) => void
-}>()((set, get) => ({
-  activeId: null,
-  claim: (id) => {
-    if (get().activeId !== null && get().activeId !== id) return false
-    set({ activeId: id })
-    return true
-  },
-  release: (id) => {
-    if (get().activeId === id) set({ activeId: null })
-  },
-}))
+}>()((set, get) => {
+  /** The live recorder's Stop, held outside state so taking the mic never re-renders anyone. */
+  let stopActive: (() => void) | null = null
+  return {
+    activeId: null,
+    take: (id, stop) => {
+      const current = get().activeId
+      if (current !== null && current !== id) {
+        const previous = stopActive
+        stopActive = null
+        previous?.()
+      }
+      stopActive = stop
+      set({ activeId: id })
+    },
+    release: (id) => {
+      if (get().activeId !== id) return
+      stopActive = null
+      set({ activeId: null })
+    },
+  }
+})
 
-export interface DictationOptions {
-  /** Overrides the per-patient captured sample — e.g. the seed text for THIS section. */
-  sample?: string
-  /** Milliseconds per streamed word on the fallback path. */
-  wordMs?: number
+// ───────────────────────────────────────────────────────────── The hook
+
+export type DictationPhase = 'idle' | 'requesting' | 'recording' | 'review' | 'unavailable'
+
+/** One final result from the recogniser — roughly, one utterance between pauses. */
+export interface HeardSegment {
+  text: string
+  /** Seconds into the session when it settled. */
+  atSec: number
 }
 
-export function useDictation(patientId: string | undefined, open: boolean, opts?: DictationOptions): DictationState {
-  const language = useSession((s) => s.language)
-  const wordMs = opts?.wordMs ?? 130
-  const sampleOverride = opts?.sample
+/** What a finished run hands its owner. */
+export interface DictationRun {
+  text: string
+  model: string
+  confidence: number
+  /** False where the recogniser reported no score — the band is then MED, never a number. */
+  scored: boolean
+  band: ConfidenceBand
+  notice: string | null
+}
 
-  const [phase, setPhase] = useState<Phase>('idle')
+export interface DictationState {
+  phase: DictationPhase
+  /** Final results, joined. */
+  settled: string
+  /** The words still in flight. */
+  interim: string
+  /** The final results one by one, with when each settled. */
+  segments: HeardSegment[]
+  /** 0…1 bars for the waveform. */
+  bars: number[]
+  /** True while the microphone is live. There is no other kind of run. */
+  live: boolean
+  model: string
+  confidence: number
+  scored: boolean
+  band: ConfidenceBand
+  /** Why recognition could not run or stopped, in words the clinician can act on. */
+  notice: string | null
+  /**
+   * Set before anything is pressed where this browser cannot listen at all —
+   * an insecure page, or no recogniser (Firefox). Brave is only found out on
+   * the first attempt, because it ships the constructor and blocks the service.
+   */
+  supportNotice: string | null
+  elapsedSec: number
+  /** `resume` keeps what was heard and the clock — Pause / Resume on the scribe. */
+  start: (opts?: { resume?: boolean }) => void
+  stop: () => void
+  /** Discards everything and returns to idle. `onEnd` is not called. */
+  reset: () => void
+}
+
+export interface DictationOptions {
+  /** The id this recorder holds the microphone under. Defaults to one per hook. */
+  arbiterId?: string
+  /**
+   * Fires exactly once per `start()`, when that run ends — Stop, a failure, or
+   * the microphone never opening — with what was heard. Not called by `reset`.
+   */
+  onEnd?: (run: DictationRun) => void
+}
+
+/**
+ * Chrome reports 0 in some builds and Safari often reports nothing at all. A
+ * reported 0 is not a measured 0, so it is "no score" — shown as the MED band
+ * with no percentage — rather than LOW.
+ */
+const UNSCORED_CONFIDENCE = 0.7
+/** Restarts allowed inside the window before a recogniser that keeps dying is called failed. */
+const MAX_RESTARTS = 8
+const RESTART_WINDOW_MS = 10_000
+const QUIET_BARS = () => new Array<number>(28).fill(0.06)
+
+/** Seconds recorded so far: what earlier runs banked, plus the run in progress. */
+function secondsOf(c: { base: number; since: number | null }): number {
+  return Math.floor(c.base + (c.since === null ? 0 : (Date.now() - c.since) / 1000))
+}
+
+export function useDictation(_patientId: string | undefined, open: boolean, opts?: DictationOptions): DictationState {
+  const language = useSession((s) => s.language)
+  const ownId = useId()
+  const arbiterId = opts?.arbiterId ?? `dictation-${ownId}`
+
+  const [phase, setPhase] = useState<DictationPhase>('idle')
   const [settled, setSettled] = useState('')
   const [interim, setInterim] = useState('')
-  const [bars, setBars] = useState<number[]>(() => new Array(28).fill(0.06))
-  const [live, setLive] = useState(false)
+  const [segments, setSegments] = useState<HeardSegment[]>([])
+  const [bars, setBars] = useState<number[]>(QUIET_BARS)
   const [notice, setNotice] = useState<string | null>(null)
-  const [confidence, setConfidence] = useState(FALLBACK_CONFIDENCE)
+  const [confidence, setConfidence] = useState(UNSCORED_CONFIDENCE)
+  const [scored, setScored] = useState(false)
   const [elapsedSec, setElapsedSec] = useState(0)
-
-  const recognition = useRef<SpeechRecognitionLike | null>(null)
-  const audio = useRef<{ ctx: AudioContext; stream: MediaStream; raf: number } | null>(null)
-  const sampleTimer = useRef<number | null>(null)
-
-  const sample = useMemo(
-    () => sampleOverride ?? (patientId ? (SAMPLES[patientId] ?? DEFAULT_SAMPLE) : DEFAULT_SAMPLE),
-    [patientId, sampleOverride],
+  const [supportNotice] = useState<string | null>(() =>
+    !window.isSecureContext
+      ? NOTICE.insecure
+      : !recognitionCtor() || !navigator.mediaDevices?.getUserMedia
+        ? NOTICE.unsupported
+        : null,
   )
 
-  /** Everything the panel started gets torn down here, on every exit path. */
+  // The truth lives in refs, so event handlers never read a stale render.
+  const text = useRef({ settled: '', interim: '', segments: [] as HeardSegment[] })
+  const score = useRef({ confidence: UNSCORED_CONFIDENCE, scored: false })
+  const recognition = useRef<SpeechRecognitionLike | null>(null)
+  const audio = useRef<{ ctx: AudioContext | null; stream: MediaStream; raf: number } | null>(null)
+  /** Final results already taken from the current recogniser session — a restart begins a new list. */
+  const consumed = useRef(0)
+  const clock = useRef<{ base: number; since: number | null }>({ base: 0, since: null })
+  const run = useRef({ active: false, token: 0, stopping: false, restarts: [] as number[] })
+  const optsRef = useRef(opts)
+  const languageRef = useRef(language)
+  const stopRef = useRef<() => void>(() => {})
+
+  useEffect(() => {
+    optsRef.current = opts
+    languageRef.current = language
+  })
+
+  /** Everything a run opened is closed here, on every exit path. */
   const teardown = useCallback(() => {
-    recognition.current?.abort()
+    const rec = recognition.current
     recognition.current = null
-    if (sampleTimer.current !== null) {
-      window.clearInterval(sampleTimer.current)
-      sampleTimer.current = null
+    if (rec) {
+      rec.onresult = null
+      rec.onerror = null
+      rec.onend = null
+      try {
+        rec.abort()
+      } catch {
+        /* already ended */
+      }
     }
     if (audio.current) {
       window.cancelAnimationFrame(audio.current.raf)
       audio.current.stream.getTracks().forEach((t) => t.stop())
-      void audio.current.ctx.close()
+      void audio.current.ctx?.close().catch(() => undefined)
       audio.current = null
     }
+    const c = clock.current
+    if (c.since !== null) {
+      c.base += (Date.now() - c.since) / 1000
+      c.since = null
+    }
+    // The trace settles when the microphone closes.
+    setBars(QUIET_BARS())
   }, [])
 
-  useEffect(() => teardown, [teardown])
-  useEffect(() => {
-    if (!open) {
+  /** Words still in flight when a run ends are kept as heard, never dropped. */
+  const promoteInterim = useCallback(() => {
+    const t = text.current
+    const pending = t.interim.trim()
+    if (pending === '') return
+    t.settled = joinSpeech(t.settled, pending)
+    t.segments = [...t.segments, { text: pending, atSec: secondsOf(clock.current) }]
+    t.interim = ''
+    setSettled(t.settled)
+    setSegments(t.segments)
+    setInterim('')
+  }, [])
+
+  /** Closes the run's books: the arbiter is released and the owner told, once. */
+  const endRun = useCallback(
+    (endNotice: string | null) => {
+      if (!run.current.active) return
+      run.current.active = false
+      useVoiceArbiter.getState().release(arbiterId)
+      const s = score.current
+      const conf = s.scored ? s.confidence : UNSCORED_CONFIDENCE
+      optsRef.current?.onEnd?.({
+        text: text.current.settled,
+        model: speechModel(languageRef.current),
+        confidence: conf,
+        scored: s.scored,
+        band: bandFor(conf),
+        notice: endNotice,
+      })
+    },
+    [arbiterId],
+  )
+
+  /** A real failure: keep what was heard, say why, stop listening. */
+  const fail = useCallback(
+    (why: string) => {
+      run.current.stopping = true
+      run.current.token += 1
+      promoteInterim()
       teardown()
-      setPhase('idle')
-      setSettled('')
-      setInterim('')
-      setElapsedSec(0)
-      setNotice(null)
-      setBars(new Array(28).fill(0.06))
-    }
-  }, [open, teardown])
+      setNotice(why)
+      setPhase(text.current.settled.trim() !== '' ? 'review' : 'unavailable')
+      endRun(why)
+    },
+    [endRun, promoteInterim, teardown],
+  )
 
-  /** The elapsed counter, so a short recording is visibly short. */
+  const stop = useCallback(() => {
+    if (!run.current.active) return
+    const wasRequesting = recognition.current === null
+    run.current.stopping = true
+    run.current.token += 1
+    promoteInterim()
+    teardown()
+    setElapsedSec(secondsOf(clock.current))
+    setPhase(wasRequesting && text.current.settled.trim() === '' ? 'idle' : 'review')
+    endRun(null)
+  }, [endRun, promoteInterim, teardown])
   useEffect(() => {
-    if (phase !== 'recording') return
-    const t = window.setInterval(() => setElapsedSec((s) => s + 1), 1000)
-    return () => window.clearInterval(t)
-  }, [phase])
+    stopRef.current = stop
+  }, [stop])
 
-  /** A real waveform off the microphone, where we have one. */
-  const startMeter = useCallback(async (): Promise<MediaStream | null> => {
+  /** A real waveform off the microphone the browser just granted. */
+  const startMeter = useCallback((stream: MediaStream) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const ctx = new AudioContext()
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 128
       ctx.createMediaStreamSource(stream).connect(analyser)
       const data = new Uint8Array(analyser.frequencyBinCount)
-
       const tick = () => {
         analyser.getByteTimeDomainData(data)
         // Peak deviation from the 128 midpoint, as a 0…1 amplitude.
@@ -248,152 +416,186 @@ export function useDictation(patientId: string | undefined, open: boolean, opts?
         if (audio.current) audio.current.raf = window.requestAnimationFrame(tick)
       }
       audio.current = { ctx, stream, raf: window.requestAnimationFrame(tick) }
-      return stream
     } catch {
-      return null
+      // No meter is not a reason to stop listening — the words still come.
+      audio.current = { ctx: null, stream, raf: 0 }
     }
   }, [])
 
-  /** The captured sample, word by word, with a synthetic but plausible trace. */
-  const startSample = useCallback(() => {
-    const words = sample.split(' ')
-    let i = 0
-    setLive(false)
-    setConfidence(FALLBACK_CONFIDENCE)
-    setPhase('recording')
-    sampleTimer.current = window.setInterval(() => {
-      i += 1
-      setSettled(words.slice(0, i).join(' '))
-      setInterim(i < words.length ? words[i] : '')
-      // Deterministic, so the demo looks the same every time it is run.
-      setBars((prev) => [...prev.slice(1), 0.18 + Math.abs(Math.sin(i * 0.9)) * 0.72])
-      if (i >= words.length) {
-        if (sampleTimer.current !== null) window.clearInterval(sampleTimer.current)
-        sampleTimer.current = null
-        setInterim('')
-        setPhase('review')
+  const start = useCallback(
+    (o?: { resume?: boolean }) => {
+      if (run.current.active) return
+      const resume = o?.resume === true
+      if (!resume) {
+        text.current = { settled: '', interim: '', segments: [] }
+        score.current = { confidence: UNSCORED_CONFIDENCE, scored: false }
+        clock.current = { base: 0, since: null }
+        setSettled('')
+        setSegments([])
+        setConfidence(UNSCORED_CONFIDENCE)
+        setScored(false)
+        setElapsedSec(0)
       }
-    }, wordMs)
-  }, [sample, wordMs])
+      setInterim('')
+      setNotice(null)
+      run.current = { active: true, token: run.current.token + 1, stopping: false, restarts: [] }
+      const token = run.current.token
+      useVoiceArbiter.getState().take(arbiterId, () => stopRef.current())
 
-  const start = useCallback(() => {
-    setSettled('')
-    setInterim('')
-    setElapsedSec(0)
-    setNotice(null)
+      if (!window.isSecureContext) return fail(NOTICE.insecure)
+      const Ctor = recognitionCtor()
+      if (!Ctor) return fail(NOTICE.unsupported)
+      if (!navigator.mediaDevices?.getUserMedia) return fail(NOTICE.unsupported)
 
-    const Ctor = recognitionCtor()
-    if (!Ctor) {
-      setNotice(
-        'Live speech recognition is unavailable in this browser — showing a captured sample. Typing is always available.',
-      )
-      startSample()
-      return
-    }
+      setPhase('requesting')
+      void (async () => {
+        let stream: MediaStream
+        try {
+          // This is the call that raises the browser's permission prompt.
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } catch (err) {
+          if (token === run.current.token) fail(mediaErrorNotice(err))
+          return
+        }
+        // Stopped or closed while the prompt was up.
+        if (token !== run.current.token || run.current.stopping) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
+        startMeter(stream)
 
-    void (async () => {
-      const stream = await startMeter()
-      if (!stream) {
-        setNotice(
-          'The microphone was not available — showing a captured sample. Typing is always available.',
-        )
-        startSample()
-        return
-      }
+        const rec = new Ctor()
+        rec.lang = BCP47[languageRef.current]
+        rec.continuous = true
+        rec.interimResults = true
+        rec.maxAlternatives = 1
 
-      const rec = new Ctor()
-      rec.lang = BCP47[language]
-      rec.continuous = true
-      rec.interimResults = true
-      rec.maxAlternatives = 1
+        rec.onresult = (e) => {
+          if (recognition.current !== rec) return
+          const t = text.current
+          let pending = ''
+          let best = 0
+          const fresh: HeardSegment[] = []
+          for (let i = e.resultIndex; i < e.results.length; i += 1) {
+            const r = e.results[i]
+            const alt = r[0]
+            if (!alt) continue
+            if (r.isFinal) {
+              // A final result is taken once, however many events repeat it.
+              if (i < consumed.current) continue
+              consumed.current = i + 1
+              const phrase = alt.transcript.trim()
+              if (phrase !== '') fresh.push({ text: phrase, atSec: secondsOf(clock.current) })
+              best = Math.max(best, alt.confidence || 0)
+            } else {
+              pending = joinSpeech(pending, alt.transcript)
+            }
+          }
+          if (fresh.length > 0) {
+            t.settled = fresh.reduce((acc, s) => joinSpeech(acc, s.text), t.settled)
+            t.segments = [...t.segments, ...fresh]
+            setSettled(t.settled)
+            setSegments(t.segments)
+            if (best > 0) {
+              score.current = { confidence: best, scored: true }
+              setConfidence(best)
+              setScored(true)
+            }
+          }
+          t.interim = pending
+          setInterim(pending)
+        }
 
-      rec.onresult = (e) => {
-        let final = ''
-        let pending = ''
-        let best = 0
-        for (let i = e.resultIndex; i < e.results.length; i += 1) {
-          const r = e.results[i]
-          const alt = r[0]
-          if (r.isFinal) {
-            final += alt.transcript
-            best = Math.max(best, alt.confidence || 0)
-          } else {
-            pending += alt.transcript
+        rec.onerror = (e) => {
+          if (recognition.current !== rec) return
+          // Silence, and Chrome's own session boundary, are the normal rhythm — `onend` restarts.
+          if (e.error === 'no-speech' || e.error === 'aborted') return
+          if (e.error === 'network') return fail(NOTICE.network)
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') return fail(NOTICE.blocked)
+          if (e.error === 'audio-capture') return fail(NOTICE.noMic)
+          if (e.error === 'language-not-supported') return fail(languageNotice(languageRef.current))
+          fail(`Speech recognition stopped (${e.error}). What was heard is kept — press Dictate again, or type instead.`)
+        }
+
+        rec.onend = () => {
+          if (recognition.current !== rec || run.current.stopping) return
+          // Chrome ended the session itself — after silence, or at about a minute. Keep listening.
+          const now = Date.now()
+          const recent = run.current.restarts.filter((at) => now - at < RESTART_WINDOW_MS)
+          if (recent.length >= MAX_RESTARTS) return fail(NOTICE.keepsStopping)
+          run.current.restarts = [...recent, now]
+          promoteInterim()
+          consumed.current = 0
+          try {
+            rec.start()
+          } catch {
+            fail(NOTICE.keepsStopping)
           }
         }
-        if (final) {
-          setSettled((s) => (s ? `${s}${final}` : final.replace(/^\s+/, '')))
-          // The recogniser reports 0 in some builds; a reported 0 is not a
-          // measured 0, so it is treated as "no score" rather than as LOW.
-          if (best > 0) setConfidence(best)
+
+        recognition.current = rec
+        consumed.current = 0
+        try {
+          rec.start()
+        } catch {
+          fail('Speech recognition would not start in this browser. Type instead.')
+          return
         }
-        setInterim(pending)
-      }
-
-      rec.onerror = (e) => {
-        setNotice(
-          e.error === 'not-allowed'
-            ? 'Microphone access was declined — showing a captured sample. Typing is always available.'
-            : `Speech recognition stopped (${e.error}) — showing a captured sample. Typing is always available.`,
-        )
-        teardown()
-        startSample()
-      }
-
-      rec.onend = () => {
-        setInterim('')
-        setPhase((p) => (p === 'recording' ? 'review' : p))
-      }
-
-      recognition.current = rec
-      setLive(true)
-      setPhase('recording')
-      try {
-        rec.start()
-      } catch {
-        setNotice('Speech recognition would not start — showing a captured sample.')
-        teardown()
-        startSample()
-      }
-    })()
-  }, [language, startMeter, startSample, teardown])
-
-  const stop = useCallback(() => {
-    if (recognition.current) {
-      recognition.current.stop()
-    } else if (sampleTimer.current !== null) {
-      window.clearInterval(sampleTimer.current)
-      sampleTimer.current = null
-    }
-    if (audio.current) {
-      window.cancelAnimationFrame(audio.current.raf)
-      audio.current.stream.getTracks().forEach((t) => t.stop())
-      void audio.current.ctx.close()
-      audio.current = null
-    }
-    setInterim('')
-    setPhase('review')
-  }, [])
+        clock.current.since = Date.now()
+        setPhase('recording')
+      })()
+    },
+    [arbiterId, fail, promoteInterim, startMeter],
+  )
 
   const reset = useCallback(() => {
+    run.current.stopping = true
+    run.current.token += 1
     teardown()
+    if (run.current.active) {
+      run.current.active = false
+      useVoiceArbiter.getState().release(arbiterId)
+    }
+    text.current = { settled: '', interim: '', segments: [] }
+    score.current = { confidence: UNSCORED_CONFIDENCE, scored: false }
+    clock.current = { base: 0, since: null }
     setPhase('idle')
     setSettled('')
     setInterim('')
+    setSegments([])
+    setNotice(null)
+    setConfidence(UNSCORED_CONFIDENCE)
+    setScored(false)
     setElapsedSec(0)
-    setBars(new Array(28).fill(0.06))
-  }, [teardown])
+  }, [arbiterId, teardown])
 
+  // Closing the surface discards the session; unmounting it closes the microphone.
+  useEffect(() => {
+    if (!open) reset()
+  }, [open, reset])
+  useEffect(() => () => reset(), [reset])
+
+  /** A real clock, so a short recording is visibly short and a paused one does not count on. */
+  useEffect(() => {
+    if (phase !== 'recording') return
+    const t = window.setInterval(() => setElapsedSec(secondsOf(clock.current)), 500)
+    return () => window.clearInterval(t)
+  }, [phase])
+
+  const conf = scored ? confidence : UNSCORED_CONFIDENCE
   return {
     phase,
     settled,
     interim,
+    segments,
     bars,
-    live,
-    model: live ? `${navigator.userAgent.includes('Edg') ? 'Edge' : 'Chromium'} SpeechRecognition · ${BCP47[language]}` : FALLBACK_MODEL,
-    confidence,
-    band: bandFor(confidence),
+    live: phase === 'recording',
+    model: speechModel(language),
+    confidence: conf,
+    scored,
+    band: bandFor(conf),
     notice,
+    supportNotice,
     elapsedSec,
     start,
     stop,
@@ -405,10 +607,7 @@ export function useDictation(patientId: string | undefined, open: boolean, opts?
 
 export function Waveform({ bars, active }: { bars: number[]; active: boolean }) {
   return (
-    <div
-      aria-hidden
-      className="flex h-10 flex-1 items-center justify-between gap-[2px] overflow-hidden"
-    >
+    <div aria-hidden className="flex h-10 min-w-0 flex-1 items-center justify-between gap-[2px] overflow-hidden">
       {bars.map((b, i) => (
         <span
           key={i}
@@ -417,6 +616,26 @@ export function Waveform({ bars, active }: { bars: number[]; active: boolean }) 
         />
       ))}
     </div>
+  )
+}
+
+/** The one line shown while the browser's own permission prompt is up. */
+export function RequestingLine({ className }: { className?: string }) {
+  return (
+    <p role="status" className={cx('flex items-center gap-2 text-[0.9em] text-ink-2', className)}>
+      <Icon name="Loader" size={14} className="shrink-0 animate-spin text-ai" />
+      Allow microphone access in your browser’s prompt…
+    </p>
+  )
+}
+
+/** Why recognition could not run, and what to do about it. */
+export function DictationNotice({ children, className }: { children: string; className?: string }) {
+  return (
+    <p role="status" className={cx('flex items-start gap-2 rounded-panel bg-caution-soft px-3 py-2.5 text-[0.9em] text-caution', className)}>
+      <Icon name="MicOff" size={14} className="mt-0.5 shrink-0" />
+      <span className="min-w-0 flex-1">{children}</span>
+    </p>
   )
 }
 
@@ -441,58 +660,106 @@ export function DictationPanel({
   const saveVoiceNote = useClinical((s) => s.saveVoiceNote)
   const toast = useUI((s) => s.toast)
 
+  /** The clinician's edit, once they make one. It wins over what was heard. */
   const [edited, setEdited] = useState<string | null>(null)
+  /** Text typed before dictation started, kept ahead of the dictated words. */
+  const [prefix, setPrefix] = useState('')
+  /** "Type instead" — the box is open for typing without the microphone. */
+  const [typing, setTyping] = useState(false)
   const transcriptLogged = useRef(false)
+  const draftRef = useRef<HTMLTextAreaElement>(null)
 
-  // The body the clinician will actually save: their edit if they made one,
-  // otherwise what was heard.
-  const body = edited ?? d.settled
+  const recording = d.phase === 'recording'
+  const requesting = d.phase === 'requesting'
+  const heard = recording ? joinSpeech(d.settled, d.interim) : d.settled
+  const dictated = heard.trim() !== ''
+  const joined = prefix.trim() === '' ? heard : heard.trim() === '' ? prefix : `${prefix.trim()} ${heard.trim()}`
+  // The body the clinician will actually save: their edit if they made one, otherwise what was typed and heard.
+  const body = edited ?? joined
+  const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length
+  const showDraft = recording || d.phase === 'review' || typing || body.trim() !== ''
 
   useEffect(() => {
     if (!open) {
       setEdited(null)
+      setPrefix('')
+      setTyping(false)
       transcriptLogged.current = false
     }
   }, [open])
 
-  /** Audit event one of two: the transcript existed. */
+  const logTranscript = useCallback(
+    (words: string) => {
+      if (transcriptLogged.current || words.trim() === '') return
+      transcriptLogged.current = true
+      /** Audit event one of two: the transcript existed. */
+      record({
+        event: 'AI.SCRIBE.TRANSCRIPT_CREATED',
+        actor: me.name,
+        actorId: me.id,
+        subject: patientId,
+        model: d.model,
+        gate: 'G2',
+        detail: `${words.trim().split(/\s+/).length} words · live recognition · ${d.band}`,
+      })
+    },
+    [d.model, d.band, me.id, me.name, patientId, record],
+  )
+
   useEffect(() => {
-    if (d.phase !== 'review' || transcriptLogged.current || d.settled.trim() === '') return
-    transcriptLogged.current = true
-    record({
-      event: 'AI.SCRIBE.TRANSCRIPT_CREATED',
-      actor: me.name,
-      actorId: me.id,
-      subject: patientId,
-      model: d.model,
-      gate: 'G2',
-      detail: `${d.settled.trim().split(/\s+/).length} words · ${d.live ? 'live recognition' : 'captured sample'} · ${d.band}`,
-    })
-  }, [d.phase, d.settled, d.model, d.live, d.band, me.id, me.name, patientId, record])
+    if (d.phase === 'review') logTranscript(d.settled)
+  }, [d.phase, d.settled, logTranscript])
+
+  /** A fresh take. An earlier edit is discarded, and the new transcript is audited as its own. */
+  function dictateAgain() {
+    setEdited(null)
+    setPrefix('')
+    transcriptLogged.current = false
+    d.start()
+  }
+
+  /** Dictating after typing keeps the typed words and adds the spoken ones after them. */
+  function startDictation() {
+    if (d.phase === 'review') return dictateAgain()
+    setPrefix(body)
+    setEdited(null)
+    transcriptLogged.current = false
+    d.start()
+  }
+
+  function typeInstead() {
+    setTyping(true)
+    window.setTimeout(() => draftRef.current?.focus(), 0)
+  }
 
   function save() {
     const text = body.trim()
     if (text === '') return
-    saveVoiceNote({ patientId: patientId ?? 'unattached', body: text, by: me.name, model: d.model, band: d.band })
+    if (recording || requesting) d.stop()
+    if (dictated) logTranscript(heard)
+    const model = dictated ? d.model : 'Typed — no speech recognition'
+    const band: ConfidenceBand = dictated ? d.band : 'HIGH'
+    saveVoiceNote({ patientId: patientId ?? UNATTACHED, body: text, by: me.name, model, band })
     /** Audit event two of two: what was committed, by whom, under which gate. */
     record({
       event: 'NOTE.DRAFT_SAVED',
       actor: me.name,
       actorId: me.id,
       subject: patientId,
-      model: d.model,
+      model,
       gate: 'G2',
-      detail: `Dictated note saved${edited !== null ? ' after manual edit' : ' unedited'} · ${text.split(/\s+/).length} words`,
+      detail: `${dictated ? 'Dictated' : 'Typed'} note saved${dictated ? (edited !== null ? ' after manual edit' : ' unedited') : ''} · ${text.split(/\s+/).length} words`,
     })
     toast({
       tone: 'success',
-      title: 'Note saved as a draft',
-      detail: patientName ? `${patientName} · not signed` : 'Not attached to a patient · not signed',
+      title: patientName ? 'Note saved as a draft' : 'To-do note saved',
+      detail: patientName ? `${patientName} · not signed` : 'On My Day, under Today’s to-do notes',
     })
     onClose()
   }
 
-  const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length
+  const unsupported = d.supportNotice !== null
+  const notice = d.notice ?? d.supportNotice
 
   return (
     <Modal
@@ -501,7 +768,7 @@ export function DictationPanel({
       title={
         <span className="flex items-center gap-2">
           <Icon name="Mic" size={16} />
-          Add note
+          {patientName ? 'Add note' : 'Today’s to-do note'}
         </span>
       }
       subtitle={patientName ?? 'Not attached to a patient'}
@@ -509,70 +776,86 @@ export function DictationPanel({
       footer={
         <>
           <span className="mr-auto text-[0.86em] text-ink-3">
-            {d.phase === 'review' ? `${wordCount} ${wordCount === 1 ? 'word' : 'words'} · nothing is saved until you press Save` : ' '}
+            {wordCount > 0 ? `${wordCount} ${wordCount === 1 ? 'word' : 'words'} · not saved yet` : ' '}
           </span>
-          {d.phase === 'review' && (
-            <Button icon="RotateCcw" onClick={() => { setEdited(null); d.reset() }}>
-              Retry
-            </Button>
-          )}
           <Button icon="X" onClick={onClose}>
             Discard
           </Button>
-          <Button tone="primary" icon="Check" disabled={d.phase !== 'review' || wordCount === 0} onClick={save}>
+          <Button
+            tone="primary"
+            icon="Check"
+            disabled={requesting || wordCount === 0}
+            title={wordCount === 0 ? 'Dictate or type the note first' : undefined}
+            onClick={save}
+          >
             Save
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        {/* The recorder. One control, large, unambiguous. */}
+        {/* The recorder. One control, large, unambiguous — absent where the browser cannot listen at all. */}
         {/* The brief's `.voice-active`: accent border + glow only while the mic is live. */}
-        <div
-          className={cx(
-            'flex flex-wrap items-center gap-4 rounded-panel border bg-glass-fill-muted px-4 py-3.5',
-            'transition-[border-color,box-shadow] duration-[250ms]',
-            d.phase === 'recording' ? 'voice-active' : 'border-transparent',
-          )}
-        >
-          {d.phase === 'idle' ? (
-            <Button tone="ai" size="lg" icon="Mic" onClick={d.start} className="w-full sm:w-auto">
-              Start dictation
-            </Button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={d.phase === 'recording' ? d.stop : d.start}
-                aria-label={d.phase === 'recording' ? 'Stop recording' : 'Dictate again'}
-                className={cx(
-                  'inline-flex size-12 shrink-0 items-center justify-center rounded-pill',
-                  d.phase === 'recording' ? 'bg-abnormal text-white' : 'ai-surface',
+        {!unsupported && (
+          <div
+            className={cx(
+              'flex flex-wrap items-center gap-x-4 gap-y-3 rounded-panel border bg-glass-fill-muted px-4 py-3.5',
+              'transition-[border-color,box-shadow] duration-[250ms]',
+              recording ? 'voice-active' : 'border-transparent',
+            )}
+          >
+            {d.phase === 'idle' || d.phase === 'unavailable' ? (
+              <>
+                <Button tone="ai" size="lg" icon="Mic" onClick={startDictation} className="w-full sm:w-auto">
+                  {d.phase === 'unavailable' ? 'Try dictation again' : 'Start dictation'}
+                </Button>
+                {!typing && (
+                  <Button tone="tertiary" icon="PenLine" onClick={typeInstead} className="w-full sm:w-auto">
+                    Type instead
+                  </Button>
                 )}
-              >
-                <Icon name={d.phase === 'recording' ? 'Square' : 'Mic'} size={20} />
-              </button>
-              <Waveform bars={d.bars} active={d.phase === 'recording'} />
-              <span className="tabular shrink-0 text-[0.92em] font-medium text-ink-2">
-                {String(Math.floor(d.elapsedSec / 60)).padStart(2, '0')}:
-                {String(d.elapsedSec % 60).padStart(2, '0')}
-              </span>
-            </>
-          )}
-        </div>
+              </>
+            ) : requesting ? (
+              <>
+                <RequestingLine className="min-w-0 flex-1" />
+                <Button size="sm" icon="X" onClick={d.stop}>
+                  Cancel
+                </Button>
+              </>
+            ) : recording ? (
+              <>
+                <button
+                  type="button"
+                  onClick={d.stop}
+                  aria-label="Stop recording"
+                  title="Stop recording"
+                  className="inline-flex size-12 shrink-0 items-center justify-center rounded-pill bg-abnormal text-white"
+                >
+                  <Icon name="Square" size={20} />
+                </button>
+                <Waveform bars={d.bars} active />
+                <span className="tabular shrink-0 text-[0.92em] font-medium text-ink-2">{formatClock(d.elapsedSec)}</span>
+              </>
+            ) : (
+              <>
+                <Button tone="ai" icon="Mic" onClick={dictateAgain}>
+                  Dictate again
+                </Button>
+                <span className="tabular ml-auto shrink-0 text-[0.88em] text-ink-3">{formatClock(d.elapsedSec)} recorded</span>
+              </>
+            )}
+          </div>
+        )}
 
-        {/* Which path is running, said plainly rather than implied. */}
-        {d.notice ? (
-          <p className="flex items-start gap-2 rounded-panel bg-caution-soft px-3 py-2.5 text-[0.9em] text-caution">
-            <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
-            {d.notice}
-          </p>
+        {/* Why it could not run, said plainly. Typing is always the way on. */}
+        {notice ? (
+          <DictationNotice>{notice}</DictationNotice>
         ) : (
-          d.phase !== 'idle' && (
+          (recording || (d.phase === 'review' && dictated)) && (
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[0.86em] text-ink-3">
               <span className="flex items-center gap-1.5">
                 <Diamond size={10} />
-                {d.live ? 'Live recognition' : 'Captured sample'}
+                {recording ? 'Listening · live recognition' : 'Live recognition'}
               </span>
               <span>{d.model}</span>
               <span>{LANGUAGES.find((l) => l.code === language)?.label}</span>
@@ -580,80 +863,72 @@ export function DictationPanel({
           )
         )}
 
-        {/* Live words while recording; an editable box once it stops. */}
-        {d.phase === 'recording' && (
-          <p
-            aria-live="polite"
-            className="ai-ghost min-h-24 rounded-panel px-3.5 py-3 leading-relaxed"
-          >
-            {d.settled}
-            {d.interim && <span className="text-ink-3"> {d.interim}</span>}
-            {d.settled === '' && d.interim === '' && (
-              <span className="text-ink-muted">Listening…</span>
-            )}
-          </p>
-        )}
-
-        {d.phase === 'review' && (
+        {/* One box: the words appear in it as they are spoken, and it is editable once you stop. */}
+        {(showDraft || unsupported) && (
           <div>
             <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
               <label htmlFor="dictation-draft" className="text-[0.92em] font-medium text-ink-2">
-                Draft — edit before saving
+                {recording ? 'Listening — the words appear as you speak' : dictated ? 'Draft — edit before saving' : 'Your note'}
               </label>
-              <Confidence band={d.band} score={d.confidence} />
+              {d.phase === 'review' && dictated && <Confidence band={d.band} score={d.scored ? d.confidence : undefined} />}
             </div>
             <TextArea
               id="dictation-draft"
+              ref={draftRef}
               rows={7}
               value={body}
+              readOnly={recording || requesting}
+              aria-busy={recording}
               onChange={(e) => setEdited(e.target.value)}
-              className="bg-glass-fill-strong"
+              placeholder={recording ? 'Listening…' : 'Type the note…'}
+              className={cx('bg-glass-fill-strong', recording && 'border-ai')}
             />
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <WhyLink
-                target={{
-                  touchpointId: `dictation-${patientId ?? 'unattached'}`,
-                  capabilityId: 'AI-101',
-                  claim: 'This text is a transcription of what was said, not a clinical assessment of it.',
-                  confidence: d.confidence,
-                  band: d.band,
-                  computedAt: 'just now',
-                  inputs: [
-                    {
-                      label: d.live ? 'Microphone audio, this session' : 'Captured sample for this patient',
-                      source: d.model,
-                    },
-                    { label: 'Recognition language', source: BCP47[language] },
-                  ],
-                  evidence: [
-                    'Words are transcribed as recognised; punctuation and casing are added.',
-                    'No clinical content is inferred, checked or corrected.',
-                  ],
-                  model: d.model,
-                  limits: [
-                    'A transcription confidence is not a statement about whether the content is correct.',
-                    d.live
-                      ? 'Accuracy falls with background noise, accent and unfamiliar drug names — read it before saving.'
-                      : 'This is a captured sample, not your speech. It is shown because live recognition was unavailable.',
-                    'Nothing is written to the record until Save is pressed.',
-                  ],
-                }}
-              />
-              {edited !== null && (
-                <span className="flex items-center gap-1.5 text-[0.86em] font-medium text-normal">
-                  <Icon name="PenLine" size={12} />
-                  edited by you
-                </span>
-              )}
-            </div>
+            {d.phase === 'review' && (dictated || edited !== null) && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                {dictated ? (
+                  <WhyLink
+                    target={{
+                      touchpointId: `dictation-${patientId ?? UNATTACHED}`,
+                      capabilityId: 'AI-101',
+                      claim: 'This text is a transcription of what was said, not a clinical assessment of it.',
+                      confidence: d.confidence,
+                      band: d.band,
+                      computedAt: 'just now',
+                      inputs: [
+                        { label: 'Microphone audio, this session', source: d.model },
+                        { label: 'Recognition language', source: BCP47[language] },
+                      ],
+                      evidence: [
+                        'Words are transcribed as the browser’s recogniser heard them; it may add little or no punctuation.',
+                        'No clinical content is inferred, checked or corrected.',
+                      ],
+                      model: d.model,
+                      limits: [
+                        'A transcription confidence is not a statement about whether the content is correct.',
+                        'Accuracy falls with background noise, accent and unfamiliar drug names — read it before saving.',
+                        'Nothing is written to the record until Save is pressed.',
+                      ],
+                    }}
+                  />
+                ) : (
+                  <span />
+                )}
+                {edited !== null && (
+                  <span className="flex items-center gap-1.5 text-[0.86em] font-medium text-normal">
+                    <Icon name="PenLine" size={12} />
+                    edited by you
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {d.phase === 'idle' && (
+        {d.phase === 'idle' && !typing && !unsupported && (
           <p className="flex items-start gap-2 px-1 text-[0.88em] text-ink-3">
             <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-            Speech is transcribed as you talk and stays editable. Nothing is saved until you press Save, and typing
-            instead is always available.
+            Your browser will ask to use the microphone. Speech is transcribed as you talk and stays editable; nothing
+            is saved until you press Save.
           </p>
         )}
       </div>

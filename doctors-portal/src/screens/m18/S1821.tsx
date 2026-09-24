@@ -23,8 +23,7 @@
  *   enters the record only over a clinician's signature.
  */
 
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { AIActionBar, Confidence } from '@/components/ai'
 import { CountPill, Disclosure, SectionCard, Why } from '@/components/calm'
@@ -50,12 +49,24 @@ export function S1821() {
   const navigate = useNavigate()
   const aiActive = useAI(selectAiActive)
   const cases = casesWithImaging()
-  const [selectedId, setSelectedId] = useState(cases.find((c) => c.status === 'active')?.id ?? cases[0]?.id)
+  // `?case=` opens a named case — how a patient's record and the imaging
+  // viewer deep-link here. Without it, the first active case.
+  const [params, setParams] = useSearchParams()
+  const asked = params.get('case')
+  const selectedId =
+    (asked && cases.some((c) => c.id === asked) ? asked : undefined) ??
+    cases.find((c) => c.status === 'active')?.id ??
+    cases[0]?.id
+  const setSelectedId = (id: string) => {
+    const next = new URLSearchParams(params)
+    next.set('case', id)
+    setParams(next, { replace: true })
+  }
 
   const current = cases.find((c) => c.id === selectedId) ?? cases[0]
   const study = current ? studyFor(current.id) : undefined
   const truth = study?.truth
-  const findings = truth ? ncctFindings(truth) : []
+  const findings = truth && current ? ncctFindings(truth, current) : []
   const verdict = truth && current ? triageVerdict(truth, current) : undefined
   const active = cases.filter((c) => c.status === 'active').length
 
@@ -75,9 +86,9 @@ export function S1821() {
   const p = patient(current.patientId)
 
   /** Scan to reading, as a clinician would say it: "4 min 00 s". */
-  const readSeconds = Math.round(
-    (IMAGING_TRIAGE.deliveredAt.getTime() - IMAGING_TRIAGE.acquiredAt.getTime()) / 1000,
-  )
+  const img = current.imaging
+  const readSeconds = Math.round((img.deliveredAt.getTime() - img.acquiredAt.getTime()) / 1000)
+  const model = img.lvo ? IMAGING_TRIAGE.model : 'ncct-ich v3.1.0'
   const readTime = `${Math.floor(readSeconds / 60)} min ${String(readSeconds % 60).padStart(2, '0')} s`
 
   return (
@@ -87,15 +98,20 @@ export function S1821() {
       heading="Stroke-AI Console"
       subheading={
         <>
-          {cases.length} imaged {cases.length === 1 ? 'case' : 'cases'} · {active} active · reading delivered{' '}
-          {formatTime(IMAGING_TRIAGE.deliveredAt)}
+          {cases.length} imaged {cases.length === 1 ? 'case' : 'cases'} · {active} active · {current.caseNo} read at{' '}
+          {formatTime(img.deliveredAt)}
         </>
       }
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-LOW']}
       actions={
-        <Button icon="Network" onClick={() => navigate('/stroke/wall')}>
-          Command wall
-        </Button>
+        <>
+          <Button icon="BookOpen" onClick={() => navigate(`/patient/${p.uhid}/record`)}>
+            Patient record
+          </Button>
+          <Button icon="Network" onClick={() => navigate('/stroke/wall')}>
+            Command wall
+          </Button>
+        </>
       }
     >
       <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,4fr)_minmax(0,9fr)]">
@@ -131,8 +147,11 @@ export function S1821() {
                         {c.id} · {cp.age}/{cp.sex} · NIHSS {c.nihss}
                       </span>
                     </span>
-                    <Chip tone={live ? 'critical' : 'inactive'} icon={live ? 'Siren' : 'CircleSlash'}>
-                      {live ? 'Active' : 'Stood down'}
+                    <Chip
+                      tone={live ? 'critical' : 'inactive'}
+                      icon={live ? 'Siren' : c.status === 'closed' ? 'Check' : 'CircleSlash'}
+                    >
+                      {live ? 'Active' : c.status === 'closed' ? 'Closed' : 'Stood down'}
                     </Chip>
                   </button>
                 </li>
@@ -145,9 +164,18 @@ export function S1821() {
           {/* The verdict, stated once and in one line. */}
           <SectionCard
             title="AI triage verdict"
-            accent={verdict.tone === 'critical' ? 'critical' : undefined}
+            accent={verdict.tone === 'critical' ? 'critical' : verdict.tone === 'caution' ? 'warning' : undefined}
             meta={
-              <span className="tabular inline-flex min-h-6 items-center gap-1.5 rounded-pill bg-pri-critical-fill px-2.5 text-[0.8em] font-bold text-pri-on-critical">
+              <span
+                className={cx(
+                  'tabular inline-flex min-h-6 items-center gap-1.5 rounded-pill px-2.5 text-[0.8em] font-bold',
+                  verdict.tone === 'critical'
+                    ? 'bg-pri-critical-fill text-pri-on-critical'
+                    : verdict.tone === 'caution'
+                      ? 'bg-pri-warning-fill text-pri-on-warning'
+                      : 'bg-pri-safe-soft text-pri-safe-ink',
+                )}
+              >
                 {verdict.priority} · {verdict.priorityWord}
               </span>
             }
@@ -169,13 +197,13 @@ export function S1821() {
             title="Non-contrast CT"
             meta={
               <span className="tabular text-[0.86em] text-ink-3">
-                {p.name} · acquired {formatTime(IMAGING_TRIAGE.acquiredAt)}
+                {p.name} · acquired {formatTime(img.acquiredAt)}
               </span>
             }
             bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
           >
             <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-              <NcctViewer study={study} overlays={aiActive ? overlaysFor(current.id, truth) : []} />
+              <NcctViewer study={study} overlays={aiActive ? overlaysFor(study.key, current) : []} />
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -218,7 +246,7 @@ export function S1821() {
 
                     <p className="tabular mt-2 flex items-center gap-2 rounded-panel bg-glass-inset px-3 py-2 text-[0.82em] text-ink-3">
                       <Icon name="Cpu" size={13} className="shrink-0" />
-                      {IMAGING_TRIAGE.model} · study {study.sourcePatientId} · {study.seriesTotal} images
+                      {model} · study {study.sourcePatientId} · {study.seriesTotal} images
                     </p>
 
                     <AIActionBar
@@ -234,17 +262,21 @@ export function S1821() {
                         claim: `${verdict.headline}. ${verdict.detail}`,
                         confidence: 0.94,
                         band: 'HIGH',
-                        computedAt: formatTime(IMAGING_TRIAGE.deliveredAt),
+                        computedAt: formatTime(img.deliveredAt),
                         inputs: [
                           { label: `Non-contrast CT head, ${study.seriesTotal} images`, source: `${study.seriesDescription} · ${study.sliceThickness} mm` },
-                          { label: 'CT angiogram, arch to vertex', source: IMAGING_TRIAGE.study },
+                          ...(img.lvo ? [{ label: 'CT angiogram, arch to vertex', source: IMAGING_TRIAGE.study }] : []),
                           { label: 'Last known well and NIHSS', source: `Case ${current.caseNo}` },
                         ],
                         evidence: [
                           `Haemorrhage classifier ${truth.ich ? 'positive' : 'negative'} at 0.97 across all five subtypes.`,
-                          'Hyperdense left MCA on the source images, with M1 cut-off on the angiogram.',
+                          img.lvo
+                            ? 'Hyperdense left MCA on the source images, with M1 cut-off on the angiogram.'
+                            : img.lesion
+                              ? `${img.lesion.site}${img.lesion.volumeMl ? `, about ${img.lesion.volumeMl} mL` : ''}${img.lesion.shiftMm ? `, ${img.lesion.shiftMm} mm midline shift` : ''}.`
+                              : 'No focal abnormality marked on the source images.',
                         ],
-                        model: IMAGING_TRIAGE.model,
+                        model,
                         limits: IMAGING_TRIAGE.limits,
                       }}
                     />

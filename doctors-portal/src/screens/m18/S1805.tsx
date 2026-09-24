@@ -18,7 +18,8 @@ import { useNavigate } from 'react-router-dom'
 import { FieldGroup, FormGroups } from '@/archetypes'
 import { FieldChip } from '@/components/ai'
 import { Disclosure, SectionCard, Why } from '@/components/calm'
-import { Button, Chip, Field, Select, TextArea, TextInput } from '@/components/primitives'
+import { Button, Chip, Field, Select, TextInput } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { strokeCase } from '@/data/stroke'
@@ -59,6 +60,7 @@ export function S1805({ id }: { id?: string }) {
   const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
   const [fields, setFields] = useState<Record<string, string>>({})
+  const [consent, setConsent] = useState('')
 
   const accepted = EXTRACTED.filter((e) => dispositions[`intake:${e.key}`]).length
   const lowBand = EXTRACTED.filter((e) => e.band === 'LOW').length
@@ -248,9 +250,15 @@ export function S1805({ id }: { id?: string }) {
               <Field label="Present at the bedside" htmlFor="intake-nok">
                 <TextInput id="intake-nok" placeholder="Wife — name and contact" />
               </Field>
-              <Field label="Consent discussion" htmlFor="intake-consent">
-                <TextArea id="intake-consent" rows={3} placeholder="Who it was discussed with, and what was said…" />
-              </Field>
+              <VoiceField
+                id="intake-consent"
+                label="Consent discussion"
+                rows={3}
+                value={consent}
+                onChange={setConsent}
+                patientId={p.id}
+                placeholder="Who it was discussed with, and what was said…"
+              />
             </div>
             <Why label="How consent is taken at 02:00">
               <p className="text-ink-2">

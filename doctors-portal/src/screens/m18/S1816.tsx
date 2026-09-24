@@ -22,9 +22,11 @@ import { Alert, Button, Card, Chip } from '@/components/primitives'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { PERFUSION, strokeCase } from '@/data/stroke'
+import type { StrokeCase } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
 import { Screen } from '@/shell/Screen'
 
+import { NotApplicable } from './NotLvo'
 import { CaseClockStrip, useCaseClock } from './CaseClock'
 
 /** Each threshold is stated once, on the tile it judges. */
@@ -45,12 +47,17 @@ const MEASURES = [
   },
 ]
 
+/** Drawn for an occlusion under reperfusion assessment; anything else is told why it does not apply. */
 export function S1816({ id }: { id?: string }) {
+  const c = strokeCase(id ?? '0141')
+  return c.imaging.lvo ? <LvoView c={c} /> : <NotApplicable c={c} screenId="S-18-16" heading="Perfusion" what="CT perfusion" />
+}
+
+function LvoView({ c }: { c: StrokeCase }) {
   const navigate = useNavigate()
   const aiActive = useAI(selectAiActive)
   const caseNow = useCaseClock()
 
-  const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
 
   return (

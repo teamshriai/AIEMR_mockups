@@ -20,7 +20,8 @@ import { useState } from 'react'
 import { FieldGroup, FormGroups } from '@/archetypes'
 import { AIActionBar, Diamond } from '@/components/ai'
 import { Why } from '@/components/calm'
-import { Card, Checkbox, Chip, Field, Icon, Select, TextArea, TextInput, cx } from '@/components/primitives'
+import { Card, Checkbox, Chip, Field, Icon, Select, TextInput, cx } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import { Button } from '@/components/primitives'
 import { formatDate, formatTime, NOW } from '@/data/format'
 import { DRUGS, PATIENTS } from '@/data/kit'
@@ -272,20 +273,17 @@ export function S1608() {
                 ))}
               </Select>
             </Field>
-            <Field
+            <VoiceField
+              id="adr-narrative"
               label="Narrative"
               required
-              htmlFor="adr-narrative"
+              rows={4}
+              value={narrative}
+              onChange={setNarrative}
+              patientId={patientId}
+              placeholder="Developed an urticarial rash over the trunk with periorbital swelling within 90 minutes of the first dose. The infusion was stopped, chlorphenamine and hydrocortisone were given, and the rash settled over four hours…"
               hint="What happened, in what order, and what was done about it — at least twenty characters"
-            >
-              <TextArea
-                id="adr-narrative"
-                rows={4}
-                value={narrative}
-                onChange={(e) => setNarrative(e.target.value)}
-                placeholder="Developed an urticarial rash over the trunk with periorbital swelling within 90 minutes of the first dose. The infusion was stopped, chlorphenamine and hydrocortisone were given, and the rash settled over four hours…"
-              />
-            </Field>
+            />
           </FieldGroup>
 
           <FieldGroup title="Reporter" span>

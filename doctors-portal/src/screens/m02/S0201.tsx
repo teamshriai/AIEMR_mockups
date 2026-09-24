@@ -229,7 +229,7 @@ export function S0201() {
           <Why label="About this mockup sign-in">
             <p className="rounded-panel bg-glass-fill-muted px-3 py-2.5 text-[0.9em] text-ink-3">
               There is no authentication server. Any valid email address and any password of eight or more characters
-              signs you in as <strong className="font-semibold text-ink-2">Dr Ananya Iyer</strong>. Five rejected
+              signs you in as <strong className="font-semibold text-ink-2">Dr. Ananya Iyer</strong>. Five rejected
               attempts demonstrate the lock.
             </p>
           </Why>

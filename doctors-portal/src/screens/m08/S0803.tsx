@@ -26,8 +26,7 @@ import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
 import { PillTabs } from '@/components/myday'
 import { Button, Chip } from '@/components/primitives'
-import { AbstainCard } from '@/components/states'
-import { INPATIENTS, NEEDS_ATTENTION, RISK_STRIPS, encounterForPatient } from '@/data/clinical'
+import { INPATIENTS, NEEDS_ATTENTION, encounterForPatient } from '@/data/clinical'
 import type { WorklistRow } from '@/data/clinical'
 import { patient } from '@/data/kit'
 import { useClinical } from '@/store/clinical'
@@ -249,18 +248,6 @@ export function S0803() {
             </>
           }
         />
-
-        {scoped.some((r) => r.risk === 'ABSTAIN') && (
-          <AbstainCard
-            capabilityId="AI-201"
-            missing={RISK_STRIPS['SD-P-08']?.abstainReason ?? 'No recent observations for one patient on this list.'}
-            fixAction={
-              <Button size="sm" icon="Activity" onClick={() => navigate('/patient/ICH-0044221/chart')}>
-                Open the patient
-              </Button>
-            }
-          />
-        )}
       </div>
     </Screen>
   )

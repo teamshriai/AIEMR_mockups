@@ -24,6 +24,14 @@
  * clinician's own and needs no Accept / Edit / Reject — signing confirms it.
  * "Draft with AI" is the one optional scribe path, and only ITS sections carry
  * C-41 and gate Sign.
+ *
+ * What the scribe drafts is what it HEARD. "Draft with AI" aims the S-06-04
+ * overlay at this encounter; "Use this draft" there writes the sentences it
+ * routed to each section into `useScribeDrafts`, and that text — never a
+ * canned seed — is the ghost awaiting Accept, Edit or Reject. The seeds still
+ * give each section its label, capability and gate. A section marked as a
+ * scribe draft whose text is gone (a record from before this rule) is simply
+ * the clinician's field again, so nothing can block Sign with nothing to decide.
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -45,6 +53,8 @@ import type { Encounter, NoteSectionSeed, SectionKey } from '@/data/clinical'
 import { formatDateTime, formatTime, NOW } from '@/data/format'
 import { DIAGNOSES } from '@/data/kit'
 import type { Patient } from '@/data/kit'
+import { useScribeDrafts } from '@/data/scribe'
+import type { ScribeDraft } from '@/data/scribe'
 import { useAI, useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
 import { useClinical } from '@/store/clinical'
@@ -121,6 +131,10 @@ export function NoteAuthoring({
 
   const { note, setSectionText, setNoteCode, saveDraft, signNote, addendum } = useClinical()
   const record = note(enc.id)
+  /** What the ambient scribe heard and routed, for this encounter. */
+  const scribeDraft = useScribeDrafts((s) => s.drafts[enc.id])
+  const aimScribe = useScribeDrafts((s) => s.aim)
+  const draftFor = (key: SectionKey): string | undefined => scribeDraft?.sections[key]
 
   const [codeQuery, setCodeQuery] = useState('')
   const [blurred, setBlurred] = useState<Record<string, boolean>>({})
@@ -135,7 +149,10 @@ export function NoteAuthoring({
   const maySign = canSignNotes(persona)
 
   /** Only sections the SCRIBE drafted are AI touchpoints. Dictated and typed text is the clinician's. */
-  const scribed = useMemo(() => seeds.filter((s) => record.provenance[s.key] === 'scribe'), [seeds, record.provenance])
+  const scribed = useMemo(
+    () => seeds.filter((s) => record.provenance[s.key] === 'scribe' && scribeDraft?.sections[s.key] !== undefined),
+    [seeds, record.provenance, scribeDraft],
+  )
   const outstanding = useOutstanding(scribed.map((s) => `${enc.id}:${s.key}`))
 
   // ARC-15: autosave every 20s with a visible timestamp. Silent — no toast, no audit row.
@@ -229,7 +246,9 @@ export function NoteAuthoring({
       patientId={p.id}
       scribeModel={scribeModel}
       value={textFor(seed.key)}
-      isScribe={record.provenance[seed.key] === 'scribe'}
+      provenance={record.provenance[seed.key]}
+      draft={draftFor(seed.key)}
+      draftMeta={scribeDraft}
       locked={locked}
       onChange={(v, prov) => setSectionText(enc.id, seed.key, v, prov)}
       onDictated={(meta) => {
@@ -242,7 +261,7 @@ export function NoteAuthoring({
           subject: p.id,
           model: meta.model,
           gate: 'G2',
-          detail: `${seed.label} · ${meta.words} words · ${meta.live ? 'live' : 'sample'} · ${meta.band}`,
+          detail: `${seed.label} · ${meta.words} words · live recognition · ${meta.band}`,
         })
       }}
       onBlur={() => setBlurred((b) => ({ ...b, [seed.key]: true }))}
@@ -292,7 +311,15 @@ export function NoteAuthoring({
           {!locked && <InputModeSwitch />}
           {/* One emphasised action: the scribe. Everything else in the header is quiet. */}
           {!locked && onDraftAll && (
-            <Button tone="ai" icon="Sparkles" onClick={onDraftAll}>
+            <Button
+              tone="ai"
+              icon="Sparkles"
+              onClick={() => {
+                // The scribe hands its text back to THIS encounter.
+                aimScribe(enc.id, p.id)
+                onDraftAll()
+              }}
+            >
               Draft with AI
             </Button>
           )}
@@ -653,7 +680,8 @@ export function NoteAuthoring({
 /**
  * One section. The stored text is the truth; the ghost draft shows only while
  * the section is empty and undecided; the VoiceField is the surface in every
- * other state, mic and all.
+ * other state, mic and all. The ghost is the scribe's text for this section —
+ * the sentences it heard and routed here — and nothing else.
  */
 function Section({
   seed,
@@ -661,7 +689,9 @@ function Section({
   patientId,
   scribeModel,
   value,
-  isScribe,
+  provenance,
+  draft,
+  draftMeta,
   locked,
   onChange,
   onDictated,
@@ -672,7 +702,10 @@ function Section({
   patientId: string
   scribeModel: string
   value: string
-  isScribe: boolean
+  provenance: SectionProvenance | undefined
+  /** The scribe's text for this section, if it drafted one. */
+  draft: string | undefined
+  draftMeta: ScribeDraft | undefined
   locked: boolean
   onChange: (v: string, provenance?: SectionProvenance) => void
   onDictated: (meta: DictatedMeta) => void
@@ -682,28 +715,35 @@ function Section({
   const disposition = useAI((s) => s.dispositions[touchpointId])
   const accepted = disposition?.disposition === 'Accepted' || disposition?.disposition === 'Accepted with edits'
   const rejected = disposition?.disposition === 'Rejected'
+  const isScribe = provenance === 'scribe' && draft !== undefined && draftMeta !== undefined
+  /** Marked as a scribe draft, but the drafted text is gone: the clinician's field, and typing makes it theirs. */
+  const orphan = provenance === 'scribe' && !isScribe
 
   /**
    * Provenance for a scribe section: accepted text stays the AI's (the decision
    * says "with edits"); words typed into an empty or rejected section are the
-   * clinician's, which drops the section out of the AI touchpoints.
+   * clinician's, which drops the section out of the AI touchpoints. While the
+   * microphone is writing in, a scribe section keeps its provenance until Stop
+   * (`onDictated` then says 'dictated'), so the field is not swapped out from
+   * under a live recording.
    */
-  const provenanceFor = (v: string): SectionProvenance | undefined =>
-    !isScribe ? undefined : accepted || v.trim() === '' ? 'scribe' : 'typed'
+  const provenanceFor = (v: string, source?: 'dictation'): SectionProvenance | undefined => {
+    if (source === 'dictation') return isScribe ? 'scribe' : 'dictated'
+    if (isScribe) return accepted || v.trim() === '' ? 'scribe' : 'typed'
+    if (orphan) return v.trim() === '' ? undefined : 'typed'
+    return undefined
+  }
 
-  // The seed's draft doubles as the captured-sample fallback for THIS section,
-  // so a browser without speech recognition still shows this patient's words.
   const field = (
     <VoiceField
       id={touchpointId}
       label={seed.label}
       required
       value={value}
-      onChange={(v) => onChange(v, provenanceFor(v))}
+      onChange={(v, source) => onChange(v, provenanceFor(v, source))}
       onDictated={onDictated}
       onBlur={onBlur}
       patientId={patientId}
-      sample={seed.draft}
       disabled={locked}
       placeholder={rejected ? `Draft rejected. Dictate or type the ${seed.label.toLowerCase()}…` : undefined}
     />
@@ -717,31 +757,37 @@ function Section({
         touchpointId={touchpointId}
         capabilityId={seed.ai}
         label={seed.label}
-        draft={seed.draft}
-        band={seed.band}
-        score={seed.confidence}
+        draft={draft}
+        band={draftMeta.band}
+        // A recogniser that reported no score shows the band alone, never an invented percentage.
+        score={draftMeta.scored ? draftMeta.confidence : (undefined as unknown as number)}
         gate={seed.gate}
         locked={locked}
         value={value}
         field={field}
-        onAccept={() => onChange(seed.draft, 'scribe')}
-        onEdit={() => onChange(seed.draft, 'scribe')}
+        onAccept={() => onChange(draft, 'scribe')}
+        onEdit={() => onChange(draft, 'scribe')}
         onReject={() => onChange('', 'scribe')}
         onUndo={() => onChange('', 'scribe')}
         explain={{
           touchpointId,
           capabilityId: seed.ai,
-          claim: `The ${seed.label.toLowerCase()} section was drafted from the encounter. You own the text once you accept it.`,
-          confidence: seed.confidence,
-          band: seed.band,
-          computedAt: formatTime(NOW),
-          inputs: seed.inputs,
-          evidence: [seed.transcriptSpan],
-          model: seed.ai === 'AI-103' ? 'note-draft v4.0.8' : scribeModel,
+          claim: `The ${seed.label.toLowerCase()} section was drafted from what the scribe heard. You own the text once you accept it.`,
+          confidence: draftMeta.confidence,
+          band: draftMeta.band,
+          computedAt: formatTime(draftMeta.at),
+          inputs: [
+            { label: 'Live transcript, this session', source: draftMeta.model },
+            { label: 'Sentences routed to this section', source: `${draft.split(/(?<=[.!?])\s+/).length} of the transcript` },
+          ],
+          // The draft IS the transcript span: sentences are routed, never reworded.
+          evidence: [draft],
+          model: scribeModel,
           limits: [
-            'Drafts from the dictated transcript and the chart. It does not examine the patient.',
-            'The raw transcript is retained verbatim and every sentence links back to its span.',
-            'Dictating or typing is always available; nothing here requires the model.',
+            'Sentences are placed in a section by the words used; nothing is reworded, added or inferred.',
+            'It cannot tell who was speaking, and it does not examine the patient.',
+            'The raw transcript is kept with the draft. Dictating or typing is always available.',
+            ...(draftMeta.scored ? [] : ['The recogniser reported no confidence score for this take; the band is a neutral default.']),
           ],
         }}
       />

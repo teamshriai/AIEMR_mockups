@@ -105,7 +105,7 @@ export function Modal({
         tabIndex={-1}
         onClick={dismissible ? onClose : undefined}
         className={cx(
-          'absolute inset-0 bg-[rgb(10_14_26/0.45)] backdrop-blur-[3px]',
+          'absolute inset-0 bg-[rgb(10_14_26/0.55)] backdrop-blur-[4px]',
           !dismissible && 'cursor-not-allowed',
         )}
       />
@@ -115,9 +115,8 @@ export function Modal({
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
         className={cx(
-          'glass-strong relative max-h-[92dvh] w-full overflow-hidden',
+          'overlay-surface relative max-h-[92dvh] w-full overflow-hidden',
           'flex flex-col rounded-t-card sm:rounded-card',
-          'shadow-glass-lg',
           width,
         )}
       >
@@ -181,7 +180,7 @@ export function Drawer({
         aria-hidden
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 bg-[rgb(10_14_26/0.35)] backdrop-blur-[2px]"
+        className="absolute inset-0 bg-[rgb(10_14_26/0.55)] backdrop-blur-[4px]"
       />
       <div
         ref={ref}
@@ -191,7 +190,7 @@ export function Drawer({
         aria-label={!labelledBy && typeof title === 'string' ? title : undefined}
         style={{ ['--drawer-w' as string]: `${width}px` }}
         className={cx(
-          'glass-strong relative flex w-full flex-col shadow-glass-lg',
+          'overlay-surface relative flex w-full flex-col',
           // phone: full-screen sheet
           'h-[100dvh] rounded-none',
           // small tablet: 70%-height bottom sheet
@@ -310,7 +309,7 @@ export function ToastStack({
         return (
           <div
             key={t.id}
-            className="glass-strong pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-panel px-4 py-3 shadow-glass-lg"
+            className="overlay-surface pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-panel px-4 py-3"
           >
             <Icon name={tone.icon} size={17} className={cx('mt-0.5 shrink-0', tone.cls)} />
             <div className="min-w-0 flex-1">

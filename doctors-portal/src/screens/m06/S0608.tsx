@@ -17,7 +17,7 @@ import { FieldGroup, FormGroups } from '@/archetypes'
 import { AIActionBar, Diamond } from '@/components/ai'
 import { SectionCard, Why } from '@/components/calm'
 import { PrintPreview } from '@/components/print'
-import { Alert, Button, Checkbox, Chip, Field, Select, TextArea } from '@/components/primitives'
+import { Alert, Button, Checkbox, Chip, Select } from '@/components/primitives'
 import { InputModeSwitch, VoiceField } from '@/components/voicefield'
 import { encounter } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
@@ -28,15 +28,13 @@ import { encounterLabel } from '../shared/NoteAuthoring'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
-const CLINICIAN_WORDING = `Continue levothyroxine 75 mcg OD on an empty stomach. Maintain 4h gap from Ca/Fe supplements. Repeat TFT in 6/12. Review with results.`
-
 const PLAIN_ENGLISH = `Keep taking your thyroid tablet — levothyroxine, 75 micrograms — once every day.
 
 Take it first thing in the morning, at least 30 minutes before you eat or drink anything except water.
 
 If you take calcium or iron tablets, leave at least four hours between those and your thyroid tablet. They stop it being absorbed properly.
 
-In six months, have a blood test for your thyroid. Book an appointment with Dr Iyer for after the test, and bring the results.
+In six months, have a blood test for your thyroid. Book an appointment with Dr. Iyer for after the test, and bring the results.
 
 Come back sooner if the tiredness returns, you feel cold all the time, or your weight changes without you trying.`
 
@@ -168,7 +166,6 @@ export function S0608({ id }: { id?: string }) {
               value={clinicianText}
               onChange={setClinicianText}
               patientId={p.id}
-              sample={CLINICIAN_WORDING}
             />
             <Why label="Abbreviations">
               <p className="text-ink-2">
@@ -181,15 +178,16 @@ export function S0608({ id }: { id?: string }) {
             {aiActive && !drafted && rejected ? (
               /* The rewrite was rejected: the patient version is yours to write, and the AI can try again. */
               <div className="space-y-2">
-                <Field label="Patient instructions" htmlFor="plain-text" hint="Rewrite rejected — write the patient version yourself, or ask the AI to draft again.">
-                  <TextArea
-                    id="plain-text"
-                    rows={8}
-                    value={plainText}
-                    onChange={(e) => setPlainText(e.target.value)}
-                    placeholder="Write the patient version in plain language…"
-                  />
-                </Field>
+                <VoiceField
+                  id="plain-text"
+                  label="Patient instructions"
+                  rows={8}
+                  value={plainText}
+                  onChange={setPlainText}
+                  patientId={p.id}
+                  placeholder="Write the patient version in plain language…"
+                  hint="Rewrite rejected — write the patient version yourself, or ask the AI to draft again."
+                />
                 <Button
                   tone="tertiary"
                   size="sm"
@@ -279,15 +277,15 @@ export function S0608({ id }: { id?: string }) {
                 />
               </>
             ) : (
-              <Field label="Patient instructions" htmlFor="plain-text">
-                <TextArea
-                  id="plain-text"
-                  rows={8}
-                  value={plainText}
-                  onChange={(e) => setPlainText(e.target.value)}
-                  placeholder="Write the patient version in plain language…"
-                />
-              </Field>
+              <VoiceField
+                id="plain-text"
+                label="Patient instructions"
+                rows={8}
+                value={plainText}
+                onChange={setPlainText}
+                patientId={p.id}
+                placeholder="Write the patient version in plain language…"
+              />
             )}
           </FieldGroup>
 

@@ -21,8 +21,9 @@ import { useNavigate } from 'react-router-dom'
 
 import { SuggestionCard } from '@/components/ai'
 import { Disclosure, Why } from '@/components/calm'
-import { Button } from '@/components/primitives'
-import { NOTE_DRAFT_SD_P_01, NOTE_DRAFT_SD_P_03, encounter } from '@/data/clinical'
+import { Alert, Button } from '@/components/primitives'
+import { PatientRecordLinks } from '@/components/recordlinks'
+import { encounter, noteSeedsFor } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
 import { useClinical } from '@/store/clinical'
@@ -39,7 +40,7 @@ export function S0603({ id }: { id?: string }) {
 
   const enc = encounter(id ?? 'E-118402')
   const p = patient(enc.patientId)
-  const seeds = enc.patientId === 'SD-P-03' ? NOTE_DRAFT_SD_P_03 : NOTE_DRAFT_SD_P_01
+  const seeds = noteSeedsFor(p.id)
   const differentials = differentialsFor(p.id)
 
   return (
@@ -62,9 +63,20 @@ export function S0603({ id }: { id?: string }) {
             </Button>
           </>
         }
+        banner={
+          <>
+            {/* Last time's results, reports and scans sit one tap from the consultation. */}
+            <PatientRecordLinks patient={p} />
+            {p.allergies.length > 0 && (
+              <Alert tone="caution" title={`Documented allergy: ${p.allergies.join(', ')}`}>
+                This constrains prescribing. The Prescribe action checks every drug against it and stops a match.
+              </Alert>
+            )}
+          </>
+        }
         rail={<DifferentialRail encounterId={enc.id} patientId={p.id} />}
         railTitle="Differential"
-        railBadge={differentials.length}
+        railBadge={differentials.length || undefined}
       />
 
       {/* S-06-04, as the overlay it is specified to be. */}
@@ -74,9 +86,9 @@ export function S0603({ id }: { id?: string }) {
         patientName={p.name}
         sections={seeds}
         onClose={() => setScribeOpen(false)}
-        onFinish={(keys) => {
+        onFinish={(keys, drafts) => {
           setScribeOpen(false)
-          const drafted = applyScribeDraft(enc.id, keys)
+          const drafted = applyScribeDraft(enc.id, keys, drafts)
           const kept = keys.length - drafted.length
           toast({
             tone: 'info',
@@ -102,42 +114,82 @@ interface Differential {
   band: 'HIGH' | 'MED' | 'LOW'
 }
 
+/** Per patient — a patient without charted evidence for a differential gets none, not somebody else's. */
+const DIFFERENTIALS: Record<string, Differential[]> = {
+  'SD-P-03': [
+    {
+      title: 'Parapneumonic effusion or empyema',
+      evidence: 'CRP nearly doubled at 72h with a rising oxygen requirement and no organism identified.',
+      confidence: 0.71,
+      band: 'MED',
+    },
+    {
+      title: 'Resistant or atypical organism',
+      evidence: 'Blood culture negative at 48h on broad beta-lactam cover.',
+      confidence: 0.64,
+      band: 'MED',
+    },
+    {
+      title: 'Hospital-acquired secondary infection',
+      evidence: 'Day 4 of admission with a new fever spike.',
+      confidence: 0.42,
+      band: 'LOW',
+    },
+  ],
+  'SD-P-01': [
+    {
+      title: 'Adequately replaced primary hypothyroidism',
+      evidence: 'TSH 2.4 within target on an unchanged dose, with symptom resolution.',
+      confidence: 0.92,
+      band: 'HIGH',
+    },
+    {
+      title: 'Coexisting iron deficiency',
+      evidence: 'Ferritin 14 ng/mL with a borderline haemoglobin of 11.9 g/dL, falling over a year.',
+      confidence: 0.78,
+      band: 'MED',
+    },
+  ],
+  'SD-P-11': [
+    {
+      title: 'Hyponatraemia — low intake or a medicine effect',
+      evidence: 'Sodium 134 → 131 mmol/L since discharge; levetiracetam started 3 weeks ago.',
+      confidence: 0.61,
+      band: 'MED',
+    },
+    {
+      title: 'Recurrent subdural collection',
+      evidence: 'No new headache, confusion or weakness is charted; the planned CT is on 12-Oct.',
+      confidence: 0.22,
+      band: 'LOW',
+    },
+  ],
+  'SD-P-15': [
+    {
+      title: 'Migraine without aura, responding to prophylaxis',
+      evidence: 'Attacks down from six to two a month on propranolol; CT head and ESR normal.',
+      confidence: 0.88,
+      band: 'HIGH',
+    },
+    {
+      title: 'Medication-overuse headache',
+      evidence: 'Naproxen as needed — worth confirming it stays under 10 days a month.',
+      confidence: 0.24,
+      band: 'LOW',
+    },
+  ],
+  'SD-P-16': [
+    {
+      title: 'Minor head injury, recovered',
+      evidence: 'GCS 15 throughout, CT head normal, headaches resolved within a week.',
+      confidence: 0.9,
+      band: 'HIGH',
+    },
+  ],
+}
+
 function differentialsFor(patientId: string): Differential[] {
-  return patientId === 'SD-P-03'
-    ? [
-        {
-          title: 'Parapneumonic effusion or empyema',
-          evidence: 'CRP nearly doubled at 72h with a rising oxygen requirement and no organism identified.',
-          confidence: 0.71,
-          band: 'MED',
-        },
-        {
-          title: 'Resistant or atypical organism',
-          evidence: 'Blood culture negative at 48h on broad beta-lactam cover.',
-          confidence: 0.64,
-          band: 'MED',
-        },
-        {
-          title: 'Hospital-acquired secondary infection',
-          evidence: 'Day 4 of admission with a new fever spike.',
-          confidence: 0.42,
-          band: 'LOW',
-        },
-      ]
-    : [
-        {
-          title: 'Adequately replaced primary hypothyroidism',
-          evidence: 'TSH 2.4 within target on an unchanged dose, with symptom resolution.',
-          confidence: 0.92,
-          band: 'HIGH',
-        },
-        {
-          title: 'Coexisting iron deficiency',
-          evidence: 'Fatigue improved but not resolved; no recent haemoglobin on file.',
-          confidence: 0.48,
-          band: 'LOW',
-        },
-      ]
+  return DIFFERENTIALS[patientId] ?? []
 }
 
 /** Z6 — AI-203's differential, which suggests and never concludes. */
@@ -185,6 +237,11 @@ export function DifferentialRail({ encounterId, patientId }: { encounterId: stri
 
   return (
     <div className="space-y-4">
+      {differentials.length === 0 && (
+        <p className="text-[0.92em] text-ink-3">
+          No differential yet — AI-203 needs charted findings for this visit before it suggests anything.
+        </p>
+      )}
       {confident.map(card)}
 
       {low.length > 0 && (

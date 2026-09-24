@@ -281,7 +281,6 @@ export function S1302({ id }: { id?: string }) {
                 onChange={(v) => setSectionText(noteId, s.key, v, provenanceFor(v))}
                 onDictated={(meta) => setSectionText(noteId, s.key, meta.text, 'dictated')}
                 patientId={p.id}
-                sample={s.draft}
                 disabled={locked}
                 placeholder={d?.disposition === 'Rejected' ? `Draft rejected. Dictate or type the ${s.label.toLowerCase()}…` : undefined}
               />

@@ -13,7 +13,7 @@
 import { useEffect, useMemo } from 'react'
 
 import { Chip, Icon, cx } from '@/components/primitives'
-import { CASE_INTERVALS, ACTIVE_CASE, STROKE_NOW } from '@/data/stroke'
+import { CASE_INTERVALS, ACTIVE_CASE, STROKE_NOW, maybeStrokeCase } from '@/data/stroke'
 import type { ClockInterval, IntervalState } from '@/data/stroke'
 import { formatTime } from '@/data/format'
 import { minutesBetween, useStroke } from '@/store/stroke'
@@ -89,8 +89,12 @@ export function CaseClockStrip({ caseId = ACTIVE_CASE.id }: { caseId?: string })
   const intervals = useLiveIntervals()
   const caseNow = useCaseNow()
 
-  const lkw = minutesBetween(ACTIVE_CASE.lkw, caseNow)
-  const headline = intervals.filter((i) => i.key === 'dtn' || i.key === 'dido' || i.key === 'd2ct')
+  // Each case reads its own last-known-well. The interval stamps belong to the
+  // index case's clock, so another case shows its LKW and nothing borrowed.
+  const c = maybeStrokeCase(caseId) ?? ACTIVE_CASE
+  const lkw = minutesBetween(c.lkw, caseNow)
+  const headline =
+    c.id === ACTIVE_CASE.id ? intervals.filter((i) => i.key === 'dtn' || i.key === 'dido' || i.key === 'd2ct') : []
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -100,7 +104,7 @@ export function CaseClockStrip({ caseId = ACTIVE_CASE.id }: { caseId?: string })
 
       <span className="tabular flex items-center gap-1.5 text-[0.9em] font-semibold">
         <Icon name="Clock" size={14} className="text-ink-3" />
-        LKW {formatTime(ACTIVE_CASE.lkw)}
+        LKW {formatTime(c.lkw)}
         <span className="font-normal text-ink-3">· {Math.floor(lkw / 60)}h {lkw % 60}m ago</span>
       </span>
 

@@ -20,6 +20,13 @@ import { S0606 } from './m06/S0606'
 import { S0608 } from './m06/S0608'
 import { S0609 } from './m06/S0609'
 import { S0610 } from './m06/S0610'
+import { S0611 } from './m06/record/S0611'
+import { S0612 } from './m06/record/S0612'
+import { S0613 } from './m06/record/S0613'
+import { S0614 } from './m06/record/S0614'
+import { S0615 } from './m06/record/S0615'
+import { S0616 } from './m06/record/S0616'
+import { S0617 } from './m06/record/S0617'
 import { S0901 } from './m09/S0901'
 import { S0902 } from './m09/S0902'
 import { S0903 } from './m09/S0903'
@@ -58,6 +65,7 @@ import { S1819 } from './m18/S1819'
 import { S1820 } from './m18/S1820'
 import { S1821 } from './m18/S1821'
 import { S2802, S2809 } from './m28/AssistantScreen'
+import { S1501 } from './m15/S1501'
 import { S1504 } from './m15/S1504'
 import { S2702, S2703, S2704 } from './m27/Telehealth'
 import { S1608 } from './m16/S1608'
@@ -82,6 +90,13 @@ export const SCREEN_COMPONENTS: Record<string, ScreenComponent> = {
   'S-06-08': S0608,
   'S-06-09': S0609,
   'S-06-10': S0610,
+  'S-06-11': S0611,
+  'S-06-12': S0612,
+  'S-06-13': S0613,
+  'S-06-14': S0614,
+  'S-06-15': S0615,
+  'S-06-16': S0616,
+  'S-06-17': S0617,
 
   // ── M-09 · Orders, CPOE & Results Review
   'S-09-01': S0901,
@@ -141,6 +156,7 @@ export const SCREEN_COMPONENTS: Record<string, ScreenComponent> = {
   'S-28-09': S2809,
 
   // ── Adjuncts
+  'S-15-01': S1501,
   'S-15-04': S1504,
   'S-15-06': overlayEntry('S-15-06', 'a critical finding on S-15-04'),
   'S-27-02': S2702,

@@ -47,7 +47,7 @@ export function OverlayHost({
  * natural-language mode. Keyboard /."
  *
  * AI-901's guardrail matters here and is honoured: it "returns nothing the
- * caller cannot already read", so the results are the ten §8 patients and the
+ * caller cannot already read", so the results are the §8 patients and the
  * screens this persona can reach — never a broader index.
  */
 function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -107,7 +107,7 @@ function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }
                 <button
                   type="button"
                   onClick={() => {
-                    navigate(`/patient/${p.uhid}/chart`)
+                    navigate(`/patient/${p.uhid}/record`)
                     onClose()
                   }}
                   className="flex w-full min-h-11 items-center gap-3 rounded-panel px-3 py-2 text-left hover:bg-glass-fill-hover"
@@ -163,8 +163,7 @@ function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }
 
       {results.patients.length === 0 && results.screens.length === 0 && (
         <p className={cx('mt-6 text-center text-ink-3')}>
-          Nothing matched. Only the ten patients in the sample-data kit exist here — the atlas forbids inventing an
-          eleventh.
+          Nothing matched. Only the {PATIENTS.length} patients in the sample-data kit exist here — the atlas forbids inventing another.
         </p>
       )}
     </Modal>
@@ -175,7 +174,7 @@ function SearchPalette({ open, onClose }: { open: boolean; onClose: () => void }
 export function defaultIdFor(route: string): string {
   if (route.startsWith('/patient/')) return 'ICH-0044051'
   if (route.startsWith('/stroke/case/')) return '0141'
-  if (route.startsWith('/radiology/study/')) return 'ST-4471'
+  if (route.startsWith('/radiology/study/')) return 'ST-9914'
   if (route.startsWith('/results/')) return 'R-88410'
   if (route.startsWith('/tele/session/')) return 'E-118430'
   if (route.startsWith('/ip/encounter/')) return 'E-118366'

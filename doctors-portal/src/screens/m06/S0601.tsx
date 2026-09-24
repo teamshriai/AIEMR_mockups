@@ -14,9 +14,9 @@
  * Results are deliberately absent as a widget: a critical one interrupts
  * through the attention card; the rest belong in Results, not on the home.
  *
- * Five surfaces, all on the same frosted frame (`SectionCard`), so the screen
+ * Six surfaces, all on the same frosted frame (`SectionCard`), so the screen
  * has structure without a single table: the day, the attention list, the work
- * to finish, the counts, today's discharges. The attention card carries a top
+ * to finish, the doctor's own to-do notes, the counts, today's discharges. The attention card carries a top
  * accent in the top urgency's hue and a count pill — it is the one thing on
  * the screen allowed to be loud.
  *
@@ -44,6 +44,7 @@ import {
   PatientCounts,
   PillLink,
   SectionCard,
+  TodoNotesCard,
 } from '@/components/myday'
 import { DictationPanel } from '@/components/dictation'
 import { Button, Card, Chip, Icon, IconButton } from '@/components/primitives'
@@ -61,7 +62,7 @@ import {
 } from '@/data/myday'
 import type { AttentionItem } from '@/data/myday'
 import { selectAiActive, useAI } from '@/store/ai'
-import { useClinical } from '@/store/clinical'
+import { UNATTACHED, useClinical } from '@/store/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
@@ -85,6 +86,10 @@ export function S0601() {
   const coSigned = useClinical((s) => s.coSigned)
   const triagedReferrals = useClinical((s) => s.triagedReferrals)
   const voiceNotes = useClinical((s) => s.voiceNotes)
+  const toggleVoiceNoteDone = useClinical((s) => s.toggleVoiceNoteDone)
+  const deleteVoiceNote = useClinical((s) => s.deleteVoiceNote)
+  /** The doctor's own reminders — saved from "Add today's to-do note", attached to no patient. */
+  const todos = voiceNotes[UNATTACHED] ?? []
 
   const [open, setOpen] = useState<AttentionItem | null>(null)
   const [dictating, setDictating] = useState<AttentionItem | null>(null)
@@ -179,7 +184,7 @@ export function S0601() {
         actions={
           <>
             <Button tone="primary" icon="Mic" onClick={() => setFreeNote(true)}>
-              Add note
+              Add today&rsquo;s to-do note
             </Button>
             {/* A demo control, DEV-only and desktop-only — the header carries no extra icons. */}
             {import.meta.env.DEV && (
@@ -327,44 +332,61 @@ export function S0601() {
             </SectionCard>
           </div>
 
-          {/* Column three: who is mine, and who goes home. Side by side at lg, stacked from xl. */}
-          <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 lg:flex-row xl:col-span-1 xl:flex-col">
-            {/* MY PATIENTS — counts only, with one line each on what is pending. The lists live on their own screens. */}
-            <SectionCard
-              title="My patients"
-              lift
-              fill={isStroke}
-              className={isStroke ? 'flex-1' : 'lg:flex-1 xl:flex-none'}
-              meta={<CountPill>{counts.reduce((n, c) => n + c.value, 0)}</CountPill>}
-            >
-              {forced === 'PARTIAL' ? (
-                <PartialRegion what="Bed state" since="08:12" onRetry={() => forceState(null)} />
-              ) : (
-                <PatientCounts counts={counts} columns={2} />
-              )}
-            </SectionCard>
+          {/* Column three: my own to-dos, then who is mine and who goes home — those two side by side at lg, stacked from xl. */}
+          <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 xl:col-span-1">
+            {/* TODAY'S TO-DO NOTES — what the doctor told themselves to do. Saved from the header's dictation. */}
+            <TodoNotesCard
+              notes={todos}
+              onAdd={() => setFreeNote(true)}
+              onToggle={(id) => toggleVoiceNoteDone(UNATTACHED, id)}
+              onDelete={(n) => {
+                deleteVoiceNote(UNATTACHED, n.id)
+                toast({
+                  tone: 'info',
+                  title: 'To-do note deleted',
+                  detail: `“${n.body.length > 60 ? `${n.body.slice(0, 60).trimEnd()}…` : n.body}”`,
+                })
+              }}
+            />
 
-            {/* DISCHARGES TODAY — who is going home, and what is in the way. The consultant's afternoon. */}
-            {!isStroke && (
+            <div className="flex min-w-0 flex-1 flex-col gap-5 lg:flex-row xl:flex-col">
+              {/* MY PATIENTS — counts only, with one line each on what is pending. The lists live on their own screens. */}
               <SectionCard
-                title="Discharges today"
+                title="My patients"
                 lift
-                fill
-                className="flex-1"
-                meta={<CountPill tone={discharges.length > 0 ? 'pending' : 'neutral'}>{discharges.length} today</CountPill>}
-                action={<PillLink to="/discharge/board">See all</PillLink>}
+                fill={isStroke}
+                className={isStroke ? 'flex-1' : 'lg:flex-1 xl:flex-none'}
+                meta={<CountPill>{counts.reduce((n, c) => n + c.value, 0)}</CountPill>}
               >
-                {discharges.length === 0 ? (
-                  <p className="px-2 py-4 text-[0.95em] text-ink-2">No one is predicted to go home today.</p>
+                {forced === 'PARTIAL' ? (
+                  <PartialRegion what="Bed state" since="08:12" onRetry={() => forceState(null)} />
                 ) : (
-                  <ul className="divide-y divide-glass-hairline">
-                    {discharges.map((r) => (
-                      <DischargeRow key={r.patientId} row={r} />
-                    ))}
-                  </ul>
+                  <PatientCounts counts={counts} columns={2} />
                 )}
               </SectionCard>
-            )}
+
+              {/* DISCHARGES TODAY — who is going home, and what is in the way. The consultant's afternoon. */}
+              {!isStroke && (
+                <SectionCard
+                  title="Discharges today"
+                  lift
+                  fill
+                  className="flex-1"
+                  meta={<CountPill tone={discharges.length > 0 ? 'pending' : 'neutral'}>{discharges.length} today</CountPill>}
+                  action={<PillLink to="/discharge/board">See all</PillLink>}
+                >
+                  {discharges.length === 0 ? (
+                    <p className="px-2 py-4 text-[0.95em] text-ink-2">No one is predicted to go home today.</p>
+                  ) : (
+                    <ul className="divide-y divide-glass-hairline">
+                      {discharges.map((r) => (
+                        <DischargeRow key={r.patientId} row={r} />
+                      ))}
+                    </ul>
+                  )}
+                </SectionCard>
+              )}
+            </div>
           </div>
 
           {pendingSeen.length > 0 && (

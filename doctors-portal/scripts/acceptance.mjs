@@ -117,6 +117,92 @@ const clickByText = function (selector, text) {
   return true
 }
 
+/**
+ * Headless Chrome has no microphone and no reachable speech service, so the
+ * dictation tests install two stand-ins BEFORE any page script runs (via
+ * `Page.addScriptToEvaluateOnNewDocument`):
+ *
+ *   • a `webkitSpeechRecognition` (and unprefixed `SpeechRecognition`) that,
+ *     once started, "hears" four fixed sentences with the real event shape —
+ *     an interim result, then the final one — and fires `onend` only after
+ *     stop() or abort(), exactly as a continuous recogniser does;
+ *   • a `getUserMedia` that resolves a silent stream (an oscillator at zero
+ *     gain into a MediaStreamDestination), so the permission path and the
+ *     waveform run for real.
+ *
+ * The app's own code is untouched: it takes the same path it takes in Chrome.
+ */
+const SPEECH_TRANSCRIPT = [
+  'Patient reports breathlessness since last night.',
+  'BP 130 over 80, saturation 95 percent.',
+  'Impression community acquired pneumonia.',
+  'Plan start oral antibiotics and review tomorrow.',
+]
+const SPEECH_STUB = `(() => {
+  const PHRASES = ${JSON.stringify(SPEECH_TRANSCRIPT)}
+  class FakeSpeechRecognition {
+    constructor() {
+      this.lang = ''
+      this.continuous = false
+      this.interimResults = false
+      this.maxAlternatives = 1
+      this.onresult = null
+      this.onerror = null
+      this.onend = null
+      this._timers = []
+      this._running = false
+      this._results = []
+    }
+    start() {
+      if (this._running) throw new DOMException('recognition has already started', 'InvalidStateError')
+      this._running = true
+      this._results = []
+      window.__speech = { starts: (window.__speech ? window.__speech.starts : 0) + 1, lang: this.lang, continuous: this.continuous, interim: this.interimResults }
+      let t = 250
+      PHRASES.forEach((phrase, i) => {
+        const words = phrase.split(' ')
+        const half = words.slice(0, Math.ceil(words.length / 2)).join(' ')
+        this._timers.push(setTimeout(() => this._emit(i, half, false), t))
+        t += 150
+        this._timers.push(setTimeout(() => this._emit(i, phrase, true), t))
+        t += 200
+      })
+    }
+    _emit(index, transcript, isFinal) {
+      if (!this._running) return
+      const result = [{ transcript: index > 0 ? ' ' + transcript : transcript, confidence: isFinal ? 0.92 : 0 }]
+      result.isFinal = isFinal
+      this._results[index] = result
+      if (this.onresult) this.onresult({ resultIndex: index, results: this._results.slice(0, index + 1) })
+    }
+    stop() { this._end() }
+    abort() { this._end() }
+    _end() {
+      if (!this._running) return
+      this._running = false
+      this._timers.forEach(clearTimeout)
+      this._timers = []
+      setTimeout(() => { if (this.onend) this.onend() }, 0)
+    }
+  }
+  window.SpeechRecognition = FakeSpeechRecognition
+  window.webkitSpeechRecognition = FakeSpeechRecognition
+  if (navigator.mediaDevices) {
+    navigator.mediaDevices.getUserMedia = async () => {
+      window.__micRequests = (window.__micRequests || 0) + 1
+      const ctx = new AudioContext()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      gain.gain.value = 0
+      const dest = ctx.createMediaStreamDestination()
+      osc.connect(gain)
+      gain.connect(dest)
+      osc.start()
+      return dest.stream
+    }
+  }
+})()`
+
 const results = []
 function check(name, pass, detail = '') {
   results.push({ name, pass, detail })
@@ -320,27 +406,41 @@ async function main() {
   )
 
   // ── 4 · Voice transcribe and save ────────────────────────────────────────
-  await page.evaluate(() => {
-    // Force the fallback path: this browser has no microphone, so the live path
-    // would fail anyway — removing the constructor makes the test deterministic.
-    delete window.SpeechRecognition
-    delete window.webkitSpeechRecognition
-  })
-  await page.evaluate(clickByText, 'button', 'Add note')
+  // From here on every page loads with the speech stand-ins (see SPEECH_STUB).
+  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: SPEECH_STUB })
+  await page.goto('/clinician?e2e=1')
+  await page.until(() => !!document.querySelector('[data-screen-id="S-06-01"]'), 'My Day with the speech stub')
+  // "Add today’s to-do note" — the curly apostrophe is the UI's, so match the part after it.
+  await page.evaluate(clickByText, 'button', 'to-do note')
   await page.until(() => /Start dictation/.test(document.body.innerText), 'the dictation panel')
   const saveDisabledAtStart = await page.evaluate(() => {
     const save = Array.from(document.querySelectorAll('button')).find((b) => b.innerText.trim() === 'Save')
     return save?.disabled === true
   })
   await page.evaluate(clickByText, 'button', 'Start dictation')
+  // The words fill the draft box WHILE speaking — read-only until Stop.
   await page.until(
-    () => !!document.querySelector('#dictation-draft'),
-    'the editable draft',
-    20000,
+    () => /review tomorrow/.test(document.querySelector('#dictation-draft')?.value ?? ''),
+    'the live draft',
+    10000,
   )
+  const live = await page.evaluate(() => {
+    const ta = document.querySelector('#dictation-draft')
+    const text = document.body.innerText
+    return {
+      readOnly: ta.readOnly,
+      listening: /Listening · live recognition/.test(text),
+      model: /Web Speech API · Chrome · en-IN/.test(text),
+      mic: window.__micRequests ?? 0,
+      recogniser: window.__speech ?? null,
+      canned: /captured sample/i.test(text),
+    }
+  })
+  await page.evaluate(clickByText, 'button[aria-label="Stop recording"]', '')
+  await page.until(() => document.querySelector('#dictation-draft')?.readOnly === false, 'the editable draft')
   const draft = await page.evaluate(() => {
     const ta = document.querySelector('#dictation-draft')
-    return { len: ta.value.length, notice: /captured sample/i.test(document.body.innerText) }
+    return { len: ta.value.length, all: /Patient reports breathlessness/.test(ta.value) && /review tomorrow/.test(ta.value) }
   })
   // Edit it, the way a clinician would.
   await page.evaluate(() => {
@@ -359,30 +459,107 @@ async function main() {
       notes: JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes,
     }
   })
-  await page.evaluate(clickByText, 'button', 'Save')
+  await page.evaluate(clickByText, '[role="dialog"] button', 'Save')
   await sleep(600)
   const afterSave = await page.evaluate(() => {
     const rows = JSON.parse(localStorage.getItem('indostates.audit')).state.rows
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes
     const saved = rows.filter((r) => r.event === 'NOTE.DRAFT_SAVED')
+    const card = Array.from(document.querySelectorAll('section')).find((s) =>
+      /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''),
+    )
     return {
       saved: saved.length,
       model: saved.at(-1)?.model ?? '',
       gate: saved.at(-1)?.gate ?? '',
-      stored: Object.values(notes).flat().length,
+      stored: (notes.unattached ?? []).length,
+      panelClosed: !document.querySelector('#dictation-draft'),
+      onMyDay: !!card && /Reviewed and edited by the consultant/.test(card.innerText) && /review tomorrow/.test(card.innerText),
+      notToSign: !/Dictated notes? to sign/.test(document.body.innerText),
     }
   })
   check(
-    '4 · Voice transcribe — fallback declared, editable, saved only on confirm',
+    '4 · Voice transcribe — live words fill the box, editable after Stop, saved only on confirm, shown on My Day',
     draft.len > 40 &&
-      draft.notice &&
+      draft.all &&
+      live.readOnly &&
+      live.listening &&
+      live.model &&
+      live.mic >= 1 &&
+      live.recogniser?.continuous === true &&
+      live.recogniser?.interim === true &&
+      live.recogniser?.lang === 'en-IN' &&
+      !live.canned &&
       edited &&
       saveDisabledAtStart &&
       auditBeforeSave.transcript >= 1 &&
       Object.keys(auditBeforeSave.notes ?? {}).length === 0 &&
       afterSave.saved >= 1 &&
-      afterSave.stored >= 1,
-    `${draft.len} chars · nothing stored before Save · model "${afterSave.model}" gate ${afterSave.gate}`,
+      afterSave.stored === 1 &&
+      afterSave.panelClosed &&
+      afterSave.onMyDay &&
+      afterSave.notToSign,
+    `${draft.len} chars · mic asked ${live.mic}× · nothing stored before Save · model "${afterSave.model}" gate ${afterSave.gate} · on My Day ${afterSave.onMyDay}`,
+  )
+
+  // ── 4b · The to-do card: tick off, strike through, delete ────────────────
+  await page.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    card?.querySelector('input[type="checkbox"]')?.click()
+  })
+  await sleep(300)
+  const ticked = await page.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const body = card?.querySelector('li p')
+    const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []
+    return { struck: !!body && getComputedStyle(body).textDecorationLine.includes('line-through'), done: notes[0]?.done === true, pill: /All done/.test(card?.innerText ?? '') }
+  })
+
+  // ── 4c · A browser that cannot listen says so, and typing still saves ────
+  await page.evaluate(() => {
+    // Firefox has no recogniser at all.
+    window.SpeechRecognition = undefined
+    window.webkitSpeechRecognition = undefined
+  })
+  await page.evaluate(clickByText, 'button', 'to-do note')
+  await page.until(() => /Start dictation/.test(document.body.innerText), 'the dictation panel again')
+  await page.evaluate(clickByText, '[role="dialog"] button', 'Start dictation')
+  await sleep(300)
+  const unsupported = await page.evaluate(() => ({
+    notice: /can’t turn speech into text/.test(document.body.innerText) && /type instead/i.test(document.body.innerText),
+    canned: !!document.querySelector('#dictation-draft')?.value,
+  }))
+  await page.evaluate(clickByText, '[role="dialog"] button', 'Type instead')
+  await sleep(200)
+  await page.evaluate(() => {
+    const ta = document.querySelector('#dictation-draft')
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    setter.call(ta, 'Call the lab about the repeat potassium before noon.')
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await sleep(200)
+  await page.evaluate(clickByText, '[role="dialog"] button', 'Save')
+  await sleep(600)
+  const typedSaved = await page.evaluate(() => {
+    const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const rows = Array.from(card?.querySelectorAll('li') ?? []).map((li) => li.innerText)
+    return { count: notes.length, firstIsOpen: /repeat potassium/.test(rows[0] ?? ''), doneLast: /review tomorrow/.test(rows.at(-1) ?? '') }
+  })
+  // Delete the typed one.
+  await page.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    card?.querySelector('button[aria-label="Delete this to-do note"]')?.click()
+  })
+  await sleep(400)
+  const deleted = await page.evaluate(() => ({
+    count: (JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []).length,
+    toast: /To-do note deleted/.test(document.body.innerText),
+  }))
+  check(
+    '4b · To-do notes — tick strikes through and sorts last; no recogniser says so and typing saves; delete confirms',
+    ticked.struck && ticked.done && ticked.pill && unsupported.notice && !unsupported.canned && typedSaved.count === 2 && typedSaved.firstIsOpen && typedSaved.doneLast && deleted.count === 1 && deleted.toast,
+    `struck ${ticked.struck} · unsupported notice ${unsupported.notice} · typed note saved (${typedSaved.count}) above the done one ${typedSaved.firstIsOpen && typedSaved.doneLast} · deleted → ${deleted.count}`,
   )
 
   // ── 8 · Offline mark-seen sync ───────────────────────────────────────────
@@ -540,10 +717,7 @@ async function main() {
   // ── Notes open empty; dictation lands in the field; only scribe drafts gate Sign ──
   await page.goto('/ip/encounter/E-118366/note?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-08-04"]'), 'the progress note')
-  await page.evaluate(() => {
-    delete window.SpeechRecognition
-    delete window.webkitSpeechRecognition
-  })
+  // The speech stand-ins from test 4 are installed in every new document.
   const emptyAtStart = await page.evaluate(() => {
     const areas = Array.from(document.querySelectorAll('main textarea'))
     const mics = Array.from(document.querySelectorAll('main button')).filter((b) => /^Dictate$/.test(b.innerText.trim()))
@@ -552,26 +726,49 @@ async function main() {
     return { filled: areas.filter((t) => t.value.trim() !== '').length, mics: mics.length, ghosts, voiceOn }
   })
   await page.evaluate(clickByText, 'main button', 'Dictate')
+  // The words land IN the field as they are spoken.
   await page.until(
     () => {
       const ta = document.getElementById('E-118366:subjective')
-      return ta instanceof HTMLTextAreaElement && ta.value.length > 40
+      return ta instanceof HTMLTextAreaElement && /review tomorrow/.test(ta.value)
     },
     'the dictated subjective',
-    45000,
+    15000,
   )
+  const whileLive = await page.evaluate(() => {
+    const ta = document.getElementById('E-118366:subjective')
+    return { readOnly: ta.readOnly, len: ta.value.length }
+  })
+  await page.evaluate(clickByText, 'main button[aria-label="Stop recording"]', '')
+  await sleep(300)
   const afterDictation = await page.evaluate(() => {
     const ta = document.getElementById('E-118366:subjective')
     const bars = Array.from(document.querySelectorAll('main [role="group"]')).filter((g) =>
       /Disposition for/.test(g.getAttribute('aria-label') ?? ''),
     ).length
     const provenance = JSON.parse(localStorage.getItem('indostates.clinical')).state.notes['E-118366']?.provenance ?? {}
-    return { len: ta.value.length, provenance: provenance.subjective, bars, dictated: /Dictated ·/.test(document.body.innerText) }
+    return {
+      len: ta.value.length,
+      editable: !ta.readOnly,
+      provenance: provenance.subjective,
+      bars,
+      dictated: /Dictated · live/.test(document.body.innerText),
+    }
   })
   await page.evaluate(clickByText, 'button', 'Draft with AI')
-  await page.until(() => /Stop and use what is drafted|Use this draft/.test(document.body.innerText), 'the scribe overlay')
-  await page.until(() => /Use this draft/.test(document.body.innerText), 'the round captured', 30000)
-  await page.evaluate(clickByText, 'button', 'Use this draft')
+  await page.until(() => /Ambient scribe/.test(document.querySelector('[role="dialog"]')?.innerText ?? ''), 'the scribe overlay')
+  // The scribe listens for real (the same stub) — wait until it has heard the round and can draft.
+  await page.until(
+    () => {
+      const dialog = document.querySelector('[role="dialog"]')
+      const use = Array.from(dialog?.querySelectorAll('button') ?? []).find((b) => b.innerText.trim() === 'Use this draft')
+      return !!use && !use.disabled && /review tomorrow/i.test(dialog.innerText)
+    },
+    'the round heard',
+    15000,
+  )
+  const scribeHeard = await page.evaluate(() => /4 of 4 sections drafted/.test(document.querySelector('[role="dialog"]').innerText))
+  await page.evaluate(clickByText, '[role="dialog"] button', 'Use this draft')
   await sleep(500)
   const afterScribe = await page.evaluate(() => {
     const bars = Array.from(document.querySelectorAll('main [role="group"]')).filter((g) =>
@@ -579,7 +776,16 @@ async function main() {
     ).length
     const sign = Array.from(document.querySelectorAll('button')).find((b) => /^Sign$|Save for co-sign/.test(b.innerText.trim()))
     const provenance = JSON.parse(localStorage.getItem('indostates.clinical')).state.notes['E-118366']?.provenance ?? {}
-    return { bars, signDisabled: sign?.disabled === true, plan: provenance.plan, subjective: provenance.subjective, needs: /AI drafts? needs? a decision/.test(document.body.innerText) }
+    // The ghost is the scribe's own words for the plan — what was said, not a seed.
+    const ghostPlan = document.getElementById('E-118366:plan')?.innerText ?? ''
+    return {
+      bars,
+      signDisabled: sign?.disabled === true,
+      plan: provenance.plan,
+      subjective: provenance.subjective,
+      needs: /AI drafts? needs? a decision/.test(document.body.innerText),
+      ghostPlan: /Plan start oral antibiotics and review tomorrow/.test(ghostPlan),
+    }
   })
 
   // One truth: Accept copies the draft into the field; clearing it does not bring the draft back;
@@ -691,16 +897,21 @@ async function main() {
       emptyAtStart.mics === 4 &&
       emptyAtStart.ghosts === 0 &&
       emptyAtStart.voiceOn === 'Voice' &&
+      whileLive.readOnly &&
+      whileLive.len > 40 &&
       afterDictation.len > 40 &&
+      afterDictation.editable &&
       afterDictation.provenance === 'dictated' &&
       afterDictation.bars === 0 &&
       afterDictation.dictated &&
+      scribeHeard &&
       afterScribe.bars >= 1 &&
       afterScribe.signDisabled &&
       afterScribe.plan === 'scribe' &&
       afterScribe.subjective === 'dictated' &&
-      afterScribe.needs,
-    `${emptyAtStart.mics} mics · 0 pre-filled · dictated ${afterDictation.len} chars (${afterDictation.provenance}) · ${afterDictation.bars} → ${afterScribe.bars} decision bars after the scribe`,
+      afterScribe.needs &&
+      afterScribe.ghostPlan,
+    `${emptyAtStart.mics} mics · 0 pre-filled · dictated live ${whileLive.len} chars (${afterDictation.provenance}) · scribe heard 4 of 4 ${scribeHeard} · ${afterDictation.bars} → ${afterScribe.bars} decision bars, plan ghost is what was said ${afterScribe.ghostPlan}`,
   )
 
   // ── The My Day tiles are a partition ──────────────────────────────────────
@@ -776,6 +987,98 @@ async function main() {
     ncct.missing
       ? 'no /ncct/ image on the page'
       : `${ncct.first} → ${ncct.second} · ${ncct.naturalWidth}px · overlay ${ncct.overlayBefore} → ${ncct.overlayAfter}`,
+  )
+
+  // ── Imaging lists patients first; a study opens only when one is chosen ──
+  await page.goto('/radiology/worklist?e2e=1')
+  await page.until(() => !!document.querySelector('[data-screen-id="S-15-01"]'), 'Imaging worklist')
+  const worklistRows = await page.evaluate(function () {
+    return Array.from(document.querySelectorAll('main li button, main [role="row"]')).filter((b) => /ST-\d{4}/.test(b.innerText)).length
+  })
+  await page.evaluate(clickByText, 'main button, main [role="row"]', 'Kumar Subramanian')
+  let studyOpened = { ok: false }
+  try {
+    await page.until(() => !!document.querySelector('[data-screen-id="S-15-04"]'), 'the chosen study')
+    studyOpened = await page.evaluate(function () {
+      const img = document.querySelector('main img[src*="ncct/"]')
+      return {
+        ok: true,
+        patient: document.body.innerText.includes('Kumar Subramanian'),
+        src: img?.getAttribute('src') ?? '',
+        verdict: /HAEMORRHAGIC STROKE/.test(document.body.innerText),
+      }
+    })
+  } catch {
+    /* reported below */
+  }
+  check(
+    'Imaging — a worklist of patients first; choosing one opens THAT patient’s real scan and its own verdict',
+    worklistRows >= 8 && studyOpened.ok && studyOpened.patient && /ncct\/0137\//.test(studyOpened.src) && studyOpened.verdict,
+    `${worklistRows} studies listed · opened ${studyOpened.src || 'nothing'} · verdict ${studyOpened.verdict ? 'haemorrhagic' : '—'}`,
+  )
+
+  // ── A follow-up patient's name opens their record; each part is its own screen ──
+  await page.goto('/op-queue?type=follow-up&e2e=1')
+  await page.until(() => !!document.querySelector('[data-screen-id="S-05-03"]'), 'OPD queue')
+  await page.evaluate(clickByText, 'main button, main [role="row"]', 'Selvi Murugan')
+  let hub = { ok: false, tiles: 0 }
+  try {
+    await page.until(() => !!document.querySelector('[data-screen-id="S-06-11"]'), 'patient record')
+    hub = await page.evaluate(function () {
+      const tiles = Array.from(document.querySelectorAll('main button')).filter((b) => /Open\s*$/.test(b.innerText.trim())).length
+      return { ok: true, tiles }
+    })
+  } catch {
+    /* reported below */
+  }
+  await page.evaluate(clickByText, 'main button', 'Test results')
+  let partOpened = false
+  let partHasSodium = false
+  try {
+    await page.until(() => !!document.querySelector('[data-screen-id="S-06-13"]'), 'test results')
+    partOpened = true
+    partHasSodium = await page.evaluate(() => document.querySelector('main').innerText.includes('Serum sodium'))
+  } catch {
+    /* reported below */
+  }
+  check(
+    'OPD follow-up — the name opens the patient record; Test results opens as its own screen',
+    hub.ok && hub.tiles === 6 && partOpened && partHasSodium,
+    `record ${hub.ok ? 'opened' : 'did not open'} · ${hub.tiles} tiles · results screen ${partOpened ? 'opened' : 'missing'}${partHasSodium ? ' with sodium 131' : ''}`,
+  )
+
+  // ── Back is on every screen: history first, the natural parent when opened cold ──
+  const backed = await page.evaluate(clickByText, 'header button', 'Back')
+  let backWent = false
+  try {
+    await page.until(() => !!document.querySelector('[data-screen-id="S-06-11"]'), 'back to the record')
+    backWent = true
+  } catch {
+    /* reported below */
+  }
+  await page.goto('/patient/ICH-0044262/appointments?e2e=1')
+  await page.until(() => !!document.querySelector('[data-screen-id="S-06-17"]'), 'appointments')
+  const coldLabel = await page.evaluate(function () {
+    const b = Array.from(document.querySelectorAll('header button')).find((x) => /^Back/.test(x.innerText.trim()))
+    return b ? b.innerText.trim() : ''
+  })
+  check(
+    'Back — steps back through history, and opened cold names where it goes',
+    backed && backWent && coldLabel === 'Back to Patient record',
+    `history back ${backWent ? 'returned to the record' : 'did not return'} · cold: "${coldLabel}"`,
+  )
+
+  // ── The ward note carries the doors to results, imaging and the console ──
+  await page.goto('/ip/encounter/E-118366/note?e2e=1')
+  await page.until(() => !!document.querySelector('[data-screen-id="S-08-04"]'), 'progress note')
+  const doors = await page.evaluate(function () {
+    const nav = document.querySelector('main nav[aria-label$="record"]')
+    return nav ? Array.from(nav.querySelectorAll('button')).map((b) => b.innerText.trim()) : []
+  })
+  check(
+    'Ward note — Test results, Reports, Imaging and the Stroke-AI console are one tap away',
+    ['Test results', 'Reports', 'Imaging', 'Stroke-AI console'].every((d) => doors.includes(d)),
+    doors.join(' · ') || 'no record links',
   )
 
   // ── Calm check on EVERY routed screen ─────────────────────────────────────

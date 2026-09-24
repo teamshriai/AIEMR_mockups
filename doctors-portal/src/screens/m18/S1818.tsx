@@ -47,7 +47,7 @@ export function S1818({ id }: { id?: string }) {
   const p = patient(c.patientId)
 
   const [disagreeOpen, setDisagreeOpen] = useState(false)
-  const [disagreeBy, setDisagreeBy] = useState('Dr Rohit Desai')
+  const [disagreeBy, setDisagreeBy] = useState('Dr. Rohit Desai')
   const [disagreeReason, setDisagreeReason] = useState('')
   const [selected, setSelected] = useState(false)
 

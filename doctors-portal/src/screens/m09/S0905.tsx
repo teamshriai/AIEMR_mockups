@@ -23,48 +23,50 @@ import { TrendChart } from '@/components/charts'
 import type { TrendPoint } from '@/components/charts'
 import { Disclosure, Why } from '@/components/calm'
 import { Alert, Button, Card, Chip, ClinicalFlag, KeyValue, Table, Td, Th, Tr } from '@/components/primitives'
-import { RESULTS, RESULT_TRENDS, encounterForPatient, result as findResult } from '@/data/clinical'
+import { RESULT_TRENDS, encounterForPatient, maybeResult } from '@/data/clinical'
+import type { ResultRow } from '@/data/clinical'
 import { formatDateTime, formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useClinical } from '@/store/clinical'
 import { Screen } from '@/shell/Screen'
 
-/** The narrative AI-109 drafts, per result — the finding, then what follows from it. */
-const NARRATIVES: Record<string, string[]> = {
-  'R-88410': [
-    'Severe hyperkalaemia at 6.8 mmol/L, risen from 5.4 nine hours earlier. In the context of acute kidney injury and a ventilated septic patient this is an immediate cardiac risk.',
-    'Urgent ECG and treatment are indicated; a repeat sample to exclude haemolysis should not delay treatment at this level.',
-  ],
-  'R-88402': [
-    'CRP has risen from 96 to 184 mg/L over 48 hours on unchanged antibiotic cover.',
-    'Taken with the increased oxygen requirement, this is a treatment-failure pattern rather than the expected downward trajectory at 72 hours.',
-  ],
-  'R-88405': [
-    'Creatinine has risen 64 µmol/L in 24 hours, meeting stage 2 acute kidney injury by the KDIGO creatinine criterion.',
-    'Two active prescriptions require renal dose adjustment.',
-  ],
-  'R-88210': [
-    'TSH is within the target range on unchanged replacement, consistent with adequate dosing. No change is indicated; repeat in six months.',
-  ],
-}
-
-const REF_BOUNDS: Record<string, { low: number; high: number }> = {
-  'R-88410': { low: 3.5, high: 5.1 },
-  'R-88402': { low: 0, high: 5 },
-  'R-88405': { low: 62, high: 106 },
-  'R-88210': { low: 0.4, high: 4.0 },
-}
-
 export function S0905({ id }: { id?: string }) {
+  const r = maybeResult(id ?? 'R-88410')
+  if (!r) return <ResultNotFound id={id} />
+  return <ResultDetail r={r} />
+}
+
+/** An address that names no result. Says so, rather than showing somebody else's. */
+function ResultNotFound({ id }: { id?: string }) {
+  const navigate = useNavigate()
+  return (
+    <Screen
+      screenId="S-09-05"
+      subheading="No result at this address."
+      actions={
+        <Button tone="primary" icon="FlaskConical" onClick={() => navigate('/results/inbox')}>
+          Results
+        </Button>
+      }
+    >
+      <Card className="max-w-2xl p-8 text-center">
+        <p className="text-ink-2">
+          There is no result “{id ?? ''}” on the record. The results list has every result released for your patients.
+        </p>
+      </Card>
+    </Screen>
+  )
+}
+
+function ResultDetail({ r }: { r: ResultRow }) {
   const navigate = useNavigate()
   const aiActive = useAI(selectAiActive)
   const acknowledgements = useClinical((s) => s.acknowledgements)
 
-  const r = RESULTS.some((x) => x.id === id) ? findResult(id!) : findResult('R-88410')
   const p = patient(r.patientId)
   const enc = encounterForPatient(p.id)
-  const bounds = REF_BOUNDS[r.id]
+  const bounds = r.refLow !== undefined && r.refHigh !== undefined ? { low: r.refLow, high: r.refHigh } : undefined
   const series = RESULT_TRENDS[r.id] ?? []
 
   const points: TrendPoint[] = series.map((s, i) => ({
@@ -197,14 +199,14 @@ export function S0905({ id }: { id?: string }) {
         </Card>
 
         {/* AI-109's narrative, at G3 — attest, not merely confirm. */}
-        {aiActive && NARRATIVES[r.id] && (
+        {aiActive && r.narrative && (
           <Card className="border-l-[3px] border-l-ai p-5">
             <h2 className="flex items-center gap-2 font-semibold">
               <Diamond />
               Drafted interpretation
             </h2>
             <div className="mt-2.5 space-y-2 leading-relaxed text-ink-2">
-              {NARRATIVES[r.id].map((para) => (
+              {r.narrative.map((para) => (
                 <p key={para}>{para}</p>
               ))}
             </div>

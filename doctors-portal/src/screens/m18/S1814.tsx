@@ -33,14 +33,22 @@ import { BreakGlassBanner } from '@/components/states'
 import { formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import { IMAGING_TRIAGE, strokeCase } from '@/data/stroke'
+import type { StrokeCase } from '@/data/stroke'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
 
+import { NonLvoTriage } from './NotLvo'
 import { CaseClockStrip, useCaseClock } from './CaseClock'
 
+/** Case 0141's LVO frame for an occlusion; its own card for anything else. */
 export function S1814({ id }: { id?: string }) {
+  const c = strokeCase(id ?? '0141')
+  return c.imaging.lvo ? <LvoView c={c} /> : <NonLvoTriage c={c} />
+}
+
+function LvoView({ c }: { c: StrokeCase }) {
   const navigate = useNavigate()
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
@@ -50,7 +58,6 @@ export function S1814({ id }: { id?: string }) {
   const breakGlass = useSession((s) => s.breakGlassPatients)
   const caseNow = useCaseClock()
 
-  const c = strokeCase(id ?? '0141')
   const p = patient(c.patientId)
   const [overlay, setOverlay] = useState(true)
   const [calling, setCalling] = useState<'neuro-interventionist' | 'radiologist' | null>(null)
@@ -345,11 +352,11 @@ export function S1814({ id }: { id?: string }) {
         consequence={
           calling === 'radiologist'
             ? 'Rings the on-call radiologist for an immediate read. The request and the time are logged against the case.'
-            : 'Rings Dr Samir Kulkarni and pages the cath lab. The escalation and the time are logged against the case.'
+            : 'Rings Dr. Samir Kulkarni and pages the cath lab. The escalation and the time are logged against the case.'
         }
         confirmLabel="Call now"
         onConfirm={() => {
-          const who = calling === 'radiologist' ? 'the radiologist on call' : 'Dr Samir Kulkarni'
+          const who = calling === 'radiologist' ? 'the radiologist on call' : 'Dr. Samir Kulkarni'
           setCalling(null)
           toast({ tone: 'info', title: `Calling ${who}`, detail: `Logged against case ${c.caseNo}.` })
         }}

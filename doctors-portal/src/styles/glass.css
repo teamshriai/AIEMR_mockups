@@ -137,6 +137,17 @@
     -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 
+  /* Drawers, modals and toasts. They sit over the whole page, so whatever is
+     under them must not show through — the same near-opaque fill as a menu,
+     in both themes. The blur stays so the surface still reads as glass. */
+  .overlay-surface {
+    background-color: var(--color-menu);
+    border: 1px solid var(--color-menu-border);
+    box-shadow: var(--shadow-menu);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+
   .glass-card {
     border-radius: var(--radius-card);
   }

@@ -45,7 +45,7 @@ export function S0610() {
   const [scope, setScope] = useScope<Scope>(['due', 'all'], 'due')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [promoting, setPromoting] = useState<string | null>(null)
-  const [owner, setOwner] = useState('Dr Vivek Sharma')
+  const [owner, setOwner] = useState('Dr. Vivek Sharma')
   const [reviewDue, setReviewDue] = useState('2027-03-31')
   /** Sets created here, this device only — personal scope until promoted. */
   const [created, setCreated] = useState<(typeof ORDER_SETS)[number][]>([])
@@ -281,7 +281,7 @@ export function S0610() {
                 const items = newSet.items.split(/\n|,/).map((i) => i.trim()).filter(Boolean)
                 setCreated((c) => [
                   ...c,
-                  { id: `OS.NEW-${c.length + 1}`, name: newSet.name.trim(), scope: 'Personal' as const, owner: 'Dr Ananya Iyer', reviewDue: '31-Mar-2027', items, usedThisMonth: 0 },
+                  { id: `OS.NEW-${c.length + 1}`, name: newSet.name.trim(), scope: 'Personal' as const, owner: 'Dr. Ananya Iyer', reviewDue: '31-Mar-2027', items, usedThisMonth: 0 },
                 ])
                 setCreating(false)
                 setNewSet({ name: '', items: '' })

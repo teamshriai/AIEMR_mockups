@@ -3,23 +3,30 @@
  *
  * Every note surface in the portal (consultation note, ward-round note,
  * admission assessment, discharge summary, patient instructions, addendum,
- * co-sign return comment, teleconsult note) uses this for its free text, so the
- * behaviour is learned once:
+ * co-sign return comment, teleconsult note, the narrative boxes on the
+ * safety forms) uses this for its free text, so the behaviour is learned once:
  *
  *   • The field opens EMPTY. Nothing is pre-filled, ever.
  *   • In `voice` mode (the per-person default, `session.notesInput`) the field
- *     is a single mic button with "or type" one tap away. In `type` mode the
- *     textarea is primary and the mic sits beside the label.
- *   • Recording streams live words; stopping lands them in the field, editable.
+ *     is a single mic button with "or type instead" one tap away. In `type`
+ *     mode the textarea is primary and the mic sits beside the label.
+ *   • Pressing the mic raises the browser's own permission prompt, then the
+ *     words are written INTO THE FIELD as they are spoken — after whatever was
+ *     already there, which is kept. Stop ends it; the text is then plain,
+ *     editable text like any other.
  *   • Beneath a dictated field sits one quiet provenance line: ◆ dictated ·
- *     live or sample · confidence · Why? · Dictate more.
+ *     live · confidence · Why? · Dictate more.
+ *   • Where the browser cannot listen (Firefox; Brave, whose speech service is
+ *     blocked; a page not on https), the field says so in one line and stays
+ *     typeable. There is no canned text standing in for speech.
  *
- * On saving: dictated text is written into the field on Stop, exactly as typed
- * text is written on each keystroke. That differs deliberately from My Day's
- * `DictationPanel`, which saves nothing until Save — that panel COMMITS a
- * free-standing draft to the record; this field only fills a form that is
- * itself a draft until the clinician signs it. Nothing enters the legal record
- * from here before Sign.
+ * On saving: dictated words are handed to `onChange` as they arrive, exactly as
+ * typed text is on each keystroke, so a Save pressed mid-sentence saves what
+ * the field shows. `onDictated` fires once, on Stop, with the model and the
+ * confidence. That differs deliberately from My Day's `DictationPanel`, which
+ * COMMITS a free-standing draft to the record and so saves nothing until Save;
+ * this field only fills a form that is itself a draft until the clinician
+ * signs it. Nothing enters the legal record from here before Sign.
  *
  * AI-OFF (§1.5): the mic is an AI-101 affordance and is HIDDEN, not greyed.
  * The field degrades to a plain textarea and typing keeps working.
@@ -35,10 +42,13 @@ import type { ReactNode } from 'react'
 
 import type { ConfidenceBand } from '@/atlas/confidence'
 import { Confidence, Diamond, WhyLink } from '@/components/ai'
-import { BCP47, Waveform, useDictation, useVoiceArbiter } from '@/components/dictation'
+import { BCP47, DictationNotice, RequestingLine, Waveform, useDictation, useVoiceArbiter } from '@/components/dictation'
+import type { DictationRun } from '@/components/dictation'
 import { Button, Icon, IconButton, TextArea, cx } from '@/components/primitives'
 import { tidyText } from '@/data/abbreviations'
+import { formatClock } from '@/data/format'
 import { LANGUAGES } from '@/data/kit'
+import { joinSpeech } from '@/data/scribe'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff, useSession } from '@/store/session'
 import type { NotesInput } from '@/store/session'
@@ -49,6 +59,9 @@ export interface DictatedMeta {
   model: string
   band: ConfidenceBand
   confidence: number
+  /** False where the recogniser gave no score — show the band, not a percentage. */
+  scored: boolean
+  /** Always true: there is no other kind of dictation. Kept for callers that log it. */
   live: boolean
   words: number
 }
@@ -71,7 +84,6 @@ export function VoiceField({
   onDictated,
   onBlur,
   patientId,
-  sample,
   rows = 5,
   placeholder,
   disabled,
@@ -86,13 +98,16 @@ export function VoiceField({
   label: string
   required?: boolean
   value: string
-  onChange: (v: string) => void
-  /** Fires once per recording, after the words have landed in the field. */
+  /**
+   * Every change to the text. `source` is `'dictation'` while words are being
+   * written in from the microphone, so a caller that tracks provenance can
+   * tell spoken words from typed ones without waiting for Stop.
+   */
+  onChange: (v: string, source?: 'dictation') => void
+  /** Fires once per recording, on Stop, after the words have landed in the field. */
   onDictated?: (meta: DictatedMeta) => void
   onBlur?: () => void
   patientId?: string
-  /** The captured-sample fallback for THIS field, where the browser has no recogniser. */
-  sample?: string
   rows?: number
   placeholder?: string
   disabled?: boolean
@@ -114,10 +129,12 @@ export function VoiceField({
   const inputMode: NotesInput = mode ?? preference
 
   const activeId = useVoiceArbiter((s) => s.activeId)
-  const claim = useVoiceArbiter((s) => s.claim)
-  const release = useVoiceArbiter((s) => s.release)
 
-  const d = useDictation(patientId, true, { sample })
+  /** What was in the field when recording started. Non-null exactly while a take is open. */
+  const base = useRef<string | null>(null)
+  const valueRef = useRef(value)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
   /**
    * Once the clinician has typed in the box it stays a box — a field that
    * collapses back to the mic prompt the moment its last character is deleted
@@ -127,47 +144,73 @@ export function VoiceField({
   const [dictatedMeta, setDictatedMeta] = useState<DictatedMeta | null>(null)
   /** What the text was before Tidy up, so Undo is exact. */
   const [beforeTidy, setBeforeTidy] = useState<{ was: string; changes: string[] } | null>(null)
-  const tidied = useMemo(() => tidyText(value), [value])
-  const canTidy = tidy !== false && aiActive && !disabled && value.trim() !== '' && tidied.text !== value
-  const landed = useRef(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  /** When the recogniser stops, the words land in the field once. */
-  useEffect(() => {
-    if (d.phase !== 'review' || landed.current) return
-    landed.current = true
-    release(id)
-    const spoken = d.settled.trim()
+  /** The take closes exactly once: the final words land, and `onDictated` hears about it. */
+  function land(run: DictationRun) {
+    const was = base.current
+    base.current = null
+    if (was === null) return
+    const spoken = run.text.trim()
     if (spoken !== '') {
-      const text = append(value, spoken)
-      onChange(text)
+      const text = append(was, spoken)
+      onChange(text, 'dictation')
       const meta: DictatedMeta = {
         text,
-        model: d.model,
-        band: d.band,
-        confidence: d.confidence,
-        live: d.live,
+        model: run.model,
+        band: run.band,
+        confidence: run.confidence,
+        scored: run.scored,
+        live: true,
         words: spoken.split(/\s+/).length,
       }
       setDictatedMeta(meta)
       onDictated?.(meta)
+    } else if (valueRef.current !== was) {
+      // Nothing was heard: the field goes back to exactly what it held.
+      onChange(was)
     }
+    setTyping(true)
     window.setTimeout(() => textareaRef.current?.focus(), 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.phase])
+  }
 
-  useEffect(() => () => release(id), [id, release])
+  const d = useDictation(patientId, true, { arbiterId: id, onEnd: land })
+
+  useEffect(() => {
+    valueRef.current = value
+  })
+
+  /** The words go INTO the field as they are spoken, after what was already there. */
+  const recording = d.phase === 'recording'
+  const liveSpoken = recording ? joinSpeech(d.settled, d.interim) : ''
+  useEffect(() => {
+    if (!recording || base.current === null || liveSpoken === '') return
+    const next = append(base.current, liveSpoken)
+    if (next !== valueRef.current) onChange(next, 'dictation')
+    // `onChange` is the caller's and changes every render; the words are what drive this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording, liveSpoken])
+
+  const tidied = useMemo(() => tidyText(value), [value])
+  const canTidy = tidy !== false && aiActive && !disabled && !recording && value.trim() !== '' && tidied.text !== value
 
   function start() {
-    if (!claim(id)) return
-    landed.current = false
+    base.current = value
     d.start()
   }
 
-  const recording = d.phase === 'recording'
+  const requesting = d.phase === 'requesting'
+  const listening = recording || requesting
   const someoneElse = activeId !== null && activeId !== id
   const hasText = value.trim() !== ''
-  const showTextArea = disabled || !aiActive || inputMode === 'type' || typing || hasText || d.phase === 'review'
+  const showTextArea =
+    disabled ||
+    !aiActive ||
+    inputMode === 'type' ||
+    typing ||
+    hasText ||
+    recording ||
+    d.phase === 'review' ||
+    d.phase === 'unavailable'
   const label_ = (
     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
       <label htmlFor={id} className="flex items-center gap-2 text-[0.92em] font-medium text-ink-2">
@@ -180,13 +223,13 @@ export function VoiceField({
         {labelExtra}
       </label>
       {/* Type mode: the mic sits by the label, secondary. */}
-      {aiActive && !disabled && showTextArea && !recording && (
+      {aiActive && !disabled && showTextArea && !listening && (
         <IconButton
           icon="Mic"
           label={`Dictate into ${label.toLowerCase()}`}
           onClick={start}
           disabled={someoneElse}
-          title={someoneElse ? 'Another section is recording' : `Dictate into ${label.toLowerCase()}`}
+          title={someoneElse ? 'Another field is listening' : `Dictate into ${label.toLowerCase()}`}
           className="size-9 text-ai hover:bg-ai-soft"
           size={15}
         />
@@ -217,40 +260,42 @@ export function VoiceField({
     <div className={cx('min-w-0', className)} onBlur={onBlur}>
       {label_}
 
+      {/* The browser's permission prompt is up. */}
+      {requesting && (
+        <div className="mb-2 flex flex-wrap items-center gap-3 rounded-field border border-glass-hairline bg-glass-fill-muted px-3.5 py-2.5">
+          <RequestingLine className="min-w-0 flex-1" />
+          <Button size="sm" icon="X" onClick={d.stop}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
       {/* The recorder, while live. The brief's `.voice-active` glow marks the one field listening. */}
       {recording && (
-        <div className="voice-active rounded-field border bg-glass-fill-muted px-3.5 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={d.stop}
-              aria-label="Stop recording"
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-pill bg-abnormal text-white"
-            >
-              <Icon name="Square" size={18} />
-            </button>
-            <Waveform bars={d.bars} active />
-            <span className="tabular shrink-0 text-[0.92em] font-medium text-ink-2">
-              {String(Math.floor(d.elapsedSec / 60)).padStart(2, '0')}:{String(d.elapsedSec % 60).padStart(2, '0')}
-            </span>
-          </div>
-          <p aria-live="polite" className="ai-ghost mt-3 max-h-[9.5em] overflow-y-auto rounded-field px-3 py-2 leading-relaxed">
-            {d.settled}
-            {d.interim && <span className="text-ink-3"> {d.interim}</span>}
-            {d.settled === '' && d.interim === '' && <span className="text-ink-muted">Listening…</span>}
-          </p>
+        <div className="voice-active mb-2 flex items-center gap-3 rounded-field border bg-glass-fill-muted px-3 py-2">
+          <button
+            type="button"
+            onClick={d.stop}
+            aria-label="Stop recording"
+            title="Stop recording"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-pill bg-abnormal text-white"
+          >
+            <Icon name="Square" size={18} />
+          </button>
+          <Waveform bars={d.bars} active />
+          <span className="tabular shrink-0 text-[0.92em] font-medium text-ink-2">{formatClock(d.elapsedSec)}</span>
         </div>
       )}
 
       {/* Voice mode, nothing said yet: one control, and typing one tap away. */}
-      {!recording && !showTextArea && (
+      {!showTextArea && !requesting && (
         <div className="flex flex-wrap items-center gap-3 rounded-field border border-dashed border-glass-border bg-glass-fill-muted px-3.5 py-3">
           <Button
             tone="ai"
             icon="Mic"
             onClick={start}
             disabled={someoneElse}
-            title={someoneElse ? 'Another section is recording' : undefined}
+            title={someoneElse ? 'Another field is listening' : undefined}
           >
             Dictate
           </Button>
@@ -267,39 +312,37 @@ export function VoiceField({
         </div>
       )}
 
-      {/* The field itself. */}
-      {!recording && showTextArea && (
+      {/* The field itself — the words appear in it while you speak, and it is yours to edit once you stop. */}
+      {showTextArea && (
         <TextArea
           id={id}
           ref={textareaRef}
           rows={rows}
           value={value}
+          readOnly={recording}
+          aria-busy={recording}
           onFocus={() => setTyping(true)}
           onChange={(e) => {
             setTyping(true)
             onChange(e.target.value)
           }}
-          placeholder={placeholder ?? `Type the ${label.toLowerCase()}…`}
+          placeholder={recording ? 'Listening…' : (placeholder ?? `Type the ${label.toLowerCase()}…`)}
           autoFocus={autoFocus}
+          className={cx(recording && 'border-ai')}
         />
       )}
 
-      {/* Which path ran, said plainly. */}
-      {d.notice && d.phase !== 'idle' && (
-        <p className="mt-2 flex items-start gap-2 rounded-panel bg-caution-soft px-3 py-2 text-[0.88em] text-caution">
-          <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-          {d.notice}
-        </p>
-      )}
+      {/* Why the microphone could not be used, said plainly. The field above stays typeable. */}
+      {d.notice && !listening && <DictationNotice className="mt-2 py-2 text-[0.88em]">{d.notice}</DictationNotice>}
 
       {/* One quiet provenance line under a dictated field. */}
-      {!recording && dictatedMeta && hasText && (
+      {!listening && dictatedMeta && hasText && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 text-[0.86em] text-ink-3">
           <span className="flex items-center gap-1.5">
             <Diamond size={9} />
-            Dictated · {dictatedMeta.live ? 'live' : 'sample (no microphone)'}
+            Dictated · live
           </span>
-          <Confidence band={dictatedMeta.band} score={dictatedMeta.confidence} />
+          <Confidence band={dictatedMeta.band} score={dictatedMeta.scored ? dictatedMeta.confidence : undefined} />
           <WhyLink
             target={{
               touchpointId: `dictation-${id}`,
@@ -309,22 +352,17 @@ export function VoiceField({
               band: dictatedMeta.band,
               computedAt: 'just now',
               inputs: [
-                {
-                  label: dictatedMeta.live ? 'Microphone audio, this session' : 'Captured sample for this field',
-                  source: dictatedMeta.model,
-                },
+                { label: 'Microphone audio, this session', source: dictatedMeta.model },
                 { label: 'Recognition language', source: `${BCP47[language]} · ${LANGUAGES.find((l) => l.code === language)?.label}` },
               ],
               evidence: [
-                'Words are transcribed as recognised; punctuation and casing are added.',
+                'Words are transcribed as the browser’s recogniser heard them; it may add little or no punctuation.',
                 'No clinical content is inferred, checked or corrected.',
               ],
               model: dictatedMeta.model,
               limits: [
                 'A transcription confidence is not a statement about whether the content is correct.',
-                dictatedMeta.live
-                  ? 'Accuracy falls with background noise, accent and unfamiliar drug names — read it before signing.'
-                  : 'This is a captured sample, not your speech. It is shown because live recognition was unavailable.',
+                'Accuracy falls with background noise, accent and unfamiliar drug names — read it before signing.',
                 'Nothing is written to the legal record until the note is signed.',
               ],
             }}
@@ -342,7 +380,7 @@ export function VoiceField({
       )}
 
       {/* AI-104 — the same table that rejects a banned abbreviation offers to write it out. */}
-      {!recording && (canTidy || beforeTidy) && (
+      {!listening && (canTidy || beforeTidy) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 text-[0.86em]">
           {canTidy && (
             <button

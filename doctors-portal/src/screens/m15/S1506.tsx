@@ -14,7 +14,8 @@ import { useState } from 'react'
 
 import { Why } from '@/components/calm'
 import { Modal } from '@/components/overlays'
-import { Button, Checkbox, Icon, KeyValue, Select, TextArea } from '@/components/primitives'
+import { Button, Checkbox, Icon, KeyValue, Select } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
 import { formatTime, NOW } from '@/data/format'
 import { STAFF, patient } from '@/data/kit'
 import { useCurrentStaff } from '@/store/session'
@@ -24,22 +25,25 @@ export function S1506({
   open,
   finding,
   studyId,
+  patientId = 'SD-P-03',
   onClose,
 }: {
   open: boolean
   finding: string
   studyId: string
+  /** Whose study this is. Defaults to the §8 imaging patient, for callers that predate it. */
+  patientId?: string
   onClose: () => void
 }) {
   const me = useCurrentStaff()
   const toast = useUI((s) => s.toast)
 
-  const [recipient, setRecipient] = useState('Dr Ananya Iyer')
+  const [recipient, setRecipient] = useState('Dr. Ananya Iyer')
   const [channel, setChannel] = useState('Telephone, spoken to directly')
   const [detail, setDetail] = useState('')
   const [attested, setAttested] = useState(false)
 
-  const p = patient('SD-P-03')
+  const p = patient(patientId)
   const ready = attested && detail.trim().length >= 10
 
   return (
@@ -113,17 +117,16 @@ export function S1506({
           </Select>
         </div>
 
-        <div>
-          <p className="mb-1.5 text-[0.92em] font-medium text-ink-2">
-            What you said <span className="text-abnormal">*</span>
-          </p>
-          <TextArea
-            rows={3}
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-            placeholder="New small right pleural effusion with extension of the consolidation. Suggested a repeat film in 24h and consideration of drainage if it enlarges…"
-          />
-        </div>
+        <VoiceField
+          id={`escalation-detail-${studyId}`}
+          label="What you said"
+          required
+          rows={3}
+          value={detail}
+          onChange={setDetail}
+          patientId={p.id}
+          placeholder="New small right pleural effusion with extension of the consolidation. Suggested a repeat film in 24h and consideration of drainage if it enlarges…"
+        />
 
         <dl className="divide-y divide-glass-hairline">
           <KeyValue label="Escalated by">

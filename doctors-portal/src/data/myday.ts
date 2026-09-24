@@ -34,7 +34,7 @@ import {
 } from './clinical'
 import type { DischargeRow } from './clinical'
 import { NOW, formatTime, minutesAgo } from './format'
-import { patient } from './kit'
+import { maybePatient, patient } from './kit'
 import { NETWORK_TODAY, PAGING_LOG, STROKE_CASES, STROKE_TASKS } from './stroke'
 
 // ═══════════════════════════════════════════════════════════ The day plan
@@ -315,7 +315,8 @@ export function toFinishFor(
     notes: Record<string, { status: string }>
     coSigned: Record<string, unknown>
     triagedReferrals: Record<string, unknown>
-    voiceNotes: Record<string, unknown[]>
+    /** Keyed by patient id; `'unattached'` holds the doctor's own to-do notes, which are never "to sign". */
+    voiceNotes: Record<string, { status: string }[]>
   },
 ): FinishItem[] {
   if (STROKE_PERSONAS.includes(persona)) {
@@ -354,7 +355,29 @@ export function toFinishFor(
     (r) => r.pending.some((p) => /note/i.test(p)) && !noteSigned(r.patientId),
   ).length
   const cosign = COSIGN_QUEUE.filter((c) => state.coSigned[c.id] === undefined).length
-  const dictated = Object.values(state.voiceNotes).reduce((n, arr) => n + arr.length, 0)
+  /**
+   * A dictated note is the doctor's to close only while it is an unsigned
+   * draft about a patient. One row per patient, opening that patient's notes,
+   * so signing it there is what makes the row go. To-do notes are not
+   * patient documentation and live in their own card.
+   */
+  const dictatedRows: FinishItem[] = Object.entries(state.voiceNotes).flatMap(([patientId, list]) => {
+    if (patientId === 'unattached') return []
+    const drafts = list.filter((n) => n.status === 'draft').length
+    const p = maybePatient(patientId)
+    if (drafts === 0 || !p) return []
+    return [
+      {
+        key: `dictated-${patientId}`,
+        label: drafts === 1 ? 'Dictated note to sign' : 'Dictated notes to sign',
+        count: drafts,
+        detail: p.name,
+        icon: 'Mic',
+        to: `/patient/${p.uhid}/notes`,
+        urgency: 'pending' as const,
+      },
+    ]
+  })
   const summaries = INPATIENTS.filter((r) => r.pending.includes('Discharge summary')).length
   const referrals = REFERRALS.filter((r) => state.triagedReferrals[r.id] === undefined)
   const urgentReferrals = referrals.filter((r) => r.triage === 'Urgent').length
@@ -362,7 +385,7 @@ export function toFinishFor(
   const items: FinishItem[] = [
     { key: 'notes', label: 'Ward round notes due', count: roundNotes, icon: 'PenLine', to: '/ip/patients', urgency: 'pending' },
     { key: 'cosign', label: 'Notes to co-sign', count: cosign, icon: 'Signature', to: '/clinician/cosign', urgency: 'pending' },
-    { key: 'dictated', label: 'Dictated notes to sign', count: dictated, icon: 'Mic', to: '/ip/patients', urgency: 'pending' },
+    ...dictatedRows,
     { key: 'summary', label: 'Discharge summary to sign', count: summaries, icon: 'FileText', to: '/discharge/board', urgency: 'warning' },
     {
       key: 'referrals',
@@ -393,7 +416,7 @@ export interface AttentionItem {
   id: string
   patientId: string
   urgency: Urgency
-  /** Short. Two or three words — "Critical lab", "New deterioration". */
+  /** Short — "Critical lab report identified", "New deterioration". */
   reason: string
   /** The detail line, shown ONLY in the Quick-Panel, never on the home screen. */
   detail: string
@@ -433,7 +456,7 @@ export function attentionFor(persona: PersonaId, acknowledged: Record<string, un
       id: `result-${r.id}`,
       patientId: r.patientId,
       urgency: 'critical',
-      reason: 'Critical lab',
+      reason: 'Critical lab report identified',
       detail: `${r.test} ${r.value} ${r.unit} · ${r.delta ?? 'no prior'} · unacknowledged ${r.unackMinutes ?? 0} min`,
       ai: 'AI-212',
       band: r.band,
@@ -545,9 +568,8 @@ export interface MyDayCard {
   delta_summary: Delta[]
   active_timers: { name: string; expires: string }[]
   /**
-   * Left undefined for every patient. The §8 cast carries no photographs and
-   * SD-P-08 is an unidentified MLC patient; inventing patient faces for a
-   * mockup is a liability, not a feature.
+   * Left undefined for every patient. The §8 cast carries no photographs;
+   * inventing patient faces for a mockup is a liability, not a feature.
    */
   thumbnail_url?: string
   quick_actions: { markSeen: string; openChart: string; callNurse: string }
@@ -678,7 +700,7 @@ export function lastNoteFor(patientId: string): { label: string; detail: string;
   const e = timelineFor(patientId).find((x) => x.kind === 'note' || x.kind === 'ai' || x.kind === 'result')
   if (!e) return undefined
   const initials = e.by
-    .replace(/^(Dr|Sr\.?|Mr|Ms)\s+/, '')
+    .replace(/^(Dr\.?|Sr\.?|Mr|Ms)\s+/, '')
     .split(/\s+/)
     .map((p) => p[0])
     .join('')
@@ -720,7 +742,7 @@ export function cardFor(patientId: string, lastSeen: Date, urgency: Urgency): My
  * clinician authored, or the start of the shift.
  */
 export function derivedLastSeen(patientId: string): Date {
-  const mine = timelineFor(patientId).find((e) => e.by.startsWith('Dr Ananya'))
+  const mine = timelineFor(patientId).find((e) => e.by.startsWith('Dr. Ananya'))
   // No entry of their own on this record means they have not seen this patient
   // this admission, so the cut-off is the start of the shift.
   return mine?.at ?? SHIFT_START
