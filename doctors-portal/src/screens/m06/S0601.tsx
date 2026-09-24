@@ -337,7 +337,6 @@ export function S0601() {
             {/* TODAY'S TO-DO NOTES — what the doctor told themselves to do. Saved from the header's dictation. */}
             <TodoNotesCard
               notes={todos}
-              onAdd={() => setFreeNote(true)}
               onToggle={(id) => toggleVoiceNoteDone(UNATTACHED, id)}
               onDelete={(n) => {
                 deleteVoiceNote(UNATTACHED, n.id)

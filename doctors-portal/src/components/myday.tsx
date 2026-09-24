@@ -24,14 +24,14 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Diamond } from '@/components/ai'
-import { Button, Icon, IconButton, cx } from '@/components/primitives'
+import { Icon, IconButton, cx } from '@/components/primitives'
 import type { DischargeRow as DischargeRowData } from '@/data/clinical'
 import type { DayBlock, FinishItem, PatientCount, Urgency } from '@/data/myday'
 import { NOW, formatDateTime, formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import type { VoiceNote } from '@/store/clinical'
 
-import { CountPill, PillLink, SectionCard } from '@/components/calm'
+import { CountPill, SectionCard } from '@/components/calm'
 
 // ───────────────────────────────────────────────────────────── Status shape
 
@@ -496,16 +496,17 @@ export function TodoNoteRow({
  * The doctor's own reminders — dictated from "Add today’s to-do note", attached
  * to no patient, and so never "to sign". Open ones first, newest first; ticked
  * ones sink below them, struck through, until they are deleted.
+ *
+ * The card only SHOWS the notes. Adding one is the header's job — a second add
+ * control inside the card read as a duplicate of it.
  */
 export function TodoNotesCard({
   notes,
-  onAdd,
   onToggle,
   onDelete,
   className,
 }: {
   notes: VoiceNote[]
-  onAdd: () => void
   onToggle: (id: string) => void
   onDelete: (note: VoiceNote) => void
   className?: string
@@ -519,21 +520,11 @@ export function TodoNotesCard({
       lift
       className={className}
       meta={notes.length > 0 && <CountPill tone={open > 0 ? 'pending' : 'neutral'}>{open > 0 ? open : 'All done'}</CountPill>}
-      action={
-        notes.length > 0 && (
-          <PillLink onClick={onAdd} icon="Mic">
-            Add
-          </PillLink>
-        )
-      }
     >
       {sorted.length === 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-2 py-3">
-          <p className="min-w-0 flex-1 basis-48 text-[0.95em] text-ink-2">Nothing noted for today yet.</p>
-          <Button size="sm" icon="Mic" onClick={onAdd}>
-            Add a to-do note
-          </Button>
-        </div>
+        <p className="px-2 py-3 text-[0.95em] text-ink-2">
+          Nothing noted for today yet. Notes you save with &ldquo;Add today&rsquo;s to-do note&rdquo; appear here.
+        </p>
       ) : (
         <ul aria-label="Today’s to-do notes" className="divide-y divide-glass-hairline">
           {sorted.map((n) => (
