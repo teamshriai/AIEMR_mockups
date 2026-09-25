@@ -64,13 +64,13 @@ function Hub({ patient: p }: { patient: Patient }) {
   const aiActive = useAI(selectAiActive)
   return (
     <>
-      <SummaryCard patient={p} />
-      <PatientReport patient={p} />
-      {/* The viewer wider than the readings; one column when the AI is off, so the viewer is not beside an empty track. */}
+      {/* First: the scan beside the AI's readings — the viewer wider; one column when the AI is off. */}
       <div className={cx('grid gap-5 lg:items-start', aiActive && 'lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]')}>
         <ReportViewer patient={p} />
         <AiInsights patient={p} />
       </div>
+      <SummaryCard patient={p} />
+      <PatientReport patient={p} />
     </>
   )
 }

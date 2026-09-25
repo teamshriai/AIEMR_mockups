@@ -32,6 +32,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { assistantScreenFor } from '@/atlas/nav'
 import { screenForPath, maybeScreen, routeForSource } from '@/atlas/registry'
 import { AttestStrip, Confidence, Diamond } from '@/components/ai'
+import { AssistantIcon } from '@/components/assistant-icon'
 import { Drawer } from '@/components/overlays'
 import { Button, Chip, Icon, IconButton, cx } from '@/components/primitives'
 import type { AssistantAnswer } from '@/data/assistant'
@@ -102,12 +103,13 @@ export function AssistantBubble() {
           'fixed right-6 z-70 flex items-center justify-center rounded-pill',
           // 48px below 1024px, 56px above — §6.1's responsive line.
           'size-12 md:size-z7b',
-          'ai-surface shadow-bubble',
+          /* A white disc, in both themes, so the assistant's face keeps its own colours. */
+          'bg-bubble shadow-bubble ring-1 ring-glass-hairline',
           'transition-all duration-150 ease-out-clinical hover:brightness-110 active:scale-95',
           'max-sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))]!',
         )}
       >
-        <span className="block size-4 rotate-45 rounded-[2px] bg-white md:size-[18px]" aria-hidden />
+        <AssistantIcon className="size-9 md:size-11" />
         {/* An unread nudge shows a dot. It still never auto-opens. */}
         {assistantNudge && !assistantOpen && (
           <span className="absolute top-1.5 right-1.5 size-3 rounded-pill bg-caution ring-2 ring-white/70" />
