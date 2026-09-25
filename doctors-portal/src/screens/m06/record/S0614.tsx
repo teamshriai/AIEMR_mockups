@@ -26,7 +26,7 @@ import type { VoiceNote } from '@/store/clinical'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 
-import { consultPath } from './S0611'
+import { consultPath, noteActionLabel } from './S0611'
 import { RecordScreen, useSessionNotesFor, useVoiceNotesFor } from './shared'
 
 const SOAP: { key: 'subjective' | 'objective' | 'assessment' | 'plan'; label: string }[] = [
@@ -45,7 +45,7 @@ export function S0614({ id }: { id?: string }) {
         section="notes"
         actions={(p) => (
           <Button tone="primary" icon="Mic" onClick={() => setDictating(p)}>
-            Dictate a note
+            Add note
           </Button>
         )}
       >
@@ -78,7 +78,7 @@ function Notes({ patient: p }: { patient: Patient }) {
           action={
             consult && (
               <Button icon="Stethoscope" onClick={() => navigate(consult)}>
-                Start the note
+                {noteActionLabel(p)}
               </Button>
             )
           }

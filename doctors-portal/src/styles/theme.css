@@ -77,6 +77,9 @@
    * made a critical chip the least readable element on the screen.
    */
   --color-critical-on: #ffffff;
+  /* The same rule for the other two solid fills that carry a glyph or a word. */
+  --color-abnormal-on: #ffffff;
+  --color-normal-on: #ffffff;
   --color-isolation: #7c3aed;
   --color-isolation-soft: #f2ebfe;
   --color-inactive: #626c80;
@@ -93,6 +96,37 @@
   --color-ai-on: #ffffff;
   --color-ai-grad-from: #4f46e5;
   --color-ai-grad-to: #7c79e8;
+
+  /* ------------------------------------------------------------- CARD FILLS
+     Solid, one hue per kind of card, the SAME in both themes — a highlighted
+     card, not a wash (glass.css .card-toned). The card carries its own inks:
+     white on every fill but gold, which takes dark ink. A purpose has one
+     colour on every screen: a patient's summary and OPD are blue, inpatients
+     green, the day slate, sign-offs purple, the doctor's own notes gold,
+     discharges teal, the AI indigo, and an attention card its top urgency. */
+  --color-card-patient: #2d5fb3;
+  --color-card-inpatients: #276b43;
+  --color-card-schedule: #3d5a80;
+  --color-card-signoff: #6b4a9e;
+  --color-card-notes: #e0b13a;
+  --color-card-discharge: #196673;
+  --color-card-ai: #4338ca;
+  --color-card-critical: #a1332e;
+  --color-card-warning: #8f5410;
+  --color-card-pending: #7a5f12;
+  /* Ink and surfaces laid on a solid card. */
+  --color-card-ink: #ffffff;
+  --color-card-ink-2: rgb(255 255 255 / 0.9);
+  --color-card-ink-3: rgb(255 255 255 / 0.82);
+  --color-card-ink-muted: rgb(255 255 255 / 0.78);
+  /* Nested panels go a step DARKER than the fill, so white text on them gains contrast rather than losing it. */
+  --color-card-inset: rgb(0 0 0 / 0.18);
+  --color-card-hairline: rgb(255 255 255 / 0.22);
+  --color-card-hover: rgb(255 255 255 / 0.12);
+  --color-card-border: rgb(255 255 255 / 0.25);
+  --color-card-dark-ink: #17171c;
+  --color-card-dark-ink-2: rgb(23 23 28 / 0.86);
+  --color-card-dark-ink-3: rgb(23 23 28 / 0.76);
 
   /* ---------------------------------------------------------------- PRIORITY
      My Day's urgency scale. A fifth job, kept separate from brand, clinical
@@ -210,10 +244,11 @@
   --shadow-bubble: 0 10px 30px rgb(79 70 229 / 0.36), 0 2px 6px rgb(31 41 72 / 0.14);
 
   /* ------------------------------------------------------------------- TYPE
-     §5.4 — Inter for Latin UI; tabular figures are non-negotiable in
+     §5.4 — Plus Jakarta Sans for Latin UI; tabular figures are non-negotiable in
      flowsheets and any column of numbers; density IS a type token. */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Inter', ui-monospace, monospace;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* One face everywhere, codes and keys included — the product's choice, not a mono. */
+  --font-mono: 'Plus Jakarta Sans', ui-monospace, monospace;
 
   --text-compact: 13px;
   --text-comfortable: 14px;
@@ -299,6 +334,8 @@
   --color-critical-soft: rgb(255 138 138 / 0.20);
   /* Dark ink on the light night fill — 8.2:1, against white's 2.3:1. */
   --color-critical-on: #0d1220;
+  --color-abnormal-on: #0d1220;
+  --color-normal-on: #0d1220;
   --color-isolation: #b9a3fb;
   --color-isolation-soft: rgb(167 139 250 / 0.16);
   --color-inactive: #a7b0be;
@@ -344,7 +381,7 @@
 }
 
 /* Native controls — option lists, date pickers, scrollbars — follow the theme.
-   Without this the browser drew the State select's open list in its default
+   Without this the browser drew a select's open list in its default
    light style inside the night theme. */
 :root,
 [data-theme='light'] {

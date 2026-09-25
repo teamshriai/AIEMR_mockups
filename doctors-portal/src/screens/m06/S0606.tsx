@@ -106,6 +106,7 @@ export function S0606({ id }: { id?: string }) {
         {aiActive && summaryOpen && (
           <SectionCard
             title="Timeline summary"
+            tone="ai"
             meta={<Confidence band="MED" score={0.77} />}
             action={
               <WhyLink

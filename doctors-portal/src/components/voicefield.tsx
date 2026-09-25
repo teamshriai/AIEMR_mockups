@@ -1,5 +1,5 @@
 /**
- * VoiceField — a note field that is spoken into first and typed into always.
+ * VoiceField — a note field that is typed into always and spoken into on one press.
  *
  * Every note surface in the portal (consultation note, ward-round note,
  * admission assessment, discharge summary, patient instructions, addendum,
@@ -7,15 +7,14 @@
  * safety forms) uses this for its free text, so the behaviour is learned once:
  *
  *   • The field opens EMPTY. Nothing is pre-filled, ever.
- *   • In `voice` mode (the per-person default, `session.notesInput`) the field
- *     is a single mic button with "or type instead" one tap away. In `type`
- *     mode the textarea is primary and the mic sits beside the label.
- *   • Pressing the mic raises the browser's own permission prompt, then the
- *     words are written INTO THE FIELD as they are spoken — after whatever was
+ *   • The field is a chat bar: a box that is always typable, with the
+ *     microphone inside it. There is no mode and no "start" button — pressing
+ *     the mic raises the browser's own permission prompt and listens; the
+ *     words are written INTO THE FIELD as they are spoken, after whatever was
  *     already there, which is kept. Stop ends it; the text is then plain,
- *     editable text like any other.
+ *     editable text like any other. Pressing the mic again adds to it.
  *   • Beneath a dictated field sits one quiet provenance line: ◆ dictated ·
- *     live · confidence · Why? · Dictate more.
+ *     live · confidence · Why?.
  *   • Where the browser cannot listen (Firefox; Brave, whose speech service is
  *     blocked; a page not on https), the field says so in one line and stays
  *     typeable. There is no canned text standing in for speech.
@@ -44,14 +43,13 @@ import type { ConfidenceBand } from '@/atlas/confidence'
 import { Confidence, Diamond, WhyLink } from '@/components/ai'
 import { BCP47, DictationNotice, RequestingLine, Waveform, useDictation, useVoiceArbiter } from '@/components/dictation'
 import type { DictationRun } from '@/components/dictation'
-import { Button, Icon, IconButton, TextArea, cx } from '@/components/primitives'
+import { Icon, IconButton, TextArea, cx } from '@/components/primitives'
 import { tidyText } from '@/data/abbreviations'
 import { formatClock } from '@/data/format'
 import { LANGUAGES } from '@/data/kit'
 import { joinSpeech } from '@/data/scribe'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useCurrentStaff, useSession } from '@/store/session'
-import type { NotesInput } from '@/store/session'
 
 export interface DictatedMeta {
   /** The field's value after the words landed. */
@@ -87,7 +85,6 @@ export function VoiceField({
   rows = 5,
   placeholder,
   disabled,
-  mode,
   hint,
   autoFocus,
   className,
@@ -111,8 +108,6 @@ export function VoiceField({
   rows?: number
   placeholder?: string
   disabled?: boolean
-  /** Overrides the session preference. */
-  mode?: NotesInput
   hint?: ReactNode
   autoFocus?: boolean
   className?: string
@@ -124,9 +119,7 @@ export function VoiceField({
   const aiActive = useAI(selectAiActive)
   const recordDisposition = useAI((s) => s.record)
   const me = useCurrentStaff()
-  const preference = useSession((s) => s.notesInput)
   const language = useSession((s) => s.language)
-  const inputMode: NotesInput = mode ?? preference
 
   const activeId = useVoiceArbiter((s) => s.activeId)
 
@@ -135,12 +128,6 @@ export function VoiceField({
   const valueRef = useRef(value)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  /**
-   * Once the clinician has typed in the box it stays a box — a field that
-   * collapses back to the mic prompt the moment its last character is deleted
-   * would vanish under the cursor.
-   */
-  const [typing, setTyping] = useState(false)
   const [dictatedMeta, setDictatedMeta] = useState<DictatedMeta | null>(null)
   /** What the text was before Tidy up, so Undo is exact. */
   const [beforeTidy, setBeforeTidy] = useState<{ was: string; changes: string[] } | null>(null)
@@ -169,7 +156,6 @@ export function VoiceField({
       // Nothing was heard: the field goes back to exactly what it held.
       onChange(was)
     }
-    setTyping(true)
     window.setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
@@ -202,15 +188,7 @@ export function VoiceField({
   const listening = recording || requesting
   const someoneElse = activeId !== null && activeId !== id
   const hasText = value.trim() !== ''
-  const showTextArea =
-    disabled ||
-    !aiActive ||
-    inputMode === 'type' ||
-    typing ||
-    hasText ||
-    recording ||
-    d.phase === 'review' ||
-    d.phase === 'unavailable'
+  const micLabel = `Dictate into ${label.toLowerCase()}`
   const label_ = (
     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
       <label htmlFor={id} className="flex items-center gap-2 text-[0.92em] font-medium text-ink-2">
@@ -222,18 +200,6 @@ export function VoiceField({
         )}
         {labelExtra}
       </label>
-      {/* Type mode: the mic sits by the label, secondary. */}
-      {aiActive && !disabled && showTextArea && !listening && (
-        <IconButton
-          icon="Mic"
-          label={`Dictate into ${label.toLowerCase()}`}
-          onClick={start}
-          disabled={someoneElse}
-          title={someoneElse ? 'Another field is listening' : `Dictate into ${label.toLowerCase()}`}
-          className="size-9 text-ai hover:bg-ai-soft"
-          size={15}
-        />
-      )}
     </div>
   )
 
@@ -260,60 +226,12 @@ export function VoiceField({
     <div className={cx('min-w-0', className)} onBlur={onBlur}>
       {label_}
 
-      {/* The browser's permission prompt is up. */}
-      {requesting && (
-        <div className="mb-2 flex flex-wrap items-center gap-3 rounded-field border border-glass-hairline bg-glass-fill-muted px-3.5 py-2.5">
-          <RequestingLine className="min-w-0 flex-1" />
-          <Button size="sm" icon="X" onClick={d.stop}>
-            Cancel
-          </Button>
-        </div>
-      )}
-
-      {/* The recorder, while live. The brief's `.voice-active` glow marks the one field listening. */}
-      {recording && (
-        <div className="voice-active mb-2 flex items-center gap-3 rounded-field border bg-glass-fill-muted px-3 py-2">
-          <button
-            type="button"
-            onClick={d.stop}
-            aria-label="Stop recording"
-            title="Stop recording"
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-pill bg-abnormal text-white"
-          >
-            <Icon name="Square" size={18} />
-          </button>
-          <Waveform bars={d.bars} active />
-          <span className="tabular shrink-0 text-[0.92em] font-medium text-ink-2">{formatClock(d.elapsedSec)}</span>
-        </div>
-      )}
-
-      {/* Voice mode, nothing said yet: one control, and typing one tap away. */}
-      {!showTextArea && !requesting && (
-        <div className="flex flex-wrap items-center gap-3 rounded-field border border-dashed border-glass-border bg-glass-fill-muted px-3.5 py-3">
-          <Button
-            tone="ai"
-            icon="Mic"
-            onClick={start}
-            disabled={someoneElse}
-            title={someoneElse ? 'Another field is listening' : undefined}
-          >
-            Dictate
-          </Button>
-          <button
-            type="button"
-            onClick={() => {
-              setTyping(true)
-              window.setTimeout(() => textareaRef.current?.focus(), 0)
-            }}
-            className="min-h-11 rounded-pill px-3 text-[0.9em] font-medium text-ink-3 hover:bg-glass-fill-hover hover:text-ink-2"
-          >
-            or type instead
-          </button>
-        </div>
-      )}
-
-      {/* The field itself — the words appear in it while you speak, and it is yours to edit once you stop. */}
-      {showTextArea && (
+      {/*
+        The field is a chat bar: always typable, the microphone inside it. Press
+        it and it listens; the words land in the field after what is already
+        there, and the field is yours to edit again on Stop.
+      */}
+      <div className="relative">
         <TextArea
           id={id}
           ref={textareaRef}
@@ -321,15 +239,52 @@ export function VoiceField({
           value={value}
           readOnly={recording}
           aria-busy={recording}
-          onFocus={() => setTyping(true)}
-          onChange={(e) => {
-            setTyping(true)
-            onChange(e.target.value)
-          }}
-          placeholder={recording ? 'Listening…' : (placeholder ?? `Type the ${label.toLowerCase()}…`)}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={recording ? 'Listening…' : (placeholder ?? `Type the ${label.toLowerCase()}, or press the microphone…`)}
           autoFocus={autoFocus}
-          className={cx(recording && 'border-ai')}
+          className={cx('pr-16', recording && 'voice-active')}
         />
+        <div className="absolute right-2 bottom-2">
+          {listening ? (
+            <button
+              type="button"
+              onClick={d.stop}
+              aria-label="Stop recording"
+              title="Stop recording"
+              className="inline-flex size-11 items-center justify-center rounded-pill bg-abnormal text-abnormal-on"
+            >
+              <Icon name="Square" size={18} />
+            </button>
+          ) : (
+            <IconButton
+              icon="Mic"
+              label={micLabel}
+              onClick={start}
+              disabled={someoneElse}
+              title={someoneElse ? 'Another field is listening' : micLabel}
+              className="bg-ai text-ai-on hover:brightness-110"
+              size={18}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* While it listens: the permission prompt, or the waveform and the clock. */}
+      {listening && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 text-[0.86em] text-ink-3">
+          {requesting ? (
+            <RequestingLine className="min-w-0 flex-1" />
+          ) : (
+            <>
+              <Waveform bars={d.bars} active />
+              <span className="tabular font-medium text-ink-2">{formatClock(d.elapsedSec)}</span>
+              <span className="flex items-center gap-1.5">
+                <Diamond size={9} />
+                Listening · live
+              </span>
+            </>
+          )}
+        </div>
       )}
 
       {/* Why the microphone could not be used, said plainly. The field above stays typeable. */}
@@ -367,15 +322,6 @@ export function VoiceField({
               ],
             }}
           />
-          <button
-            type="button"
-            onClick={start}
-            disabled={someoneElse}
-            className="inline-flex min-h-8 items-center gap-1 rounded-pill px-2 font-medium text-ink-3 hover:bg-glass-fill-hover hover:text-ink-2 disabled:opacity-45"
-          >
-            <Icon name="Mic" size={12} />
-            Dictate more
-          </button>
         </div>
       )}
 
@@ -426,44 +372,6 @@ export function VoiceField({
       )}
 
       {hint && <p className="mt-1.5 text-[0.88em] text-ink-3">{hint}</p>}
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────── Voice · Type
-
-/** The per-person input preference, as a two-way switch in Z4. */
-export function InputModeSwitch({ className }: { className?: string }) {
-  const aiActive = useAI(selectAiActive)
-  const mode = useSession((s) => s.notesInput)
-  const setMode = useSession((s) => s.setNotesInput)
-  if (!aiActive) return null
-
-  const option = (m: NotesInput, icon: string, text: string) => (
-    <button
-      key={m}
-      type="button"
-      role="radio"
-      aria-checked={mode === m}
-      onClick={() => setMode(m)}
-      className={cx(
-        'inline-flex min-h-9 items-center gap-1.5 rounded-pill px-3 text-[0.88em] font-medium transition-colors duration-150',
-        mode === m ? 'bg-glass-fill-strong text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2',
-      )}
-    >
-      <Icon name={icon} size={14} />
-      {text}
-    </button>
-  )
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label="How to fill note fields"
-      className={cx('inline-flex items-center gap-0.5 rounded-pill border border-glass-hairline bg-glass-fill-muted p-0.5', className)}
-    >
-      {option('voice', 'Mic', 'Voice')}
-      {option('type', 'PenLine', 'Type')}
     </div>
   )
 }

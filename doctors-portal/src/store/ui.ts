@@ -1,6 +1,6 @@
 /**
- * Z8 overlay state: the assistant panel, the explainability drawer, modals and
- * toasts.
+ * Z8 overlay state: the assistant panel, the explainability drawer, the
+ * patient search palette and toasts.
  *
  * §6.1 constrains the bubble's behaviour and the panel's placement:
  *   "? opens from anywhere · Esc closes AND LEAVES THE PAGE STATE UNTOUCHED"
@@ -48,13 +48,6 @@ export interface Toast {
   detail?: string
 }
 
-export interface ModalRequest {
-  /** The screen id of the overlay being shown, from the registry. */
-  screenId: string
-  /** Free-form payload for the specific modal. */
-  payload?: Record<string, unknown>
-}
-
 interface UIState {
   assistantOpen: boolean
   /** Screen the assistant was opened from — the panel header names it. */
@@ -64,7 +57,8 @@ interface UIState {
   assistantNudge: boolean
 
   explain: ExplainTarget | null
-  modal: ModalRequest | null
+  /** GP-03 — one palette, opened from `/`, the app bar or the sidebar. */
+  searchOpen: boolean
   toasts: Toast[]
   /** Z6 right rail collapsed to a 48px tab with a badge (lg breakpoint). */
   railCollapsed: boolean
@@ -78,8 +72,8 @@ interface UIState {
 
   openExplain: (t: ExplainTarget) => void
   closeExplain: () => void
-  openModal: (m: ModalRequest) => void
-  closeModal: () => void
+  openSearch: () => void
+  closeSearch: () => void
   toast: (t: Omit<Toast, 'id'>) => void
   dismissToast: (id: string) => void
   toggleRail: () => void
@@ -95,7 +89,7 @@ export const useUI = create<UIState>()((set, get) => ({
   assistantNudge: false,
 
   explain: null,
-  modal: null,
+  searchOpen: false,
   toasts: [],
   /** Collapsed by default: the rail is context, and context is one tap away. */
   railCollapsed: true,
@@ -115,8 +109,8 @@ export const useUI = create<UIState>()((set, get) => ({
 
   openExplain: (explain) => set({ explain }),
   closeExplain: () => set({ explain: null }),
-  openModal: (modal) => set({ modal }),
-  closeModal: () => set({ modal: null }),
+  openSearch: () => set({ searchOpen: true }),
+  closeSearch: () => set({ searchOpen: false }),
 
   toast: (t) => {
     const id = nextId()

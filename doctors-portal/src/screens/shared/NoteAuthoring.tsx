@@ -45,7 +45,7 @@ import { ConfirmDialog } from '@/components/overlays'
 import { PrintPreview } from '@/components/print'
 import { Alert, Button, Card, Chip, Field, Icon, TextInput } from '@/components/primitives'
 import { LockedBanner, ValidationSummary } from '@/components/states'
-import { InputModeSwitch, VoiceField } from '@/components/voicefield'
+import { VoiceField } from '@/components/voicefield'
 import type { DictatedMeta } from '@/components/voicefield'
 import { bannedIn } from '@/data/abbreviations'
 import { CODE_SUGGESTIONS, problemsFor } from '@/data/clinical'
@@ -308,7 +308,6 @@ export function NoteAuthoring({
       }
       actions={
         <>
-          {!locked && <InputModeSwitch />}
           {/* One emphasised action: the scribe. Everything else in the header is quiet. */}
           {!locked && onDraftAll && (
             <Button
@@ -403,7 +402,6 @@ export function NoteAuthoring({
             by={record.signedBy ?? me.name}
             at={record.signedAt ? formatDateTime(record.signedAt) : formatTime(NOW)}
             reason="signed"
-            onAddendum={mayAmend ? () => setAddendumOpen(true) : undefined}
           />
         )}
 

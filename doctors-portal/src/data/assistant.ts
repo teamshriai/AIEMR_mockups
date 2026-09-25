@@ -101,11 +101,6 @@ export const SCREEN_PROMPTS: Record<string, string[]> = {
     'What does marking a patient seen change?',
     'Who covers my list when I am on leave?',
   ],
-  'S-06-02': [
-    'What does "catch me up" summarise from?',
-    'How do I see the unsummarised record?',
-    'Can I search this chart in plain language?',
-  ],
   'S-06-03': [
     'How do I add an addendum to a signed note?',
     'Why is Sign still disabled?',
@@ -743,30 +738,6 @@ const LEAVE_COVER: AssistantAnswer = {
     { n: 3, label: 'Ambient scribe — ward round, handover & intra-op', source: 'AI-102 · §4.2' },
   ],
   band: 'MED',
-}
-
-const CHART_SUMMARY: AssistantAnswer = {
-  kind: 'cited',
-  body:
-    '“Catch me up” is AI-105 at G1. It summarises only what is charted on this patient, in the order it was charted, and names its model and confidence band.\n\nIts guardrail matters more than the summary: **the unsummarised record is always one click away**. The pill in the header opens the clinical timeline — the whole record, with no model between you and it. A late entry about an early event reads as late here, so the timeline is the authoritative version.',
-  citations: [
-    { n: 1, label: 'Chart summarisation — fallback is the chronological record, unsummarised', source: 'AI-105 · §4.2' },
-    { n: 2, label: 'The unsummarised record is always one click away', source: 'S-06-02 · M-06.10' },
-    { n: 3, label: 'Clinical Timeline — the whole record, in time order', source: 'S-06-06 · M-06.10' },
-  ],
-  band: 'HIGH',
-}
-
-const ASK_THE_RECORD: AssistantAnswer = {
-  kind: 'cited',
-  body:
-    '**Ask the record** searches this chart in plain language — AI-901 at G1, with structured filters as the fallback.\n\nIt is filtered to what you may already read: it searches this patient only and returns nothing you could not open yourself. Each answer names the entries behind it and how many sources in this chart it used. Nothing outside the chart is searched, so it cannot find a cohort or another patient.',
-  citations: [
-    { n: 1, label: 'Natural-language record & cohort search — fallback is structured filters', source: 'AI-901 · §4.2' },
-    { n: 2, label: '“Ask the record” searches this chart only and returns nothing you could not already open', source: 'S-06-02 · M-06.10' },
-    { n: 3, label: 'Retrieval is filtered to what the caller may already read', source: '§6.1 guardrail 3' },
-  ],
-  band: 'HIGH',
 }
 
 const UNCERTAIN_CODE: AssistantAnswer = {
@@ -1549,8 +1520,6 @@ const ENTRIES: Entry[] = [
 
   // ── M-06 · the workspace
   { match: ['covers my list', 'when i am on leave', 'who covers'], answer: LEAVE_COVER },
-  { match: ['catch me up', 'summarise from', 'unsummarised', 'chart summary'], answer: CHART_SUMMARY },
-  { match: ['search this chart', 'plain language', 'ask the record'], answer: ASK_THE_RECORD },
   { match: ['timeline go', 'this timeline', 'one episode', 'filter to one'], answer: TIMELINE },
   { match: ['ai badge', 'badge on an event', 'ai-assisted'], answer: AI_BADGE },
   { match: ['nlem', 'substitution'], answer: NLEM_SUBSTITUTION },

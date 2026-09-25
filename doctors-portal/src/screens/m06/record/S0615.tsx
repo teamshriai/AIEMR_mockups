@@ -19,8 +19,7 @@ import type { Patient } from '@/data/kit'
 import { conditionFor } from '@/data/record'
 import { selectAiActive, useAI } from '@/store/ai'
 
-import { STATUS_TONE } from './S0611'
-import { RecordScreen } from './shared'
+import { RecordScreen, STATUS_TONE } from './shared'
 
 export function S0615({ id }: { id?: string }) {
   return (
@@ -107,6 +106,7 @@ function Condition({ patient: p }: { patient: Patient }) {
                 <Diamond size={10} /> AI read of the record
               </span>
             }
+            tone="ai"
             bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
           >
             <p className="leading-relaxed">{c.ai.text}</p>
@@ -145,7 +145,7 @@ function Condition({ patient: p }: { patient: Patient }) {
         )}
 
         {risk && aiActive && (
-          <SectionCard title="Deterioration risk" meta={<Chip tone={risk.band === 'HIGH' ? 'abnormal' : risk.band === 'MODERATE' ? 'caution' : 'normal'}>{risk.band}</Chip>} bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
+          <SectionCard title="Deterioration risk" tone="ai" meta={<Chip tone={risk.band === 'HIGH' ? 'abnormal' : risk.band === 'MODERATE' ? 'caution' : 'normal'}>{risk.band}</Chip>} bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5">
             <p className="tabular font-semibold">
               {risk.score} <span className="font-normal text-ink-3">· {risk.trend}</span>
             </p>

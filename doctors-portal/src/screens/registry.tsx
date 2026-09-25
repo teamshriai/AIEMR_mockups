@@ -14,7 +14,6 @@ import { S0201 } from './m02/S0201'
 import { S0601 } from './m06/S0601'
 import { S0603 } from './m06/S0603'
 import { S0607 } from './m06/S0607'
-import { S0602 } from './m06/S0602'
 import { S0605 } from './m06/S0605'
 import { S0606 } from './m06/S0606'
 import { S0608 } from './m06/S0608'
@@ -81,7 +80,6 @@ type ScreenComponent = ComponentType<ScreenComponentProps>
 export const SCREEN_COMPONENTS: Record<string, ScreenComponent> = {
   // ── M-06 · Outpatient Consultation & Clinical Documentation
   'S-06-01': S0601,
-  'S-06-02': S0602,
   'S-06-03': S0603,
   'S-06-04': overlayEntry('S-06-04', 'the Dictate action on S-06-03'),
   'S-06-05': S0605,

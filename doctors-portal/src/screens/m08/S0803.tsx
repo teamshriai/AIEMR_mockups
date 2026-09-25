@@ -109,29 +109,6 @@ export function S0803() {
       cell: (r) => (r.risk === 'ABSTAIN' ? null : r.reason),
     },
     {
-      key: 'flags',
-      label: 'Flags',
-      role: 'context',
-      cell: (r) => {
-        const p = patient(r.patientId)
-        if (p.allergies.length === 0 && !p.mlc) return null
-        return (
-          <span className="flex flex-wrap gap-1">
-            {p.allergies.length > 0 && (
-              <Chip tone="critical" icon="TriangleAlert">
-                {p.allergies[0]}
-              </Chip>
-            )}
-            {p.mlc && (
-              <Chip tone="isolation" icon="Gavel">
-                MLC
-              </Chip>
-            )}
-          </span>
-        )
-      },
-    },
-    {
       /*
        * One chip, the word in it, nothing else. The AI-201 provenance (◆, the
        * confidence dot, the reason chip) moves to the patient's chart — on a
@@ -193,24 +170,17 @@ export function S0803() {
         </>
       }
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN']}
-      actions={
-        <Button icon="DoorOpen" onClick={() => navigate('/discharge/board')}>
-          Discharge board
-        </Button>
-      }
     >
       <div className="max-w-4xl space-y-6">
         <Worklist
           variant="calm"
+          tone="inpatients"
           rows={rows}
           pinned={pinned}
           pinnedLabel="Needs attention"
           columns={columns}
           rowKey={(r) => r.patientId}
-          onOpen={(r) => {
-            const enc = encounterForPatient(r.patientId)
-            navigate(enc ? `/ip/encounter/${enc.id}/note` : `/patient/${patient(r.patientId).uhid}/chart`)
-          }}
+          onOpen={(r) => navigate(`/patient/${patient(r.patientId).uhid}/record`)}
           aiSort={aiSort}
           onSortChange={setAiSort}
           sortCapability="AI-613"

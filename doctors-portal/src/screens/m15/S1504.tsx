@@ -85,7 +85,6 @@ function StudyNotFound({ id }: { id?: string }) {
 
 /** A study whose report is on the record but whose pixels are not in this demo. */
 function ReportOnly({ study: s }: { study: ImagingStudy }) {
-  const navigate = useNavigate()
   const p = patient(s.patientId)
   return (
     <Screen
@@ -100,11 +99,6 @@ function ReportOnly({ study: s }: { study: ImagingStudy }) {
         <Chip tone="neutral" icon="FileText">
           report only
         </Chip>
-      }
-      actions={
-        <Button icon="List" onClick={() => navigate('/radiology/worklist')}>
-          Imaging worklist
-        </Button>
       }
     >
       <div className="max-w-3xl space-y-5">
@@ -368,6 +362,7 @@ function Viewer({ record, study }: { record: ImagingStudy; study: NcctStudy }) {
             {aiActive ? (
               <SectionCard
                 title="AI read"
+                tone="ai"
                 meta={<span className="tabular text-[0.86em] text-ink-3">delivered {formatTime(deliveredAt)}</span>}
                 bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"
               >
@@ -466,6 +461,7 @@ function Viewer({ record, study }: { record: ImagingStudy; study: NcctStudy }) {
             {/* Questions about THIS scan, answered with citations by the assistant. */}
             {aiActive && (
               <SectionCard
+                tone="ai"
                 title={
                   <span className="flex items-center gap-2">
                     <Diamond size={10} /> Ask about this scan

@@ -22,10 +22,12 @@ to; the screen states both.
 
 ## Counts
 
-`OPD · Ward · ICU · ED` is a **partition** — every patient appears in exactly
-one. `Follow-up` is a *visit type* inside OPD, so it is a filter on the OPD
-screen and never a count beside it; counting it alongside OPD counted three
-patients twice and made the total read 15 when this consultant has 13.
+`OPD · Inpatients` is a **partition** — every patient appears in exactly one.
+Ward, ICU and ED are parts of Inpatients, so they are the filter on the
+Inpatients screen and never tiles beside the whole. `Follow-up` is a *visit
+type* inside OPD, so it is a filter on the OPD screen and never a count beside
+it; counting it alongside OPD counted three patients twice and made the total
+read 15 when this consultant has 13.
 
 ## Visit and encounter
 

@@ -88,12 +88,13 @@ export function S0601() {
   const voiceNotes = useClinical((s) => s.voiceNotes)
   const toggleVoiceNoteDone = useClinical((s) => s.toggleVoiceNoteDone)
   const deleteVoiceNote = useClinical((s) => s.deleteVoiceNote)
-  /** The doctor's own reminders — saved from "Add today's to-do note", attached to no patient. */
+  /** The doctor's own reminders — saved from the To-Do Note card, attached to no patient. */
   const todos = voiceNotes[UNATTACHED] ?? []
 
   const [open, setOpen] = useState<AttentionItem | null>(null)
   const [dictating, setDictating] = useState<AttentionItem | null>(null)
-  const [freeNote, setFreeNote] = useState(false)
+  /** The free note's dialog: listening, ready to type, or closed. */
+  const [freeNote, setFreeNote] = useState<'voice' | 'type' | null>(null)
   /** AI-LOW arrives collapsed; the ranking cannot be used until it is expanded. */
   const [rankingExpanded, setRankingExpanded] = useState(false)
   const [aiSort, setAiSort] = useState(true)
@@ -183,10 +184,7 @@ export function S0601() {
         }
         actions={
           <>
-            <Button tone="primary" icon="Mic" onClick={() => setFreeNote(true)}>
-              Add today&rsquo;s to-do note
-            </Button>
-            {/* A demo control, DEV-only and desktop-only — the header carries no extra icons. */}
+            {/* A demo control, DEV-only and desktop-only. The to-do note is added from its own card. */}
             {import.meta.env.DEV && (
               <IconButton
                 icon="BellRing"
@@ -212,6 +210,7 @@ export function S0601() {
           {/* THE DAY. The primary focus, and the only thing above the fold. */}
           <SectionCard
             title="Today"
+            tone="schedule"
             fill
             meta={
               current ? (
@@ -313,6 +312,7 @@ export function S0601() {
             {/* PENDING TODAY — documentation and sign-offs that are the doctor's to close. Takes the slack. */}
             <SectionCard
               title="Pending today"
+              tone="signoff"
               lift
               fill
               className="flex-1"
@@ -334,9 +334,10 @@ export function S0601() {
 
           {/* Column three: my own to-dos, then who is mine and who goes home — those two side by side at lg, stacked from xl. */}
           <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 xl:col-span-1">
-            {/* TODAY'S TO-DO NOTES — what the doctor told themselves to do. Saved from the header's dictation. */}
+            {/* TO-DO NOTE — what the doctor told themselves to do. Added from the card's own mic or plus. */}
             <TodoNotesCard
               notes={todos}
+              onAdd={setFreeNote}
               onToggle={(id) => toggleVoiceNoteDone(UNATTACHED, id)}
               onDelete={(n) => {
                 deleteVoiceNote(UNATTACHED, n.id)
@@ -368,6 +369,7 @@ export function S0601() {
               {!isStroke && (
                 <SectionCard
                   title="Discharges today"
+                  tone="discharge"
                   lift
                   fill
                   className="flex-1"
@@ -409,7 +411,7 @@ export function S0601() {
       />
 
       {/* The global note, not attached to anyone yet. */}
-      <DictationPanel open={freeNote} onClose={() => setFreeNote(false)} />
+      <DictationPanel open={freeNote !== null} initialMode={freeNote ?? 'voice'} onClose={() => setFreeNote(null)} />
     </>
   )
 }

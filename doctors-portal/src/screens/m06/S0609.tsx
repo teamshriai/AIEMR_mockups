@@ -157,10 +157,11 @@ export function S0609() {
       <div className="max-w-4xl space-y-6">
         <Worklist
           variant="calm"
+          tone="signoff"
           rows={rows}
           columns={columns}
           rowKey={(r) => r.id}
-          onOpen={(r) => navigate(`/patient/${patient(r.patientId).uhid}/chart`)}
+          onOpen={(r) => navigate(`/patient/${patient(r.patientId).uhid}/record`)}
           aiSort={aiSort}
           onSortChange={setAiSort}
           sortCapability="AI-114"

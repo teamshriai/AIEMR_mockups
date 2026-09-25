@@ -107,6 +107,119 @@
     -webkit-backdrop-filter: blur(var(--blur-glass-lg)) saturate(150%);
   }
 
+  /* A highlighted card: a solid fill that carries its own inks. Every utility
+     inside compiles to var(--color-…), so redefining the variables here
+     re-themes the rows, badges, dividers and buttons a card holds without a
+     component knowing. Clinical chips keep their own soft fills and are not
+     touched. One class per tone sets --card-fill. */
+  .card-toned {
+    background-color: var(--card-fill);
+    border-color: var(--color-card-border);
+    /* Inherited colour resolves at the body, so the card states its own. */
+    color: var(--color-card-ink);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    --color-ink: var(--color-card-ink);
+    --color-ink-2: var(--color-card-ink-2);
+    --color-ink-3: var(--color-card-ink-3);
+    --color-ink-muted: var(--color-card-ink-muted);
+    --color-glass-fill: rgb(0 0 0 / 0.16);
+    --color-glass-fill-strong: rgb(0 0 0 / 0.16);
+    --color-glass-fill-muted: rgb(0 0 0 / 0.12);
+    --color-glass-fill-hover: var(--color-card-hover);
+    --color-glass-inset: var(--color-card-inset);
+    --color-glass-hairline: var(--color-card-hairline);
+    --color-glass-border: rgb(255 255 255 / 0.3);
+    --color-brand: #ffffff;
+    --color-brand-soft: rgb(0 0 0 / 0.18);
+    --color-brand-on: var(--card-fill);
+    --color-pri-critical-ink: #fee2e2;
+    --color-pri-warning-ink: #fde68a;
+    --color-pri-pending-ink: #fef08a;
+    --color-pri-normal-ink: #dbeafe;
+    --color-pri-safe-ink: #bbf7d0;
+    --color-pri-critical-soft: rgb(0 0 0 / 0.3);
+    --color-ai: #e0e7ff;
+    --color-ai-soft: rgb(0 0 0 / 0.16);
+    /* Clinical hues on a solid card: the same pale ink in both themes, on a
+       dark translucent chip fill, so a chip or a bare status word reads on
+       any fill. Critical stays a solid chip — pale pink carrying dark red. */
+    --color-normal: #86efac;
+    --color-normal-soft: rgb(0 0 0 / 0.34);
+    --color-caution: #fcd34d;
+    --color-caution-soft: rgb(0 0 0 / 0.34);
+    --color-abnormal: #fecdd3;
+    --color-abnormal-soft: rgb(0 0 0 / 0.34);
+    --color-critical: #fecaca;
+    --color-critical-on: #7f1d1d;
+    --color-critical-soft: rgb(0 0 0 / 0.28);
+    --color-isolation: #d8b4fe;
+    --color-isolation-soft: rgb(0 0 0 / 0.28);
+    --color-inactive: #e5e7eb;
+    --color-inactive-soft: rgb(0 0 0 / 0.28);
+  }
+  .card-tone-patient { --card-fill: var(--color-card-patient); }
+  .card-tone-inpatients { --card-fill: var(--color-card-inpatients); }
+  .card-tone-schedule { --card-fill: var(--color-card-schedule); }
+  .card-tone-signoff { --card-fill: var(--color-card-signoff); }
+  .card-tone-discharge { --card-fill: var(--color-card-discharge); }
+  .card-tone-ai { --card-fill: var(--color-card-ai); }
+  /* Gold takes dark ink — white on it would not clear AA. */
+  .card-tone-notes {
+    --card-fill: var(--color-card-notes);
+    --color-card-border: rgb(0 0 0 / 0.18);
+    --color-ink: var(--color-card-dark-ink);
+    --color-ink-2: var(--color-card-dark-ink-2);
+    --color-ink-3: var(--color-card-dark-ink-3);
+    --color-ink-muted: rgb(23 23 28 / 0.62);
+    --color-glass-fill: rgb(0 0 0 / 0.08);
+    --color-glass-fill-strong: rgb(0 0 0 / 0.08);
+    --color-glass-fill-muted: rgb(0 0 0 / 0.06);
+    --color-glass-fill-hover: rgb(0 0 0 / 0.08);
+    --color-glass-inset: rgb(0 0 0 / 0.1);
+    --color-glass-hairline: rgb(0 0 0 / 0.16);
+    --color-glass-border: rgb(0 0 0 / 0.18);
+    --color-brand: #17171c;
+    --color-brand-soft: rgb(0 0 0 / 0.12);
+    --color-brand-on: var(--color-card-notes);
+    --color-normal: #14532d;
+    --color-normal-soft: rgb(255 255 255 / 0.4);
+    --color-caution: #7c3d05;
+    --color-caution-soft: rgb(255 255 255 / 0.4);
+    --color-abnormal: #991b1b;
+    --color-abnormal-soft: rgb(255 255 255 / 0.4);
+    --color-critical: #7f1d1d;
+    --color-critical-on: #ffffff;
+    /* The open-count pill: dark on gold, not yellow on gold. */
+    --color-pri-pending-fill: #17171c;
+    --color-pri-on-warning: var(--color-card-notes);
+  }
+  /* An attention card takes its top urgency; the status shapes and count
+     pills inside go pale so they still stand on the deep fill. */
+  .card-urgency-critical {
+    --card-fill: var(--color-card-critical);
+    --color-pri-critical: #fecaca;
+    --color-pri-critical-ink: #ffffff;
+    --color-pri-critical-fill: #ffffff;
+    --color-pri-on-critical: var(--card-fill);
+  }
+  .card-urgency-warning {
+    --card-fill: var(--color-card-warning);
+    --color-pri-warning: #fde68a;
+    --color-pri-warning-ink: #ffffff;
+    --color-pri-warning-fill: #ffffff;
+    --color-pri-on-warning: var(--card-fill);
+    --color-caution: #ffffff;
+  }
+  .card-urgency-pending {
+    --card-fill: var(--color-card-pending);
+    --color-pri-pending: #fef08a;
+    --color-pri-pending-ink: #ffffff;
+    --color-pri-pending-fill: #ffffff;
+    --color-pri-on-warning: var(--card-fill);
+    --color-caution: #ffffff;
+  }
+
   /* Secondary, cooler fill — the reference image's #e6edef cards. */
   .glass-muted {
     background-color: var(--color-glass-fill-muted);

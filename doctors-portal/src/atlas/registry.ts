@@ -3,7 +3,7 @@
  *
  * This file is the spine of the application. The router, the nav rail, the
  * breadcrumb, the page header, the assistant's "from:" line, the density and
- * theme defaults, and the state switcher all derive from it. Nothing about a
+ * theme defaults, and the declared states all derive from it. Nothing about a
  * screen is stated twice.
  *
  * The atlas's completeness guarantee applies here too: a registry row with a
@@ -109,24 +109,6 @@ export const SCREENS: ScreenSpec[] = [
     navSection: 'home',
     permission: 'ip.encounter.read',
     statesNotApplicable: { LOCKED: 'not an authoring screen' },
-  },
-  {
-    id: 'S-06-02',
-    module: 'M-06',
-    name: 'Chart',
-    route: '/patient/:id/chart',
-    archetype: 'ARC-02',
-    tier: 'T2',
-    personas: ['P-04', 'P-05'],
-    ai: ['AI-105', 'AI-901'],
-    zones: SHELL_PATIENT_RAIL,
-    density: 'compact',
-    nightDefault: false,
-    z7b: 'GP-17',
-    patientScoped: true,
-    oneLiner: 'Catching up on a patient in thirty seconds.',
-    navSection: null,
-    permission: 'op.encounter.read',
   },
   {
     id: 'S-06-03',
@@ -297,7 +279,7 @@ export const SCREENS: ScreenSpec[] = [
     nightDefault: false,
     z7b: 'GP-17',
     patientScoped: true,
-    oneLiner: 'Everything on file for one patient, one tile per part — opened only when asked.',
+    oneLiner: 'One patient on one page — summary, report, the latest scan and the AI’s readings; each part one tab away.',
     navSection: null,
     permission: 'op.encounter.read',
   },

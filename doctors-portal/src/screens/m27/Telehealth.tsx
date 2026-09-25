@@ -18,14 +18,18 @@ import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
 import { SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
-import { Button, Card, Chip, Icon, KeyValue, cx } from '@/components/primitives'
-import { InputModeSwitch, VoiceField } from '@/components/voicefield'
-import { ENCOUNTERS, encounter } from '@/data/clinical'
+import { Button, Card, Chip, EmptyState, Icon, KeyValue, cx } from '@/components/primitives'
+import { VoiceField } from '@/components/voicefield'
+import { encounterForPatient, maybeEncounter } from '@/data/clinical'
+import type { Encounter } from '@/data/clinical'
 import { formatDateTime, formatTime, minutesAhead, NOW } from '@/data/format'
-import { patient } from '@/data/kit'
+import { patient, patientByAnyId } from '@/data/kit'
+import type { Patient } from '@/data/kit'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useUI } from '@/store/ui'
 import { Screen, ScreenSection } from '@/shell/Screen'
+
+import { noteActionLabel } from '../m06/record/S0611'
 
 // ───────────────────────────────────────────── S-27-02 · the queue
 
@@ -64,6 +68,45 @@ const QUEUE: TeleRow[] = [
     rankReason: 'No video on the patient side — needs a telephone fallback arranged',
   },
 ]
+
+// ───────────────────────────────────────────── who is on the call
+
+interface TeleParty {
+  patient: Patient
+  /** The visit the note and the prescription are written against, where one exists. */
+  encounter?: Encounter
+}
+
+/**
+ * The session is keyed by whoever sent you here: a teleconsult encounter from
+ * the queue, or a patient (SD id or UHID) from the Connect button on their
+ * record. An unknown id says so instead of silently showing someone else.
+ */
+function teleParty(id: string | undefined): TeleParty | undefined {
+  const enc = maybeEncounter(id)
+  if (enc) return { patient: patient(enc.patientId), encounter: enc }
+  const p = patientByAnyId(id)
+  return p ? { patient: p, encounter: encounterForPatient(p.id) } : undefined
+}
+
+function NoParty({ screenId, id }: { screenId: string; id?: string }) {
+  const navigate = useNavigate()
+  return (
+    <Screen screenId={screenId} subheading="No patient at this address.">
+      <Card className="max-w-2xl">
+        <EmptyState
+          icon="UserX"
+          why={`There is no patient or teleconsult with the id “${id ?? ''}” here. Pick one from today’s queue.`}
+          action={
+            <Button icon="Video" onClick={() => navigate('/tele/queue')}>
+              Telehealth
+            </Button>
+          }
+        />
+      </Card>
+    </Screen>
+  )
+}
 
 export function S2702() {
   const navigate = useNavigate()
@@ -107,24 +150,6 @@ export function S2702() {
           </Chip>
         ),
     },
-    {
-      key: 'action',
-      label: '',
-      role: 'status',
-      cell: (r) => (
-        <Button
-          size="sm"
-          tone="primary"
-          icon="Video"
-          onClick={(e) => {
-            e.stopPropagation()
-            navigate(`/tele/session/${r.id}`)
-          }}
-        >
-          Join
-        </Button>
-      ),
-    },
   ]
 
   return (
@@ -153,10 +178,11 @@ export function S2702() {
       railTitle="Teleconsult"
     >
       <Worklist
+        tone="schedule"
         rows={rows}
         columns={columns}
         rowKey={(r) => r.id}
-        onOpen={(r) => navigate(`/tele/session/${r.id}`)}
+        onOpen={(r) => navigate(`/tele/session/${maybeEncounter(r.id) ? r.id : r.patientId}`)}
         aiSort={aiSort}
         onSortChange={setAiSort}
         sortCapability="AI-613"
@@ -180,15 +206,19 @@ export function S2703({ id }: { id?: string }) {
   const [muted, setMuted] = useState(false)
   const [cameraOff, setCameraOff] = useState(false)
   const [ending, setEnding] = useState(false)
+  /** The call is joined on purpose, never on arrival. */
+  const [joined, setJoined] = useState(false)
   const toast = useUI((s) => s.toast)
 
-  const enc = ENCOUNTERS.some((e) => e.id === id) ? encounter(id!) : encounter('E-118430')
-  const p = patient(enc.patientId)
-
   useEffect(() => {
+    if (!joined) return
     const t = window.setInterval(() => setElapsed((e) => e + 1), 1000)
     return () => window.clearInterval(t)
-  }, [])
+  }, [joined])
+
+  const party = teleParty(id)
+  if (!party) return <NoParty screenId="S-27-03" id={id} />
+  const { patient: p, encounter: enc } = party
 
   return (
     <Screen
@@ -197,26 +227,36 @@ export function S2703({ id }: { id?: string }) {
       loadingShape="thread"
       states={['LOADING', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'AI-OFF', 'AI-LOW']}
       wide
-      actions={<InputModeSwitch />}
       chips={
-        <Chip tone="normal" icon="Video">
-          in session · {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
-        </Chip>
+        joined ? (
+          <Chip tone="normal" icon="Video">
+            in session · {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+          </Chip>
+        ) : (
+          <Chip tone="neutral" icon="Video">
+            Ready to join
+          </Chip>
+        )
       }
       actionBar={
         <>
-          <Button icon="PhoneOff" tone="destructive" onClick={() => setEnding(true)}>
-            End the session
-          </Button>
-          <span className="text-[0.88em] text-ink-3">The session note reuses the consultation note surface</span>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <Button icon="FileText" onClick={() => navigate(`/encounter/${enc.id}/note`)}>
-              Write the note
+          {joined ? (
+            <Button icon="PhoneOff" tone="destructive" onClick={() => setEnding(true)}>
+              End the session
             </Button>
-            <Button tone="primary" icon="Pill" onClick={() => navigate(`/tele/session/${enc.id}/rx`)}>
-              Prescribe
-            </Button>
-          </div>
+          ) : (
+            <span className="text-[0.88em] text-ink-3">Join the call to start the session</span>
+          )}
+          {enc && (
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button icon="FileText" onClick={() => navigate(`/encounter/${enc.id}/note`)}>
+                {noteActionLabel(p)}
+              </Button>
+              <Button tone="primary" icon="Pill" onClick={() => navigate(`/tele/session/${enc.id}/rx`)}>
+                Prescribe
+              </Button>
+            </div>
+          )}
         </>
       }
       rail={
@@ -267,18 +307,30 @@ export function S2703({ id }: { id?: string }) {
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Card className="overflow-hidden">
+          {/* Video is read on black in both themes, like a scan — the tile's own colours are fixed. */}
           <div className="relative aspect-video w-full bg-[#0a0d14]">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <span className="mx-auto flex size-16 items-center justify-center rounded-pill bg-[#1a2030] text-[#6b7690]">
-                  <Icon name="User" size={30} />
-                </span>
-                <p className="mt-2 text-[0.9em] text-[#8b94a8]">{p.name}</p>
+            {joined ? (
+              <>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <span className="mx-auto flex size-16 items-center justify-center rounded-pill bg-[#1a2030] text-[#6b7690]">
+                      <Icon name="User" size={30} />
+                    </span>
+                    <p className="mt-2 text-[0.9em] text-[#8b94a8]">{p.name}</p>
+                  </div>
+                </div>
+                <div className="absolute right-3 bottom-3 flex size-24 items-center justify-center rounded-panel bg-[#151b28]">
+                  <Icon name="User" size={18} className="text-[#6b7690]" />
+                </div>
+              </>
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <p className="text-[0.9em] text-on-image-ink">{p.name}</p>
+                <Button tone="primary" size="lg" icon="Video" onClick={() => setJoined(true)}>
+                  Join call
+                </Button>
               </div>
-            </div>
-            <div className="absolute right-3 bottom-3 flex size-24 items-center justify-center rounded-panel bg-[#151b28]">
-              <Icon name="User" size={18} className="text-[#6b7690]" />
-            </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2 px-4 py-3">
             <Button size="sm" icon={muted ? 'MicOff' : 'Mic'} aria-pressed={muted} tone={muted ? 'primary' : 'secondary'} onClick={() => setMuted((m) => !m)}>
@@ -357,9 +409,6 @@ export function S2704({ id }: { id?: string }) {
   const toast = useUI((s) => s.toast)
   const aiActive = useAI(selectAiActive)
 
-  const enc = ENCOUNTERS.some((e) => e.id === id) ? encounter(id!) : encounter('E-118430')
-  const p = patient(enc.patientId)
-
   /** Video vs telephone changes what is prescribable. Hard-coded, not a setting. */
   const [mode, setMode] = useState<'video' | 'telephone'>('video')
   const [basket, setBasket] = useState<string[]>([])
@@ -379,6 +428,10 @@ export function S2704({ id }: { id?: string }) {
 
   const blocked = basket.filter((d) => blockedReason(d) !== null)
 
+  const party = teleParty(id)
+  if (!party) return <NoParty screenId="S-27-04" id={id} />
+  const { patient: p, encounter: enc } = party
+
   return (
     <Screen
       screenId="S-27-04"
@@ -390,11 +443,6 @@ export function S2704({ id }: { id?: string }) {
           {mode} consultation
           {blocked.length > 0 && ` · ${blocked.length} blocked by the category gate`}
         </>
-      }
-      actions={
-        <Button icon="Video" onClick={() => navigate(`/tele/session/${enc.id}`)}>
-          Back to the session
-        </Button>
       }
       rail={
         <div className="space-y-4">
@@ -557,8 +605,13 @@ export function S2704({ id }: { id?: string }) {
           </p>
           <p className="text-[0.92em] text-ink-3">
             Signing publishes a Prescription record to ABDM; no PHI goes out in any SMS, only a pointer back in.
-            Encounter {enc.encounterNo} · {formatDateTime(enc.startedAt)} · the same note and prescription surfaces as
-            a face-to-face consultation, with one extra gate that the law puts there.
+            {enc && (
+              <>
+                Encounter {enc.encounterNo} · {formatDateTime(enc.startedAt)} ·{' '}
+              </>
+            )}
+            The same note and prescription surfaces as a face-to-face consultation, with one extra gate that the law
+            puts there.
           </p>
         </Why>
       </div>

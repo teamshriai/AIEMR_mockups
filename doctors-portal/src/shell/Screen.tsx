@@ -29,7 +29,6 @@ import { PERSONA_SPECS } from '@/atlas/personas'
 import { COMPLIANCE } from '@/atlas/compliance'
 import { screen } from '@/atlas/registry'
 import type { ScreenSpec } from '@/atlas/registry'
-import { DECLARED_STATES } from '@/atlas/states'
 import type { DeclaredState } from '@/atlas/states'
 import { SectionTitle } from '@/components/calm'
 import { MenuSection, Popover } from '@/components/popover'
@@ -42,7 +41,6 @@ import {
   OfflineStrip,
   StaleChip,
 } from '@/components/states'
-import { StateSwitcher } from '@/components/states'
 import type { Patient } from '@/data/kit'
 import { NOW } from '@/data/format'
 import { useAI } from '@/store/ai'
@@ -68,7 +66,11 @@ export interface ScreenProps {
   railBadge?: ReactNode
   /** Z7a — the sticky action bar. */
   actionBar?: ReactNode
-  /** Which of the 14 states this screen can demonstrate. */
+  /**
+   * Which of the 14 states this screen can demonstrate. Declared for the
+   * atlas; a state is forced only through `useAI.forceState` (the DEV hook in
+   * `e2e.ts`), never from a control on the screen.
+   */
   states?: DeclaredState[]
   /** The skeleton shape for LOADING. */
   loadingShape?: 'list' | 'tiles' | 'form' | 'board' | 'thread'
@@ -100,6 +102,8 @@ function parentOf(pathname: string, landing: string): { to: string; label: strin
   if (pathname.startsWith('/ip/encounter/')) return { to: '/ip/patients', label: 'Inpatients' }
   if (pathname.startsWith('/encounter/')) return { to: '/op-queue', label: 'OPD' }
   if (pathname.startsWith('/stroke/case/')) return { to: '/stroke/ai-console', label: 'Stroke-AI Console' }
+  const rx = /^\/tele\/session\/([^/]+)\/rx$/.exec(pathname)
+  if (rx) return { to: `/tele/session/${rx[1]}`, label: 'Teleconsult' }
   if (pathname.startsWith('/tele/session/')) return { to: '/tele/queue', label: 'Telehealth' }
   if (pathname === landing) return null
   return { to: landing, label: 'My Day' }
@@ -139,7 +143,6 @@ export function Screen({
   railTitle = 'Context',
   railBadge,
   actionBar,
-  states,
   loadingShape = 'list',
   empty,
   children,
@@ -246,7 +249,6 @@ export function Screen({
 
             {actions}
             <ScreenInfo spec={spec} />
-            <StateSwitcher available={states ?? DECLARED_STATES} compact />
           </div>
         </div>
       </header>

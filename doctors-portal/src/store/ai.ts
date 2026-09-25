@@ -118,7 +118,7 @@ export function useOutstanding(touchpointIds: string[]): number {
 
 /**
  * Whether the fabric is live right now. Two things can switch it off: the
- * governance kill switch, and the state switcher forcing AI-OFF to show what
+ * governance kill switch, and a forced AI-OFF (`forceState`) to show what
  * 57 screens look like without it. Every ◆ affordance reads this rather than
  * `aiEnabled`, so both paths behave identically.
  */

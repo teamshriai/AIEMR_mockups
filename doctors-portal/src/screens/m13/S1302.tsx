@@ -30,7 +30,7 @@ import { ConfirmDialog } from '@/components/overlays'
 import { PrintPreview } from '@/components/print'
 import { Button, Checkbox, Chip, Icon, Select, cx } from '@/components/primitives'
 import { LockedBanner, ValidationSummary } from '@/components/states'
-import { InputModeSwitch, VoiceField } from '@/components/voicefield'
+import { VoiceField } from '@/components/voicefield'
 import { DISCHARGE_DRAFT_SD_P_03, encounter, problemsFor } from '@/data/clinical'
 import { formatDate, formatDateTime, formatTime, NOW } from '@/data/format'
 import { LANGUAGES, patient } from '@/data/kit'
@@ -121,7 +121,6 @@ export function S1302({ id }: { id?: string }) {
       }
       actions={
         <>
-          {!locked && <InputModeSwitch />}
           {!locked && aiActive && (
             <Button
               tone="ai"

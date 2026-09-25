@@ -269,8 +269,9 @@ export function PatientCounts({ counts, columns = 4 }: { counts: PatientCount[];
           key={c.key}
           to={c.to}
           className={cx(
-            'group lift flex min-h-[5.5rem] min-w-0 flex-col justify-between gap-2 rounded-panel bg-glass-inset px-3.5 py-3',
-            'hover:bg-brand-soft',
+            'group lift flex min-h-[5.5rem] min-w-0 flex-col justify-between gap-2 rounded-panel px-3.5 py-3',
+            /* A place's tile is solid in that place's colour; a plain tile stays inset glass. */
+            c.tone ? `card-toned card-tone-${c.tone} hover:brightness-110` : 'bg-glass-inset hover:bg-brand-soft',
           )}
         >
           <span className="flex items-center justify-between gap-2">
@@ -384,8 +385,8 @@ export function AttentionRow({
       <button
         type="button"
         onClick={onDictate}
-        title={`Dictate a note about ${patientName}`}
-        aria-label={`Dictate a note about ${patientName}`}
+        title={`Add note about ${patientName}`}
+        aria-label={`Add note about ${patientName}`}
         className="inline-flex size-11 shrink-0 items-center justify-center rounded-pill text-ink-3 transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
       >
         <Icon name="Mic" size={16} />
@@ -493,20 +494,24 @@ export function TodoNoteRow({
 }
 
 /**
- * The doctor's own reminders — dictated from "Add today’s to-do note", attached
- * to no patient, and so never "to sign". Open ones first, newest first; ticked
- * ones sink below them, struck through, until they are deleted.
+ * The doctor's own reminders — attached to no patient, and so never "to sign".
+ * Open ones first, newest first; ticked ones sink below them, struck through,
+ * until they are deleted.
  *
- * The card only SHOWS the notes. Adding one is the header's job — a second add
- * control inside the card read as a duplicate of it.
+ * Adding one is the card's own job, and there is exactly one way in on each
+ * side of the title: the microphone dictates, the plus types. Nothing else on
+ * the screen adds a to-do note.
  */
 export function TodoNotesCard({
   notes,
+  onAdd,
   onToggle,
   onDelete,
   className,
 }: {
   notes: VoiceNote[]
+  /** Opens the note dialog, listening or ready to type. */
+  onAdd: (mode: 'voice' | 'type') => void
   onToggle: (id: string) => void
   onDelete: (note: VoiceNote) => void
   className?: string
@@ -516,17 +521,38 @@ export function TodoNotesCard({
 
   return (
     <SectionCard
-      title="Today’s to-do notes"
+      title="To-Do Note"
+      tone="notes"
       lift
       className={className}
+      leading={
+        <IconButton
+          icon="Mic"
+          label="Dictate a to-do note"
+          onClick={() => onAdd('voice')}
+          compact
+          className="-ml-1 text-brand"
+          size={15}
+        />
+      }
       meta={notes.length > 0 && <CountPill tone={open > 0 ? 'pending' : 'neutral'}>{open > 0 ? open : 'All done'}</CountPill>}
+      action={
+        <IconButton
+          icon="Plus"
+          label="Type a to-do note"
+          onClick={() => onAdd('type')}
+          compact
+          className="-mr-1"
+          size={15}
+        />
+      }
     >
       {sorted.length === 0 ? (
         <p className="px-2 py-3 text-[0.95em] text-ink-2">
-          Nothing noted for today yet. Notes you save with &ldquo;Add today&rsquo;s to-do note&rdquo; appear here.
+          Nothing noted for today yet. Dictate one with the microphone, or type one with +.
         </p>
       ) : (
-        <ul aria-label="Today’s to-do notes" className="divide-y divide-glass-hairline">
+        <ul aria-label="To-Do Notes" className="divide-y divide-glass-hairline">
           {sorted.map((n) => (
             <TodoNoteRow key={n.id} note={n} onToggle={() => onToggle(n.id)} onDelete={() => onDelete(n)} />
           ))}

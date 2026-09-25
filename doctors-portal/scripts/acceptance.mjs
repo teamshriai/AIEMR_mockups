@@ -236,7 +236,7 @@ async function main() {
   })
   check(
     '1 · Render — day plan, counts and attention list all present',
-    render.blocks >= 6 && render.counts.length === 4 && render.greeting.startsWith('Good morning'),
+    render.blocks >= 6 && render.counts.length === 2 && render.greeting.startsWith('Good morning'),
     `${render.blocks} blocks · ${render.counts.length} counts · "${render.greeting}"`,
   )
 
@@ -359,7 +359,7 @@ async function main() {
   })
   check(
     '5b · AI-OFF — ◆ hidden, bubble unmounted, day plan and counts unaffected',
-    aiOff.noAcuity && aiOff.saysWhy && !aiOff.bubble && aiOff.dayIntact && aiOff.counts === 4,
+    aiOff.noAcuity && aiOff.saysWhy && !aiOff.bubble && aiOff.dayIntact && aiOff.counts === 2,
     `${toggled} · bubble ${aiOff.bubble ? 'present' : 'gone'} · ${aiOff.counts} counts still shown`,
   )
 
@@ -410,14 +410,14 @@ async function main() {
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: SPEECH_STUB })
   await page.goto('/clinician?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-06-01"]'), 'My Day with the speech stub')
-  // "Add today’s to-do note" — the curly apostrophe is the UI's, so match the part after it.
-  await page.evaluate(clickByText, 'button', 'to-do note')
-  await page.until(() => /Start dictation/.test(document.body.innerText), 'the dictation panel')
+  // The To-Do Note card's own mic — an icon button, so it is found by its accessible name.
+  await page.evaluate(clickByText, 'button[aria-label="Dictate a to-do note"]', '')
+  // Opened from the mic, the panel is already listening — there is no start button.
+  await page.until(() => !!document.querySelector('#dictation-draft'), 'the dictation panel')
   const saveDisabledAtStart = await page.evaluate(() => {
     const save = Array.from(document.querySelectorAll('button')).find((b) => b.innerText.trim() === 'Save')
     return save?.disabled === true
   })
-  await page.evaluate(clickByText, 'button', 'Start dictation')
   // The words fill the draft box WHILE speaking — read-only until Stop.
   await page.until(
     () => /review tomorrow/.test(document.querySelector('#dictation-draft')?.value ?? ''),
@@ -466,7 +466,7 @@ async function main() {
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes
     const saved = rows.filter((r) => r.event === 'NOTE.DRAFT_SAVED')
     const card = Array.from(document.querySelectorAll('section')).find((s) =>
-      /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''),
+      /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''),
     )
     return {
       saved: saved.length,
@@ -504,12 +504,12 @@ async function main() {
 
   // ── 4b · The to-do card: tick off, strike through, delete ────────────────
   await page.evaluate(() => {
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
     card?.querySelector('input[type="checkbox"]')?.click()
   })
   await sleep(300)
   const ticked = await page.evaluate(() => {
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
     const body = card?.querySelector('li p')
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []
     return { struck: !!body && getComputedStyle(body).textDecorationLine.includes('line-through'), done: notes[0]?.done === true, pill: /All done/.test(card?.innerText ?? '') }
@@ -521,16 +521,14 @@ async function main() {
     window.SpeechRecognition = undefined
     window.webkitSpeechRecognition = undefined
   })
-  await page.evaluate(clickByText, 'button', 'to-do note')
-  await page.until(() => /Start dictation/.test(document.body.innerText), 'the dictation panel again')
-  await page.evaluate(clickByText, '[role="dialog"] button', 'Start dictation')
+  await page.evaluate(clickByText, 'button[aria-label="Dictate a to-do note"]', '')
+  await page.until(() => !!document.querySelector('#dictation-draft'), 'the dictation panel again')
   await sleep(300)
   const unsupported = await page.evaluate(() => ({
     notice: /can’t turn speech into text/.test(document.body.innerText) && /type instead/i.test(document.body.innerText),
     canned: !!document.querySelector('#dictation-draft')?.value,
   }))
-  await page.evaluate(clickByText, '[role="dialog"] button', 'Type instead')
-  await sleep(200)
+  // The box is always typable — no mode to switch to.
   await page.evaluate(() => {
     const ta = document.querySelector('#dictation-draft')
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
@@ -542,13 +540,13 @@ async function main() {
   await sleep(600)
   const typedSaved = await page.evaluate(() => {
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
     const rows = Array.from(card?.querySelectorAll('li') ?? []).map((li) => li.innerText)
     return { count: notes.length, firstIsOpen: /repeat potassium/.test(rows[0] ?? ''), doneLast: /review tomorrow/.test(rows.at(-1) ?? '') }
   })
   // Delete the typed one.
   await page.evaluate(() => {
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do notes/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
     card?.querySelector('button[aria-label="Delete this to-do note"]')?.click()
   })
   await sleep(400)
@@ -565,12 +563,9 @@ async function main() {
   // ── 8 · Offline mark-seen sync ───────────────────────────────────────────
   await page.goto('/clinician?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-06-01"]'), 'My Day')
-  await page.evaluate(() => {
-    const sel = document.querySelector('#state-switcher')
-    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
-    setter.call(sel, 'OFFLINE')
-    sel.dispatchEvent(new Event('change', { bubbles: true }))
-  })
+  // No control on the screen forces a state; the DEV harness hook does.
+  await page.until(() => typeof window.__forceState === 'function', 'the DEV state hook')
+  await page.evaluate(() => window.__forceState('OFFLINE'))
   await sleep(500)
   const offlineOn = await page.evaluate(() => /queued|offline/i.test(document.body.innerText))
   await page.evaluate(clickByText, 'ul li button[type="button"]', 'New deterioration')
@@ -586,12 +581,7 @@ async function main() {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
     await sleep(200)
   }
-  await page.evaluate(() => {
-    const sel = document.querySelector('#state-switcher')
-    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
-    setter.call(sel, 'DEFAULT')
-    sel.dispatchEvent(new Event('change', { bubbles: true }))
-  })
+  await page.evaluate(() => window.__forceState('DEFAULT'))
   await sleep(700)
   const flushed = await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('indostates.clinical')).state
@@ -720,12 +710,12 @@ async function main() {
   // The speech stand-ins from test 4 are installed in every new document.
   const emptyAtStart = await page.evaluate(() => {
     const areas = Array.from(document.querySelectorAll('main textarea'))
-    const mics = Array.from(document.querySelectorAll('main button')).filter((b) => /^Dictate$/.test(b.innerText.trim()))
+    // One mic per field, inside the box, named by its field.
+    const mics = document.querySelectorAll('main button[aria-label^="Dictate into"]').length
     const ghosts = document.querySelectorAll('main .ai-ghost').length
-    const voiceOn = document.querySelector('[role="radio"][aria-checked="true"]')?.innerText.trim()
-    return { filled: areas.filter((t) => t.value.trim() !== '').length, mics: mics.length, ghosts, voiceOn }
+    return { filled: areas.filter((t) => t.value.trim() !== '').length, mics, ghosts }
   })
-  await page.evaluate(clickByText, 'main button', 'Dictate')
+  await page.evaluate(clickByText, 'main button[aria-label^="Dictate into"]', '')
   // The words land IN the field as they are spoken.
   await page.until(
     () => {
@@ -896,7 +886,6 @@ async function main() {
     emptyAtStart.filled === 0 &&
       emptyAtStart.mics === 4 &&
       emptyAtStart.ghosts === 0 &&
-      emptyAtStart.voiceOn === 'Voice' &&
       whileLive.readOnly &&
       whileLive.len > 40 &&
       afterDictation.len > 40 &&
@@ -937,7 +926,7 @@ async function main() {
     tiles.missing ? 'card not found' : `${tiles.labels.join(' + ')} = ${tiles.sum}, header ${tiles.header}`,
   )
 
-  // Ward + ICU + ED on My Day must equal the inpatient list's own count.
+  // The Inpatients tile on My Day must equal the inpatient list's own count.
   await page.goto('/ip/patients?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-08-03"]'), 'Inpatients')
   const ip = await page.evaluate(function () {
@@ -949,7 +938,7 @@ async function main() {
   check(
     'Inpatients is one word, and its parts add up to the whole',
     ip.heading === 'Inpatients' && ip.rows === inpatientTiles,
-    `heading "${ip.heading}" · ${ip.rows} rows vs Ward+ICU+ED ${inpatientTiles}`,
+    `heading "${ip.heading}" · ${ip.rows} rows vs Inpatients tile ${inpatientTiles}`,
   )
 
   // ── The Stroke-AI Console shows a real study ─────────────────────────────
@@ -1021,17 +1010,25 @@ async function main() {
   await page.goto('/op-queue?type=follow-up&e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-05-03"]'), 'OPD queue')
   await page.evaluate(clickByText, 'main button, main [role="row"]', 'Selvi Murugan')
-  let hub = { ok: false, tiles: 0 }
+  let hub = { ok: false, report: false, viewer: false, insights: false, tiles: -1 }
   try {
     await page.until(() => !!document.querySelector('[data-screen-id="S-06-11"]'), 'patient record')
     hub = await page.evaluate(function () {
-      const tiles = Array.from(document.querySelectorAll('main button')).filter((b) => /Open\s*$/.test(b.innerText.trim())).length
-      return { ok: true, tiles }
+      // Card titles are CSS-uppercased and innerText follows text-transform, so read textContent.
+      const heads = Array.from(document.querySelectorAll('main section h2')).map((h) => (h.textContent || '').trim())
+      return {
+        ok: true,
+        report: heads.includes('Patient report'),
+        viewer: !!document.querySelector('main img[src*="ncct/"]'),
+        insights: heads.includes('AI insights'),
+        tiles: Array.from(document.querySelectorAll('main button')).filter((b) => /Open\s*$/.test(b.innerText.trim())).length,
+      }
     })
   } catch {
     /* reported below */
   }
-  await page.evaluate(clickByText, 'main button', 'Test results')
+  // The parts are tabs above the record; Results is one of them.
+  await page.evaluate(clickByText, 'main [role="tablist"] [role="tab"]', 'Results')
   let partOpened = false
   let partHasSodium = false
   try {
@@ -1042,9 +1039,9 @@ async function main() {
     /* reported below */
   }
   check(
-    'OPD follow-up — the name opens the patient record; Test results opens as its own screen',
-    hub.ok && hub.tiles === 6 && partOpened && partHasSodium,
-    `record ${hub.ok ? 'opened' : 'did not open'} · ${hub.tiles} tiles · results screen ${partOpened ? 'opened' : 'missing'}${partHasSodium ? ' with sodium 131' : ''}`,
+    'OPD follow-up — the name opens the one-page record (report, CT, AI insights, no tiles); the Results tab opens as its own screen',
+    hub.ok && hub.report && hub.viewer && hub.insights && hub.tiles === 0 && partOpened && partHasSodium,
+    `record ${hub.ok ? 'opened' : 'did not open'} · report ${hub.report ? 'yes' : 'no'} · CT ${hub.viewer ? 'shown' : 'missing'} · AI insights ${hub.insights ? 'yes' : 'no'} · ${hub.tiles} tiles · results screen ${partOpened ? 'opened' : 'missing'}${partHasSodium ? ' with sodium 131' : ''}`,
   )
 
   // ── Back is on every screen: history first, the natural parent when opened cold ──

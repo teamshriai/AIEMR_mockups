@@ -96,7 +96,7 @@ export function StrokeAIReport({ strokeCase, study }: { strokeCase: StrokeCase; 
                 <span
                   className={cx(
                     'grid size-7 shrink-0 place-items-center rounded-pill text-[0.76em] font-bold',
-                    i === steps.length - 1 ? 'bg-normal text-white' : 'bg-brand text-brand-on',
+                    i === steps.length - 1 ? 'bg-normal text-normal-on' : 'bg-brand text-brand-on',
                   )}
                 >
                   {i + 1}

@@ -7,7 +7,7 @@
  * publish-failure queue. Every buyer has been burned by a demo that only worked
  * on the happy path." (§2.2)
  *
- * So every state is reachable from the state switcher in Z4, and the ones with
+ * So every state is reachable through `useAI.forceState`, and the ones with
  * real rules behind them enforce those rules rather than illustrating them —
  * DENIED shows no patient data at all, OFFLINE preserves typed content, and
  * AI-OFF hides rather than greys.
@@ -16,8 +16,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import type { DeclaredState } from '@/atlas/states'
-import { STATE_SPECS } from '@/atlas/states'
 import { formatTime } from '@/data/format'
 import { useAI } from '@/store/ai'
 import { useUI } from '@/store/ui'
@@ -447,82 +445,5 @@ export function AbstainCard({
         {capabilityId} · a capability that cannot produce a calibrated score abstains rather than scoring low.
       </p>
     </Card>
-  )
-}
-
-// ──────────────────────────────────────────── The state switcher (Z4)
-
-/**
- * A demo affordance, not a product one — but it is what turns the atlas's
- * fourteen state tables from a specification into something you can show a
- * client in the room.
- */
-export function StateSwitcher({
-  available,
-  /**
-   * On a calm screen the word "State" is one more thing to read, so the label
-   * goes to the accessible name only and the control shrinks to the select.
-   */
-  compact,
-}: {
-  available: DeclaredState[]
-  compact?: boolean
-}) {
-  const forced = useAI((s) => s.forcedState)
-  const forceState = useAI((s) => s.forceState)
-
-  const groups: Record<string, DeclaredState[]> = {}
-  for (const code of available) {
-    const family = STATE_SPECS[code].family
-    groups[family] ??= []
-    groups[family].push(code)
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <label
-        htmlFor="state-switcher"
-        className={cx(
-          'text-[0.82em] font-medium tracking-wide text-ink-3 uppercase',
-          compact && 'sr-only',
-        )}
-      >
-        State
-      </label>
-      <select
-        id="state-switcher"
-        value={forced ?? 'DEFAULT'}
-        onChange={(e) => forceState(e.target.value === 'DEFAULT' ? null : (e.target.value as DeclaredState))}
-        className={cx(
-          'min-h-9 rounded-pill border px-3 py-1 text-[0.88em] font-medium',
-          compact && 'w-28',
-          forced
-            ? 'border-caution/40 bg-caution-soft text-caution'
-            : 'border-[var(--color-menu-border)] bg-[var(--color-menu)] text-ink-2',
-        )}
-      >
-        <option value="DEFAULT">Default</option>
-        {Object.entries(groups).map(([family, codes]) => (
-          <optgroup key={family} label={family}>
-            {codes.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-      {forced && (
-        <button
-          type="button"
-          onClick={() => forceState(null)}
-          title={STATE_SPECS[forced].draw}
-          className="inline-flex items-center gap-1 rounded-pill bg-caution-soft px-2 py-1 text-[0.82em] font-medium text-caution"
-        >
-          <Icon name="X" size={12} />
-          clear
-        </button>
-      )}
-    </div>
   )
 }

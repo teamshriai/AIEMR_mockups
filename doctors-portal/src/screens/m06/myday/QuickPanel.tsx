@@ -187,12 +187,6 @@ export function QuickPanel({
               <Chip tone={it.urgency === 'critical' ? 'critical' : it.urgency === 'warning' ? 'caution' : 'neutral'}>
                 {it.reason}
               </Chip>
-              {p.allergies.length > 0 && (
-                <Chip tone="abnormal" icon="TriangleAlert">
-                  {p.allergies.join(', ')}
-                </Chip>
-              )}
-              {p.mlc && <Chip tone="isolation">MLC</Chip>}
             </div>
           </header>
         }
@@ -405,7 +399,7 @@ export function QuickPanel({
             )}
             <div className="flex flex-wrap gap-2">
               <Button tone="primary" size="sm" icon="ArrowRight" onClick={() => navigate(card.quick_actions.openChart)}>
-                Open chart
+                Open record
               </Button>
               <Button size="sm" icon="Check" onClick={doMarkSeen} disabled={seenAt[it.patientId] !== undefined && !offline}>
                 {seenAt[it.patientId] ? 'Seen' : 'Mark seen'}

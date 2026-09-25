@@ -17,7 +17,7 @@ import { AIActionBar } from '@/components/ai'
 import { Why } from '@/components/calm'
 import { LockedBanner } from '@/components/states'
 import { Alert, Button, Card, Checkbox, Chip, Field, Icon, Select } from '@/components/primitives'
-import { InputModeSwitch, VoiceField } from '@/components/voicefield'
+import { VoiceField } from '@/components/voicefield'
 import { NOTE_DRAFT_SD_P_03, encounter } from '@/data/clinical'
 import { formatDateTime, formatElapsed, formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
@@ -124,7 +124,6 @@ export function S0807({ id }: { id?: string }) {
       }
       actions={
         <>
-          {!locked && <InputModeSwitch />}
           <Button tone="tertiary" icon="PenLine" onClick={() => navigate(`/ip/encounter/${enc.id}/note`)}>
             Progress note
           </Button>

@@ -5,7 +5,7 @@
  *
  * The sub-navigation is the reason the parts can live on separate screens
  * without anyone getting lost: every part is one tap from every other, and
- * "Overview" is always the way back to the tiles.
+ * "Overview" is always the way back to the one-page record.
  */
 
 import { useNavigate } from 'react-router-dom'
@@ -16,6 +16,7 @@ import { encounterForPatient, problemsFor, resultsFor } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
 import { patientByAnyId } from '@/data/kit'
 import type { Patient } from '@/data/kit'
+import type { ConditionStatus } from '@/data/record'
 import {
   activeMedicines,
   appointmentsFor,
@@ -43,6 +44,15 @@ export const SECTION_META: Record<RecordSection, { label: string; short: string;
 }
 
 const ORDER: RecordSection[] = ['record', 'condition', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
+
+/** The chip tone for a condition status — brand for stable, clinical hues for the rest. */
+export const STATUS_TONE: Record<ConditionStatus, 'critical' | 'abnormal' | 'caution' | 'normal' | 'brand'> = {
+  Critical: 'critical',
+  Deteriorating: 'abnormal',
+  Stable: 'brand',
+  Improving: 'normal',
+  Recovered: 'normal',
+}
 
 export function recordPath(p: Patient, section: RecordSection): string {
   return `/patient/${p.uhid}/${SECTION_META[section].path}`

@@ -45,7 +45,7 @@ import { create } from 'zustand'
 
 import { Confidence, Diamond, WhyLink } from '@/components/ai'
 import { Modal } from '@/components/overlays'
-import { Button, Icon, TextArea, cx } from '@/components/primitives'
+import { Button, Icon, IconButton, TextArea, cx } from '@/components/primitives'
 import { bandFor } from '@/atlas/confidence'
 import type { ConfidenceBand } from '@/atlas/confidence'
 import { formatClock } from '@/data/format'
@@ -646,12 +646,15 @@ export function DictationPanel({
   onClose,
   patientId,
   patientName,
+  initialMode = 'voice',
 }: {
   open: boolean
   onClose: () => void
   /** Undefined for a free note not yet attached to anyone. */
   patientId?: string
   patientName?: string
+  /** Voice: the panel opens already listening. Type: it opens with the box focused. */
+  initialMode?: 'voice' | 'type'
 }) {
   const d = useDictation(patientId, open)
   const me = useCurrentStaff()
@@ -662,31 +665,48 @@ export function DictationPanel({
 
   /** The clinician's edit, once they make one. It wins over what was heard. */
   const [edited, setEdited] = useState<string | null>(null)
-  /** Text typed before dictation started, kept ahead of the dictated words. */
+  /** What was in the box when the microphone was pressed, kept ahead of the spoken words. */
   const [prefix, setPrefix] = useState('')
-  /** "Type instead" — the box is open for typing without the microphone. */
-  const [typing, setTyping] = useState(false)
   const transcriptLogged = useRef(false)
   const draftRef = useRef<HTMLTextAreaElement>(null)
 
   const recording = d.phase === 'recording'
   const requesting = d.phase === 'requesting'
+  const listening = recording || requesting
   const heard = recording ? joinSpeech(d.settled, d.interim) : d.settled
   const dictated = heard.trim() !== ''
   const joined = prefix.trim() === '' ? heard : heard.trim() === '' ? prefix : `${prefix.trim()} ${heard.trim()}`
   // The body the clinician will actually save: their edit if they made one, otherwise what was typed and heard.
   const body = edited ?? joined
   const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length
-  const showDraft = recording || d.phase === 'review' || typing || body.trim() !== ''
+
+  const unsupported = d.supportNotice !== null
+  const notice = d.notice ?? d.supportNotice
+
+  /**
+   * The microphone: pressed, it listens — after whatever is already in the
+   * box, which is kept. There is no separate "start"; the mic is the start.
+   */
+  function startDictation() {
+    setPrefix(body)
+    setEdited(null)
+    transcriptLogged.current = false
+    d.start()
+  }
+  const startRef = useRef(d.start)
+  startRef.current = d.start
 
   useEffect(() => {
     if (!open) {
       setEdited(null)
       setPrefix('')
-      setTyping(false)
       transcriptLogged.current = false
+      return
     }
-  }, [open])
+    // Opened from a microphone, it is already listening; opened from a plus, the box is ready to type.
+    if (initialMode === 'voice' && !unsupported) startRef.current()
+    else window.setTimeout(() => draftRef.current?.focus(), 0)
+  }, [open, initialMode, unsupported])
 
   const logTranscript = useCallback(
     (words: string) => {
@@ -710,32 +730,10 @@ export function DictationPanel({
     if (d.phase === 'review') logTranscript(d.settled)
   }, [d.phase, d.settled, logTranscript])
 
-  /** A fresh take. An earlier edit is discarded, and the new transcript is audited as its own. */
-  function dictateAgain() {
-    setEdited(null)
-    setPrefix('')
-    transcriptLogged.current = false
-    d.start()
-  }
-
-  /** Dictating after typing keeps the typed words and adds the spoken ones after them. */
-  function startDictation() {
-    if (d.phase === 'review') return dictateAgain()
-    setPrefix(body)
-    setEdited(null)
-    transcriptLogged.current = false
-    d.start()
-  }
-
-  function typeInstead() {
-    setTyping(true)
-    window.setTimeout(() => draftRef.current?.focus(), 0)
-  }
-
   function save() {
     const text = body.trim()
     if (text === '') return
-    if (recording || requesting) d.stop()
+    if (listening) d.stop()
     if (dictated) logTranscript(heard)
     const model = dictated ? d.model : 'Typed — no speech recognition'
     const band: ConfidenceBand = dictated ? d.band : 'HIGH'
@@ -752,14 +750,11 @@ export function DictationPanel({
     })
     toast({
       tone: 'success',
-      title: patientName ? 'Note saved as a draft' : 'To-do note saved',
-      detail: patientName ? `${patientName} · not signed` : 'On My Day, under Today’s to-do notes',
+      title: patientName ? 'Note saved as a draft' : 'To-Do Note saved',
+      detail: patientName ? `${patientName} · not signed` : 'On My Day, under To-Do Note',
     })
     onClose()
   }
-
-  const unsupported = d.supportNotice !== null
-  const notice = d.notice ?? d.supportNotice
 
   return (
     <Modal
@@ -767,8 +762,8 @@ export function DictationPanel({
       size="md"
       title={
         <span className="flex items-center gap-2">
-          <Icon name="Mic" size={16} />
-          {patientName ? 'Add note' : 'Today’s to-do note'}
+          <Icon name={initialMode === 'type' && !patientName ? 'PenLine' : 'Mic'} size={16} />
+          {patientName ? 'Add note' : 'To-Do Note'}
         </span>
       }
       subtitle={patientName ?? 'Not attached to a patient'}
@@ -793,143 +788,117 @@ export function DictationPanel({
         </>
       }
     >
-      <div className="space-y-4">
-        {/* The recorder. One control, large, unambiguous — absent where the browser cannot listen at all. */}
-        {/* The brief's `.voice-active`: accent border + glow only while the mic is live. */}
-        {!unsupported && (
-          <div
-            className={cx(
-              'flex flex-wrap items-center gap-x-4 gap-y-3 rounded-panel border bg-glass-fill-muted px-4 py-3.5',
-              'transition-[border-color,box-shadow] duration-[250ms]',
-              recording ? 'voice-active' : 'border-transparent',
-            )}
-          >
-            {d.phase === 'idle' || d.phase === 'unavailable' ? (
-              <>
-                <Button tone="ai" size="lg" icon="Mic" onClick={startDictation} className="w-full sm:w-auto">
-                  {d.phase === 'unavailable' ? 'Try dictation again' : 'Start dictation'}
-                </Button>
-                {!typing && (
-                  <Button tone="tertiary" icon="PenLine" onClick={typeInstead} className="w-full sm:w-auto">
-                    Type instead
-                  </Button>
-                )}
-              </>
-            ) : requesting ? (
-              <>
-                <RequestingLine className="min-w-0 flex-1" />
-                <Button size="sm" icon="X" onClick={d.stop}>
-                  Cancel
-                </Button>
-              </>
-            ) : recording ? (
-              <>
+      <div className="space-y-3">
+        {/*
+          One box, like a chat bar: always typable, the microphone inside it.
+          Press the mic and it listens; the words appear in the box as they are
+          spoken, after whatever was typed, and it is editable again on Stop.
+        */}
+        <div className="relative">
+          <TextArea
+            id="dictation-draft"
+            ref={draftRef}
+            rows={7}
+            value={body}
+            readOnly={listening}
+            aria-busy={recording}
+            aria-label="Your note"
+            onChange={(e) => setEdited(e.target.value)}
+            placeholder={recording ? 'Listening…' : unsupported ? 'Type the note…' : 'Type, or press the microphone and speak…'}
+            className={cx('bg-glass-fill-strong', !unsupported && 'pr-16', recording && 'voice-active')}
+          />
+          {/* Absent where the browser cannot listen at all — never greyed. */}
+          {!unsupported && (
+            <div className="absolute right-2 bottom-2">
+              {listening ? (
                 <button
                   type="button"
                   onClick={d.stop}
                   aria-label="Stop recording"
                   title="Stop recording"
-                  className="inline-flex size-12 shrink-0 items-center justify-center rounded-pill bg-abnormal text-white"
+                  className="inline-flex size-11 items-center justify-center rounded-pill bg-abnormal text-abnormal-on"
                 >
-                  <Icon name="Square" size={20} />
+                  <Icon name="Square" size={18} />
                 </button>
-                <Waveform bars={d.bars} active />
-                <span className="tabular shrink-0 text-[0.92em] font-medium text-ink-2">{formatClock(d.elapsedSec)}</span>
-              </>
+              ) : (
+                <IconButton
+                  icon="Mic"
+                  label={dictated ? 'Dictate more' : 'Dictate'}
+                  onClick={startDictation}
+                  className="bg-ai text-ai-on hover:brightness-110"
+                  size={18}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* While it listens: the waveform, the clock, and what is listening. */}
+        {listening && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[0.86em] text-ink-3">
+            {requesting ? (
+              <RequestingLine className="min-w-0 flex-1" />
             ) : (
               <>
-                <Button tone="ai" icon="Mic" onClick={dictateAgain}>
-                  Dictate again
-                </Button>
-                <span className="tabular ml-auto shrink-0 text-[0.88em] text-ink-3">{formatClock(d.elapsedSec)} recorded</span>
+                <Waveform bars={d.bars} active />
+                <span className="tabular font-medium text-ink-2">{formatClock(d.elapsedSec)}</span>
+                <span className="flex items-center gap-1.5">
+                  <Diamond size={10} />
+                  Listening · live recognition
+                </span>
+                <span>{d.model}</span>
+                <span>{LANGUAGES.find((l) => l.code === language)?.label}</span>
               </>
             )}
           </div>
         )}
 
-        {/* Why it could not run, said plainly. Typing is always the way on. */}
-        {notice ? (
-          <DictationNotice>{notice}</DictationNotice>
-        ) : (
-          (recording || (d.phase === 'review' && dictated)) && (
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[0.86em] text-ink-3">
-              <span className="flex items-center gap-1.5">
-                <Diamond size={10} />
-                {recording ? 'Listening · live recognition' : 'Live recognition'}
-              </span>
-              <span>{d.model}</span>
-              <span>{LANGUAGES.find((l) => l.code === language)?.label}</span>
-            </p>
-          )
-        )}
+        {/* Why it could not run, said plainly. The box above stays typeable. */}
+        {notice && !recording && <DictationNotice>{notice}</DictationNotice>}
 
-        {/* One box: the words appear in it as they are spoken, and it is editable once you stop. */}
-        {(showDraft || unsupported) && (
-          <div>
-            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-              <label htmlFor="dictation-draft" className="text-[0.92em] font-medium text-ink-2">
-                {recording ? 'Listening — the words appear as you speak' : dictated ? 'Draft — edit before saving' : 'Your note'}
-              </label>
-              {d.phase === 'review' && dictated && <Confidence band={d.band} score={d.scored ? d.confidence : undefined} />}
-            </div>
-            <TextArea
-              id="dictation-draft"
-              ref={draftRef}
-              rows={7}
-              value={body}
-              readOnly={recording || requesting}
-              aria-busy={recording}
-              onChange={(e) => setEdited(e.target.value)}
-              placeholder={recording ? 'Listening…' : 'Type the note…'}
-              className={cx('bg-glass-fill-strong', recording && 'border-ai')}
-            />
-            {d.phase === 'review' && (dictated || edited !== null) && (
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                {dictated ? (
-                  <WhyLink
-                    target={{
-                      touchpointId: `dictation-${patientId ?? UNATTACHED}`,
-                      capabilityId: 'AI-101',
-                      claim: 'This text is a transcription of what was said, not a clinical assessment of it.',
-                      confidence: d.confidence,
-                      band: d.band,
-                      computedAt: 'just now',
-                      inputs: [
-                        { label: 'Microphone audio, this session', source: d.model },
-                        { label: 'Recognition language', source: BCP47[language] },
-                      ],
-                      evidence: [
-                        'Words are transcribed as the browser’s recogniser heard them; it may add little or no punctuation.',
-                        'No clinical content is inferred, checked or corrected.',
-                      ],
-                      model: d.model,
-                      limits: [
-                        'A transcription confidence is not a statement about whether the content is correct.',
-                        'Accuracy falls with background noise, accent and unfamiliar drug names — read it before saving.',
-                        'Nothing is written to the record until Save is pressed.',
-                      ],
-                    }}
-                  />
-                ) : (
-                  <span />
-                )}
-                {edited !== null && (
-                  <span className="flex items-center gap-1.5 text-[0.86em] font-medium text-normal">
-                    <Icon name="PenLine" size={12} />
-                    edited by you
-                  </span>
-                )}
-              </div>
+        {/* One quiet provenance line once something was heard or changed. */}
+        {d.phase === 'review' && (dictated || edited !== null) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[0.86em] text-ink-3">
+            {dictated && (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <Diamond size={10} />
+                  Dictated · live · {d.model}
+                </span>
+                <Confidence band={d.band} score={d.scored ? d.confidence : undefined} />
+                <WhyLink
+                  target={{
+                    touchpointId: `dictation-${patientId ?? UNATTACHED}`,
+                    capabilityId: 'AI-101',
+                    claim: 'This text is a transcription of what was said, not a clinical assessment of it.',
+                    confidence: d.confidence,
+                    band: d.band,
+                    computedAt: 'just now',
+                    inputs: [
+                      { label: 'Microphone audio, this session', source: d.model },
+                      { label: 'Recognition language', source: BCP47[language] },
+                    ],
+                    evidence: [
+                      'Words are transcribed as the browser’s recogniser heard them; it may add little or no punctuation.',
+                      'No clinical content is inferred, checked or corrected.',
+                    ],
+                    model: d.model,
+                    limits: [
+                      'A transcription confidence is not a statement about whether the content is correct.',
+                      'Accuracy falls with background noise, accent and unfamiliar drug names — read it before saving.',
+                      'Nothing is written to the record until Save is pressed.',
+                    ],
+                  }}
+                />
+              </>
+            )}
+            {edited !== null && (
+              <span className="flex items-center gap-1.5 font-medium text-normal">
+                <Icon name="PenLine" size={12} />
+                edited by you
+              </span>
             )}
           </div>
-        )}
-
-        {d.phase === 'idle' && !typing && !unsupported && (
-          <p className="flex items-start gap-2 px-1 text-[0.88em] text-ink-3">
-            <Icon name="Info" size={13} className="mt-0.5 shrink-0" />
-            Your browser will ask to use the microphone. Speech is transcribed as you talk and stays editable; nothing
-            is saved until you press Save.
-          </p>
         )}
       </div>
     </Modal>

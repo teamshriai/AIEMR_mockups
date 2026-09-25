@@ -15,7 +15,7 @@
  * allergy flag, MLC flag, ABHA chip, optional risk strip.
  */
 
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import { AIBanner, Diamond } from '@/components/ai'
 import { Chip, Icon, cx } from '@/components/primitives'
@@ -37,6 +37,9 @@ export function PatientBanner({
 }) {
   const breakGlass = useSession((s) => s.breakGlassPatients[patient.id])
   const risk = RISK_STRIPS[patient.id]
+  const { pathname } = useLocation()
+  /** The record's own screens carry their own navigation between its parts. */
+  const onRecord = /^\/patient\/[^/]+\/(record|condition|results|reports|notes|prescriptions|appointments)$/.test(pathname)
 
   return (
     <div className={cx('shrink-0', className)}>
@@ -117,13 +120,16 @@ export function PatientBanner({
               ABHA {patient.abhaStatus}
             </Chip>
 
-            <Link
-              to={`/patient/${patient.uhid}/chart`}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-pill border border-glass-hairline bg-glass-fill-muted px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover"
-            >
-              <Icon name="FileText" size={13} />
-              Chart
-            </Link>
+            {/* The one door into the record. Absent on the record's own screens, which carry their own navigation. */}
+            {!onRecord && (
+              <Link
+                to={`/patient/${patient.uhid}/record`}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-pill border border-glass-hairline bg-glass-fill-muted px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover"
+              >
+                <Icon name="BookOpen" size={13} />
+                Patient record
+              </Link>
+            )}
           </div>
         </div>
 

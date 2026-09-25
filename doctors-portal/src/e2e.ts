@@ -21,6 +21,8 @@
  * after that point has no effect, which is the bug this file's existence fixes.
  */
 
+import type { DeclaredState } from './atlas/states'
+
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e')) {
   const KEY = 'indostates.session'
   try {
@@ -58,6 +60,18 @@ if (import.meta.env.DEV) {
       promptsFor: m.promptsFor,
       screenPrompts: m.SCREEN_PROMPTS,
     }
+  })
+}
+
+/**
+ * The acceptance harness walks the atlas's forced states — OFFLINE, and so on.
+ * There is no control for that on any screen, so DEV exposes the store's own
+ * `forceState` the same way. Absent from `dist`, like everything above.
+ */
+if (import.meta.env.DEV) {
+  void import('./store/ai').then((m) => {
+    ;(window as unknown as Record<string, unknown>).__forceState = (s: DeclaredState | 'DEFAULT' | null) =>
+      m.useAI.getState().forceState(s === 'DEFAULT' ? null : s)
   })
 }
 

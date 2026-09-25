@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { SuggestionCard } from '@/components/ai'
 import { SectionCard, Why } from '@/components/calm'
-import { Alert, Button, Icon, KeyValue } from '@/components/primitives'
+import { Button, Icon, KeyValue } from '@/components/primitives'
 import { PatientRecordLinks } from '@/components/recordlinks'
 import { ORDER_SUGGESTIONS, RISK_STRIPS, VITALS, encounter, noteSeedsFor } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
@@ -70,13 +70,6 @@ export function S0804({ id }: { id?: string }) {
         <>
           {/* Results, reports and the scan are one tap from the note — the ward round needs them beside it. */}
           <PatientRecordLinks patient={p} />
-          {p.allergies.length > 0 && (
-            <Alert tone="caution" title={`Documented allergy: ${p.allergies.join(', ')}`}>
-              {p.allergies.includes('Penicillin')
-                ? 'This constrains prescribing. A beta-lactam on this patient is a deterministic hard stop, not a warning — the Prescribe action will show it.'
-                : 'This constrains prescribing. The Prescribe action checks every drug against it and stops a match.'}
-            </Alert>
-          )}
         </>
       }
       rail={

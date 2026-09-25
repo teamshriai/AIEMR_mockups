@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 
 import { RankedSortControl } from '@/components/ai'
 import { Card, Chip, EmptyState, Icon, Table, Td, Th, Tr, cx } from '@/components/primitives'
+import type { CardTone } from '@/components/primitives'
 
 // ────────────────────────────────────────────── ARC-20 Dashboard / tile grid
 
@@ -78,6 +79,7 @@ export function Worklist<T>({
   pinnedLabel,
   variant = 'calm',
   noun = 'rows',
+  tone,
 }: {
   rows: T[]
   columns: WorklistColumn<T>[]
@@ -96,6 +98,8 @@ export function Worklist<T>({
   /** Rows pinned above the list — S-06-01's "needs attention" group. */
   pinned?: T[]
   pinnedLabel?: string
+  /** The list's colour, by what it lists — inpatients green, OPD blue, sign-offs purple. */
+  tone?: CardTone
   /**
    * `calm` is the default. It renders the same rows as one line each plus a
    * quiet context line,
@@ -268,7 +272,7 @@ export function Worklist<T>({
         </div>
 
         {all.length === 0 ? (
-          <Card strong>
+          <Card strong tone={tone}>
             <EmptyState icon="Inbox" why={emptyWhy} action={emptyAction} />
           </Card>
         ) : (
@@ -278,7 +282,7 @@ export function Worklist<T>({
            * map is announced, not printed — it is chrome, and the row is
            * already a button.
            */
-          <Card strong className="overflow-hidden">
+          <Card strong tone={tone} className="overflow-hidden">
             <ul aria-label={caption} className="divide-y divide-glass-hairline">
               {pinned && pinned.length > 0 && (
                 <>

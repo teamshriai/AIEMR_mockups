@@ -50,8 +50,7 @@ function Appointments({ patient: p }: { patient: Patient }) {
   return (
     <>
       {next ? (
-        <section className="glass-strong rounded-card border-l-4 border-l-brand px-5 py-4">
-          <p className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">Next appointment</p>
+        <SectionCard title="Next appointment" tone="schedule" bodyClassName="px-5 pb-4 sm:px-5 sm:pb-4">
           <div className="mt-2 flex flex-wrap items-start gap-4">
             <span className="grid size-12 shrink-0 place-items-center rounded-field bg-brand-soft text-brand">
               <Icon name={KIND_ICON[next.kind]} size={22} />
@@ -81,7 +80,7 @@ function Appointments({ patient: p }: { patient: Patient }) {
               </ul>
             </div>
           )}
-        </section>
+        </SectionCard>
       ) : (
         <SectionCard title="Next appointment">
           <EmptyState icon="CalendarCheck" why={`Nothing is booked for ${p.name}. A follow-up booked at the end of a visit would appear here.`} />

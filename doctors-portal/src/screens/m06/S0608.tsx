@@ -18,7 +18,7 @@ import { AIActionBar, Diamond } from '@/components/ai'
 import { SectionCard, Why } from '@/components/calm'
 import { PrintPreview } from '@/components/print'
 import { Alert, Button, Checkbox, Chip, Select } from '@/components/primitives'
-import { InputModeSwitch, VoiceField } from '@/components/voicefield'
+import { VoiceField } from '@/components/voicefield'
 import { encounter } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
 import { LANGUAGES, patient } from '@/data/kit'
@@ -73,7 +73,6 @@ export function S0608({ id }: { id?: string }) {
       loadingShape="form"
       states={['LOADING', 'ERROR', 'VALIDATION', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'SAVING', 'LOCKED', 'AI-OFF', 'AI-LOW']}
       chips={<Chip tone="neutral" icon="Globe">{LANGUAGES.find((l) => l.code === patientLanguage)?.label}</Chip>}
-      actions={<InputModeSwitch />}
       actionBar={
         <>
           <Button icon="Printer" disabled={!hasDraft} title={hasDraft ? undefined : 'Nothing to print yet'} onClick={() => setPrintOpen(true)}>

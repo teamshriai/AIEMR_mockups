@@ -21,7 +21,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { SuggestionCard } from '@/components/ai'
 import { Disclosure, Why } from '@/components/calm'
-import { Alert, Button } from '@/components/primitives'
+import { Button } from '@/components/primitives'
 import { PatientRecordLinks } from '@/components/recordlinks'
 import { encounter, noteSeedsFor } from '@/data/clinical'
 import { formatTime, NOW } from '@/data/format'
@@ -67,11 +67,6 @@ export function S0603({ id }: { id?: string }) {
           <>
             {/* Last time's results, reports and scans sit one tap from the consultation. */}
             <PatientRecordLinks patient={p} />
-            {p.allergies.length > 0 && (
-              <Alert tone="caution" title={`Documented allergy: ${p.allergies.join(', ')}`}>
-                This constrains prescribing. The Prescribe action checks every drug against it and stops a match.
-              </Alert>
-            )}
           </>
         }
         rail={<DifferentialRail encounterId={enc.id} patientId={p.id} />}

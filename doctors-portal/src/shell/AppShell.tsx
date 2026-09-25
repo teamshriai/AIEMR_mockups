@@ -7,11 +7,12 @@
  * A wall route therefore renders outside this shell entirely.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { isBare, screenForPath } from '@/atlas/registry'
 import { useSession } from '@/store/session'
+import { useUI } from '@/store/ui'
 
 import { AppBar } from './AppBar'
 import { AssistantBubble } from './Assistant'
@@ -21,7 +22,6 @@ import { OverlayHost } from './OverlayHost'
 export function AppShell() {
   const { pathname } = useLocation()
   const theme = useSession((s) => s.theme)
-  const [searchOpen, setSearchOpen] = useState(false)
 
   const spec = screenForPath(pathname)
   // The registry decides this, not the shell — a wall through its archetype,
@@ -42,7 +42,7 @@ export function AppShell() {
       if (typing) return
       if (e.key === '/') {
         e.preventDefault()
-        setSearchOpen(true)
+        useUI.getState().openSearch()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -58,14 +58,14 @@ export function AppShell() {
     return (
       <>
         <Outlet />
-        <OverlayHost searchOpen={searchOpen} onCloseSearch={() => setSearchOpen(false)} />
+        <OverlayHost />
       </>
     )
   }
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppBar onOpenSearch={() => setSearchOpen(true)} />
+      <AppBar />
 
       <div className="flex min-h-0 flex-1">
         <NavRail />
@@ -80,7 +80,7 @@ export function AppShell() {
       {/* Z7b — one bubble for the whole application, never per screen. */}
       <AssistantBubble />
 
-      <OverlayHost searchOpen={searchOpen} onCloseSearch={() => setSearchOpen(false)} />
+      <OverlayHost />
     </div>
   )
 }

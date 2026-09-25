@@ -16,6 +16,17 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
+/**
+ * The kinds of card that carry a colour. One purpose, one solid fill, on every
+ * screen (theme.css CARD FILLS, glass.css .card-toned). Anything not in this
+ * list stays glass on purpose.
+ */
+export type CardTone = 'patient' | 'inpatients' | 'schedule' | 'signoff' | 'notes' | 'discharge' | 'ai'
+
+export function toneClass(tone?: CardTone): string | false {
+  return tone !== undefined && `card-toned card-tone-${tone}`
+}
+
 // ─────────────────────────────────────────────────────────────────── Icon
 
 /** §5.5 — one 24px outline set at 2px stroke, with a 16px variant for tables. */
@@ -91,10 +102,18 @@ export function IconButton({
   icon,
   label,
   active,
+  compact,
   className,
   size = 16,
   ...rest
-}: ComponentPropsWithoutRef<'button'> & { icon: string; label: string; active?: boolean; size?: number }) {
+}: ComponentPropsWithoutRef<'button'> & {
+  icon: string
+  label: string
+  active?: boolean
+  /** 36px, for a card header — the 44px default is for chrome and rows. */
+  compact?: boolean
+  size?: number
+}) {
   return (
     <button
       type="button"
@@ -103,7 +122,8 @@ export function IconButton({
       aria-pressed={active}
       {...rest}
       className={cx(
-        'inline-flex size-11 shrink-0 items-center justify-center rounded-pill',
+        'inline-flex shrink-0 items-center justify-center rounded-pill',
+        compact ? 'size-9' : 'size-11',
         'transition-colors duration-150 ease-out-clinical',
         'hover:bg-glass-fill-hover disabled:opacity-45',
         active && 'bg-glass-fill-strong text-brand',
@@ -127,17 +147,20 @@ export function Card({
   children,
   strong,
   quiet,
+  tone,
   as: As = 'section',
   ...rest
 }: ComponentPropsWithoutRef<'section'> & {
   /** Retained for callers that asked for the strong fill explicitly; now the default. */
   strong?: boolean
   quiet?: boolean
+  /** A solid, highlighted fill for the kinds of card that carry a colour. */
+  tone?: CardTone
   as?: 'section' | 'div' | 'article' | 'aside'
 }) {
   void strong
   return (
-    <As {...rest} className={cx(quiet ? 'glass' : 'glass-strong', 'glass-card', className)}>
+    <As {...rest} className={cx(quiet ? 'glass' : 'glass-strong', 'glass-card', toneClass(tone), className)}>
       {children}
     </As>
   )
@@ -676,7 +699,7 @@ export function Stepper({
             className={cx(
               'flex size-7 items-center justify-center rounded-pill text-[0.82em] font-semibold',
               i < current
-                ? 'bg-normal text-white'
+                ? 'bg-normal text-normal-on'
                 : i === current
                   ? 'bg-brand text-brand-on'
                   : 'bg-glass-fill-muted text-ink-3',

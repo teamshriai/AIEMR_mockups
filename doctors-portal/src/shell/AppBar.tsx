@@ -18,13 +18,13 @@ import { PERSONA_LIST, PERSONA_SPECS } from '@/atlas/personas'
 import type { PersonaId } from '@/atlas/personas'
 import { Diamond } from '@/components/ai'
 import { MenuItem, MenuSection, Popover } from '@/components/popover'
-import { Chip, Icon, IconButton, Toggle } from '@/components/primitives'
+import { Icon, IconButton, Toggle } from '@/components/primitives'
 import { FACILITIES, LANGUAGES, STAFF_FOR_PERSONA, staff } from '@/data/kit'
 import { useAI } from '@/store/ai'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
-export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
+export function AppBar() {
   const navigate = useNavigate()
   const {
     persona,
@@ -42,6 +42,7 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   const aiEnabled = useAI((s) => s.aiEnabled)
   const setAiEnabled = useAI((s) => s.setAiEnabled)
   const toast = useUI((s) => s.toast)
+  const openSearch = useUI((s) => s.openSearch)
 
   const facility = FACILITIES.find((f) => f.code === facilityCode) ?? FACILITIES[0]
 
@@ -126,20 +127,14 @@ export function AppBar({ onOpenSearch }: { onOpenSearch: () => void }) {
         )}
       </Popover>
 
-      {/* GP-03 global search. Keyboard `/`. */}
-      <button
-        type="button"
-        onClick={onOpenSearch}
-        className="mx-auto hidden min-h-9 w-full max-w-md items-center gap-2.5 rounded-pill border border-glass-hairline bg-glass-fill-muted px-3.5 py-1.5 text-left text-ink-3 hover:bg-glass-fill-hover md:flex"
-      >
-        <Icon name="Search" size={15} />
-        <span className="flex-1 truncate text-[0.92em]">Patient, order, result, drug…</span>
-        <Chip tone="neutral" className="font-mono">
-          /
-        </Chip>
-      </button>
-      <div className="flex-1 md:hidden" />
-      <IconButton icon="Search" label="Search" onClick={onOpenSearch} className="md:hidden" />
+      <div className="flex-1" />
+
+      {/*
+        GP-03 patient search lives in the sidebar and on the `/` key. The app bar
+        carries no search field; this one icon exists only below the tablet
+        width, where there is no sidebar to hold it.
+      */}
+      <IconButton icon="Search" label="Patient search" onClick={openSearch} className="sm:hidden" />
 
       {/* The theme toggle. Night is the default; light is the explicit alternative. */}
       <IconButton

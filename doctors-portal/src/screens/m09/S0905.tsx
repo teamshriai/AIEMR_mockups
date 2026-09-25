@@ -111,9 +111,6 @@ function ResultDetail({ r }: { r: ResultRow }) {
       }
       actions={
         <>
-          <Button icon="ArrowLeft" onClick={() => navigate('/results/inbox')}>
-            Inbox
-          </Button>
           {enc && (
             <Button
               tone="primary"

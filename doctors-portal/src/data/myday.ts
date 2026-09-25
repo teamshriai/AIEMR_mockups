@@ -233,6 +233,8 @@ export interface PatientCount {
   icon: string
   /** ONE quiet line under the number — what is pending in that place, or how far the clinic has got. */
   sub?: string
+  /** The tile's solid colour — the same one that place takes on every other screen. */
+  tone?: 'patient' | 'inpatients'
 }
 
 /**
@@ -258,16 +260,14 @@ export function patientCounts(persona: PersonaId): PatientCount[] {
 
   /*
    * A PARTITION, not a set of interesting numbers. Every patient this
-   * consultant holds appears in exactly one tile, so the four add up to the
+   * consultant holds appears in exactly one tile, so the two add up to the
    * total and the total is true.
    *
-   * What this replaced: OPD · Ward · ICU · Follow-up. `Follow-up` is a visit
-   * TYPE inside OPD, not a place, so it counted three patients twice and made
-   * the header read 15 for a consultant with 13. It is a filter on the OPD
-   * screen (`?type=follow-up`) and belongs there. `ED` takes its place because
-   * the ED patient is on the inpatient list and was in no tile at all.
-   *
-   * VOCABULARY.md: Inpatients is the whole; Ward, ICU and ED are its parts.
+   * OPD · Inpatients — where the patient is, in the two words the nav uses.
+   * `Follow-up` is a visit TYPE inside OPD, so it is a filter on the OPD
+   * screen (`?type=follow-up`), never a count beside it. Ward, ICU and ED are
+   * parts of Inpatients (VOCABULARY.md), so they are the filter on the
+   * Inpatients screen rather than three tiles competing with the whole.
    */
   const bedOf = (r: (typeof INPATIENTS)[number]) => r.bed ?? ''
   const icu = INPATIENTS.filter((r) => bedOf(r).startsWith('ICU'))
@@ -283,10 +283,24 @@ export function patientCounts(persona: PersonaId): PatientCount[] {
   }
 
   return [
-    { key: 'opd', label: 'OPD', value: CLINIC_LIST.length, to: '/op-queue', icon: 'Stethoscope', sub: `${seen} seen · ${CLINIC_LIST.length - seen} to see` },
-    { key: 'ward', label: 'Ward', value: ward.length, to: '/ip/patients?location=ward', icon: 'BedDouble', sub: pendingIn(ward) },
-    { key: 'icu', label: 'ICU', value: icu.length, to: '/ip/patients?location=icu', icon: 'Activity', sub: pendingIn(icu) },
-    { key: 'ed', label: 'ED', value: ed.length, to: '/ip/patients?location=ed', icon: 'Siren', sub: pendingIn(ed) },
+    {
+      key: 'opd',
+      label: 'OPD',
+      value: CLINIC_LIST.length,
+      to: '/op-queue',
+      icon: 'Stethoscope',
+      sub: `${seen} seen · ${CLINIC_LIST.length - seen} to see`,
+      tone: 'patient',
+    },
+    {
+      key: 'inpatients',
+      label: 'Inpatients',
+      value: ward.length + icu.length + ed.length,
+      to: '/ip/patients',
+      icon: 'BedDouble',
+      sub: pendingIn([...ward, ...icu, ...ed]),
+      tone: 'inpatients',
+    },
   ]
 }
 
@@ -730,7 +744,7 @@ export function cardFor(patientId: string, lastSeen: Date, urgency: Urgency): My
     active_timers: [],
     quick_actions: {
       markSeen: `POST /api/patients/${patientId}/seen`,
-      openChart: `/patient/${p.uhid}/chart`,
+      openChart: `/patient/${p.uhid}/record`,
       callNurse: `tel:${extensionFor(bed)}`,
     },
   }

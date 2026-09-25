@@ -200,6 +200,7 @@ export function S0503() {
         {view === 'list' ? (
           <Worklist
             variant="calm"
+            tone="patient"
             rows={listRows}
             columns={columns}
             rowKey={(r) => r.token}

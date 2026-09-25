@@ -156,7 +156,7 @@ export function S1301() {
       ? 'Nobody is predicted to go home today. A patient becoming afebrile with no active orders would appear here.'
       : scope === 'tomorrow'
         ? 'Nobody is predicted for tomorrow.'
-        : 'Everyone on the ward is on a discharge path.'
+        : 'Every inpatient is on a discharge path.'
 
   return (
     <Screen
@@ -188,7 +188,8 @@ export function S1301() {
           </div>
 
           <SectionCard
-            title={scope === 'today' ? 'Going home today' : scope === 'tomorrow' ? 'Tomorrow' : 'Not on a discharge path'}
+            tone="discharge"
+            title={scope === 'today' ? 'Discharges today' : scope === 'tomorrow' ? 'Tomorrow' : 'Not on a discharge path'}
             meta={<span className="tabular text-[0.86em] text-ink-3">as of {formatTime(COMPUTED_AT)}</span>}
           >
             {scoped.length === 0 ? (

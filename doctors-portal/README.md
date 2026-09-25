@@ -22,12 +22,12 @@ clinical record and the audit trail persisted to `localStorage`.
 
 ## What is here
 
-**59 screens**, 16 of them Tier 1. Five are modals or overlays rather than
+**58 screens**, 16 of them Tier 1. Five are modals or overlays rather than
 routes, because that is what the atlas says they are.
 
 | Module | Screens | What it is |
 |---|---|---|
-| **M-06** Outpatient Consultation | 10 | The clinician's workspace — where the record is written |
+| **M-06** Outpatient Consultation | 9 | The clinician's workspace — where the record is written |
 | **M-09** Orders, CPOE & Results | 7 | One order pipeline, and the loop closed on results |
 | **M-08** Inpatient, doctor slice | 3 | Inpatients, the ward-round note, the admission assessment |
 | **M-13** Discharge & Transitions | 4 | The handover that decides whether the patient comes back |
@@ -66,9 +66,10 @@ a cited answer.
 `VOCABULARY.md` fixes one word per thing and `npm run verify:vocab` fails the
 build on a banned term. The rule that was broken: **`Inpatients` is the whole;
 `Ward`, `ICU` and `ED` are its parts** — a tile labelled `Ward` must never open a
-screen titled `My inpatients`. My Day's four tiles are now a partition
-(`OPD · Ward · ICU · ED`), so they sum to the total; `Follow-up` was a subset of
-`OPD` and made the header read 15 for a consultant with 13.
+screen titled `My inpatients`. My Day's two tiles are a partition
+(`OPD · Inpatients`), so they sum to the total, and the Ward / ICU / ED split is
+the filter on the Inpatients screen; `Follow-up` was a subset of `OPD` and made
+the header read 15 for a consultant with 13.
 
 ### My Day — the calm home
 
@@ -94,10 +95,10 @@ sentence in a clinical record is a different problem from a half-typed one.
 Every note field in the portal — the consultation note, the ward-round note, the
 admission assessment, the six discharge-summary sections, patient instructions,
 the addendum dialog, the co-sign return comment and the teleconsult note — is a
-`VoiceField` (`src/components/voicefield.tsx`). It opens **empty**. In the
-default **Voice** mode it is one mic button with *or type* a tap away; in
-**Type** mode the textarea is primary and the mic sits by the label. The
-preference is per person (`Voice · Type` in the page header) and persists.
+`VoiceField` (`src/components/voicefield.tsx`). It opens **empty**, as a chat
+bar: a box that is always typable with the microphone inside it. Press the mic
+and it listens; the words land in the field after whatever was typed, and it is
+editable again on Stop. There is no mode, no start button and no switch.
 Dictated text is the clinician's own words and needs no Accept / Edit / Reject;
 signing confirms it. **Tidy up with AI** sits under any field with text and
 offers sentence case and the full words for every banned abbreviation, with an

@@ -19,16 +19,21 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { Icon, cx } from '@/components/primitives'
+import { Icon, cx, toneClass } from '@/components/primitives'
+import type { CardTone } from '@/components/primitives'
 import type { Urgency } from '@/data/myday'
+
+export type { CardTone }
 
 // ───────────────────────────────────────────────────────────── SectionCard
 
 export function SectionCard({
   title,
+  leading,
   meta,
   action,
   accent,
+  tone,
   lift,
   fill,
   children,
@@ -36,11 +41,19 @@ export function SectionCard({
   bodyClassName,
 }: {
   title: ReactNode
+  /** Before the title, outside the heading — an icon button that belongs to the card. */
+  leading?: ReactNode
   /** Quiet, right of the title — a count, a time. */
   meta?: ReactNode
   action?: ReactNode
-  /** A 4px left border in this urgency's hue — how a card earns prominence. */
+  /** A solid fill in this urgency's hue — how an attention card earns prominence. */
   accent?: Urgency
+  /**
+   * A solid fill naming what the card is about — a patient, the inpatients, the
+   * day, the AI. The colour is the meaning, so it is never decorative, and the
+   * same purpose takes the same colour on every screen.
+   */
+  tone?: CardTone
   /** The hover lift. Cards and tiles only, never rows. */
   lift?: boolean
   /** The body grows to the card's height, so the card can fill its track. */
@@ -51,10 +64,10 @@ export function SectionCard({
 }) {
   return (
     <section
-      style={accent ? { borderLeftColor: `var(--color-pri-${accent})` } : undefined}
       className={cx(
         'glass-strong relative min-w-0 overflow-hidden rounded-card',
-        accent && 'border-l-4',
+        /* Urgency is the louder signal, so it wins over a tone. */
+        accent ? `card-toned card-urgency-${accent}` : toneClass(tone),
         lift && 'lift',
         fill && 'flex h-full flex-col',
         className,
@@ -62,6 +75,7 @@ export function SectionCard({
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 pt-4 pb-2 sm:px-5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          {leading}
           <h2 className="text-[0.8em] font-bold tracking-[0.08em] text-ink-2 uppercase">{title}</h2>
           {meta}
         </div>
