@@ -5,6 +5,13 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  /**
+   * Where the built app is mounted. The dev server and the harness run at `/`;
+   * a hosted copy under a path (shri-ai.org/dev/doctor) is built with
+   * `PORTAL_BASE=/dev/doctor/ npm run build`. The router, the CT slice paths
+   * and index.html all read this, so nothing else needs to know.
+   */
+  base: process.env.PORTAL_BASE ?? '/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
