@@ -750,8 +750,8 @@ export function DictationPanel({
     })
     toast({
       tone: 'success',
-      title: patientName ? 'Note saved as a draft' : 'To-Do Note saved',
-      detail: patientName ? `${patientName} · not signed` : 'On My Day, under To-Do Note',
+      title: patientName ? 'Note saved as a draft' : 'To-do note saved',
+      detail: patientName ? `${patientName} · not signed` : 'On My Day, under To-do notes',
     })
     onClose()
   }
@@ -763,7 +763,7 @@ export function DictationPanel({
       title={
         <span className="flex items-center gap-2">
           <Icon name={initialMode === 'type' && !patientName ? 'PenLine' : 'Mic'} size={16} />
-          {patientName ? 'Add note' : 'To-Do Note'}
+          {patientName ? 'Add note' : 'To-do note'}
         </span>
       }
       subtitle={patientName ?? 'Not attached to a patient'}

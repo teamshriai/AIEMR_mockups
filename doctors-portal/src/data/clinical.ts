@@ -1700,6 +1700,28 @@ export const RESULT_TRENDS: Record<string, { at: Date; value: number }[]> = {
   ],
 }
 
+/**
+ * A result's series as chart points, each flagged against the reference
+ * range. The latest point takes `critical` where the result itself is
+ * critical — the range alone cannot say that. Shaped as `TrendPoint`.
+ */
+export function trendPointsFor(r: ResultRow): { at: Date; value: number; flag?: 'high' | 'low' | 'critical' }[] {
+  const series = RESULT_TRENDS[r.id] ?? []
+  const bounded = r.refLow !== undefined && r.refHigh !== undefined
+  return series.map((s, i) => ({
+    at: s.at,
+    value: s.value,
+    flag:
+      i === series.length - 1 && r.critical
+        ? 'critical'
+        : bounded && s.value > r.refHigh!
+          ? 'high'
+          : bounded && s.value < r.refLow!
+            ? 'low'
+            : undefined,
+  }))
+}
+
 export function result(id: string): ResultRow {
   const r = RESULTS.find((x) => x.id === id)
   if (!r) throw new Error(`Unknown result ${id}`)
@@ -1928,7 +1950,7 @@ export const NEEDS_ATTENTION: WorklistRow[] = [
   },
 ]
 
-/** The rest of the consultant's inpatient list — 6 inpatients in total. */
+/** The rest of the consultant's inpatient list — 7 inpatients in total. */
 export const INPATIENTS: WorklistRow[] = [
   ...NEEDS_ATTENTION,
   {
@@ -1974,7 +1996,51 @@ export const INPATIENTS: WorklistRow[] = [
   },
 ]
 
-/** The OP clinic — 18 booked, 4 seen, next token MED-042. */
+/**
+ * The OP clinic's booked rows. Four of these patients are also in a bed
+ * (`INPATIENTS`), and `opdRows` leaves them out, so today's OPD is six — the
+ * next token MED-042.
+ */
+/**
+ * Today's teleconsult queue (S-27-02). My Day lists these patients in OPD
+ * with a video icon; the Telehealth screen ranks and opens them.
+ */
+export interface TeleRow {
+  id: string
+  patientId: string
+  scheduledAt: Date
+  reason: string
+  videoReady: boolean
+  rankReason: string
+}
+
+export const TELECONSULT_QUEUE: TeleRow[] = [
+  {
+    id: 'E-118430',
+    patientId: 'SD-P-10',
+    scheduledAt: minutesAhead(25),
+    reason: 'Chronic plaque psoriasis, review after topical therapy',
+    videoReady: true,
+    rankReason: 'On time, video tested, photographs already uploaded',
+  },
+  {
+    id: 'E-118441',
+    patientId: 'SD-P-01',
+    scheduledAt: minutesAhead(55),
+    reason: 'Thyroid results discussion',
+    videoReady: true,
+    rankReason: 'Results are back and normal — likely a short consultation',
+  },
+  {
+    id: 'E-118452',
+    patientId: 'SD-P-09',
+    scheduledAt: minutesAhead(85),
+    reason: 'Dialysis access site concern',
+    videoReady: false,
+    rankReason: 'No video on the patient side — needs a telephone fallback arranged',
+  },
+]
+
 export interface ClinicRow {
   token: string
   patientId: string

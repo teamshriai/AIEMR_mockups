@@ -20,9 +20,9 @@ import { SectionCard, Why } from '@/components/calm'
 import { ConfirmDialog } from '@/components/overlays'
 import { Button, Card, Chip, EmptyState, Icon, KeyValue, cx } from '@/components/primitives'
 import { VoiceField } from '@/components/voicefield'
-import { encounterForPatient, maybeEncounter } from '@/data/clinical'
-import type { Encounter } from '@/data/clinical'
-import { formatDateTime, formatTime, minutesAhead, NOW } from '@/data/format'
+import { TELECONSULT_QUEUE, encounterForPatient, maybeEncounter } from '@/data/clinical'
+import type { Encounter, TeleRow } from '@/data/clinical'
+import { formatDateTime, formatTime, NOW } from '@/data/format'
 import { patient, patientByAnyId } from '@/data/kit'
 import type { Patient } from '@/data/kit'
 import { selectAiActive, useAI } from '@/store/ai'
@@ -33,41 +33,8 @@ import { noteActionLabel } from '../m06/record/S0611'
 
 // ───────────────────────────────────────────── S-27-02 · the queue
 
-interface TeleRow {
-  id: string
-  patientId: string
-  scheduledAt: Date
-  reason: string
-  videoReady: boolean
-  rankReason: string
-}
-
-const QUEUE: TeleRow[] = [
-  {
-    id: 'E-118430',
-    patientId: 'SD-P-10',
-    scheduledAt: minutesAhead(25),
-    reason: 'Chronic plaque psoriasis, review after topical therapy',
-    videoReady: true,
-    rankReason: 'On time, video tested, photographs already uploaded',
-  },
-  {
-    id: 'E-118441',
-    patientId: 'SD-P-01',
-    scheduledAt: minutesAhead(55),
-    reason: 'Thyroid results discussion',
-    videoReady: true,
-    rankReason: 'Results are back and normal — likely a short consultation',
-  },
-  {
-    id: 'E-118452',
-    patientId: 'SD-P-09',
-    scheduledAt: minutesAhead(85),
-    reason: 'Dialysis access site concern',
-    videoReady: false,
-    rankReason: 'No video on the patient side — needs a telephone fallback arranged',
-  },
-]
+/** Today's teleconsult queue — shared with My Day's OPD list (`TELECONSULT_QUEUE` in data/clinical.ts). */
+const QUEUE: TeleRow[] = TELECONSULT_QUEUE
 
 // ───────────────────────────────────────────── who is on the call
 

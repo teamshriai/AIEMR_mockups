@@ -1,12 +1,13 @@
 /* ===========================================================================
-   Glass surface system + base element styles.
-   Five rules keep the glass accessible; three of them are atlas hard rules:
-     1. Text never sits on the page gradient — always on a glass fill.
+   Surface system + base element styles.
+   The class names are the glass era's (`.glass`, `.glass-strong`) so every
+   screen keeps working; what they draw is now a solid panel with a hairline.
+   Four rules; three of them are atlas hard rules:
+     1. Text never sits on the page — always on a panel.
      2. Colour is never the only carrier (§5.3): icon + text label always.
-     3. Clinical semantics never get glass — a critical chip is opaque.
+     3. A card's soft hue names its function, the same on every screen; strong
+        colour is spent on meaning — red critical, amber warning, blue normal.
      4. The diamond is reserved for AI, 12px, AI-indigo, nowhere else (§5.5).
-     5. backdrop-filter is capped at two stacked layers, with an opaque
-        fallback where the browser has no support.
    =========================================================================== */
 
 @layer base {
@@ -33,24 +34,14 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* The page backdrop: a soft gradient plus two blurred blooms, matching the
-     reference image's pale ice field with indigo and mint hazes. Fixed, so it
-     never scrolls out from under the glass. */
+  /* The page backdrop: one flat colour. Fixed, so it never scrolls out from
+     under the panels. */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
     z-index: -1;
-    background:
-      radial-gradient(60rem 40rem at 12% -10%, var(--color-bloom-a), transparent 60%),
-      radial-gradient(50rem 38rem at 105% 15%, var(--color-bloom-b), transparent 62%),
-      linear-gradient(
-        135deg,
-        var(--color-page-from) 0%,
-        var(--color-page-via) 40%,
-        var(--color-page-via-2, var(--color-page-via)) 70%,
-        var(--color-page-to) 100%
-      );
+    background: var(--color-page-from);
     transition: background 200ms var(--ease-out-clinical);
   }
 
@@ -89,136 +80,47 @@
 @layer components {
   /* ------------------------------------------------------------- SURFACES */
 
-  /* The workhorse. A frosted card, as in the reference image. */
+  /* The workhorse: a solid panel, a hairline edge, a shadow you barely see. */
   .glass {
     background-color: var(--color-glass-fill);
     border: 1px solid var(--color-glass-border);
     box-shadow: var(--shadow-glass);
-    backdrop-filter: blur(var(--blur-glass)) saturate(140%);
-    -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
   }
 
-  /* For anything carrying body copy or dense data — rule 1 above. */
+  /* For anything carrying body copy or dense data — the same panel now. */
   .glass-strong {
     background-color: var(--color-glass-fill-strong);
     border: 1px solid var(--color-glass-border);
     box-shadow: var(--shadow-glass);
-    backdrop-filter: blur(var(--blur-glass-lg)) saturate(150%);
-    -webkit-backdrop-filter: blur(var(--blur-glass-lg)) saturate(150%);
   }
 
-  /* A highlighted card: a solid fill that carries its own inks. Every utility
-     inside compiles to var(--color-…), so redefining the variables here
-     re-themes the rows, badges, dividers and buttons a card holds without a
-     component knowing. Clinical chips keep their own soft fills and are not
-     touched. One class per tone sets --card-fill. */
+  /* A toned card: a soft tint of the hue that names its function, with the
+     ordinary inks on it — the same rows, badges and buttons as any card, only
+     the ground changes. Two inks step darker (theme.css) so they hold 4.5:1 on
+     any tint. Clinical chips keep their own soft fills. One class per tone sets
+     the tint and its edge. */
   .card-toned {
-    background-color: var(--card-fill);
-    border-color: var(--color-card-border);
-    /* Inherited colour resolves at the body, so the card states its own. */
-    color: var(--color-card-ink);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    --color-ink: var(--color-card-ink);
-    --color-ink-2: var(--color-card-ink-2);
-    --color-ink-3: var(--color-card-ink-3);
+    background-color: var(--card-tint);
+    border-color: var(--card-line);
     --color-ink-muted: var(--color-card-ink-muted);
-    --color-glass-fill: rgb(0 0 0 / 0.16);
-    --color-glass-fill-strong: rgb(0 0 0 / 0.16);
-    --color-glass-fill-muted: rgb(0 0 0 / 0.12);
-    --color-glass-fill-hover: var(--color-card-hover);
-    --color-glass-inset: var(--color-card-inset);
-    --color-glass-hairline: var(--color-card-hairline);
-    --color-glass-border: rgb(255 255 255 / 0.3);
-    --color-brand: #ffffff;
-    --color-brand-soft: rgb(0 0 0 / 0.18);
-    --color-brand-on: var(--card-fill);
-    --color-pri-critical-ink: #fee2e2;
-    --color-pri-warning-ink: #fde68a;
-    --color-pri-pending-ink: #fef08a;
-    --color-pri-normal-ink: #dbeafe;
-    --color-pri-safe-ink: #bbf7d0;
-    --color-pri-critical-soft: rgb(0 0 0 / 0.3);
-    --color-ai: #e0e7ff;
-    --color-ai-soft: rgb(0 0 0 / 0.16);
-    /* Clinical hues on a solid card: the same pale ink in both themes, on a
-       dark translucent chip fill, so a chip or a bare status word reads on
-       any fill. Critical stays a solid chip — pale pink carrying dark red. */
-    --color-normal: #86efac;
-    --color-normal-soft: rgb(0 0 0 / 0.34);
-    --color-caution: #fcd34d;
-    --color-caution-soft: rgb(0 0 0 / 0.34);
-    --color-abnormal: #fecdd3;
-    --color-abnormal-soft: rgb(0 0 0 / 0.34);
-    --color-critical: #fecaca;
-    --color-critical-on: #7f1d1d;
-    --color-critical-soft: rgb(0 0 0 / 0.28);
-    --color-isolation: #d8b4fe;
-    --color-isolation-soft: rgb(0 0 0 / 0.28);
-    --color-inactive: #e5e7eb;
-    --color-inactive-soft: rgb(0 0 0 / 0.28);
+    --color-caution: var(--color-card-caution);
   }
-  .card-tone-patient { --card-fill: var(--color-card-patient); }
-  .card-tone-inpatients { --card-fill: var(--color-card-inpatients); }
-  .card-tone-schedule { --card-fill: var(--color-card-schedule); }
-  .card-tone-signoff { --card-fill: var(--color-card-signoff); }
-  .card-tone-discharge { --card-fill: var(--color-card-discharge); }
-  .card-tone-ai { --card-fill: var(--color-card-ai); }
-  /* Gold takes dark ink — white on it would not clear AA. */
-  .card-tone-notes {
-    --card-fill: var(--color-card-notes);
-    --color-card-border: rgb(0 0 0 / 0.18);
-    --color-ink: var(--color-card-dark-ink);
-    --color-ink-2: var(--color-card-dark-ink-2);
-    --color-ink-3: var(--color-card-dark-ink-3);
-    --color-ink-muted: rgb(23 23 28 / 0.62);
-    --color-glass-fill: rgb(0 0 0 / 0.08);
-    --color-glass-fill-strong: rgb(0 0 0 / 0.08);
-    --color-glass-fill-muted: rgb(0 0 0 / 0.06);
-    --color-glass-fill-hover: rgb(0 0 0 / 0.08);
-    --color-glass-inset: rgb(0 0 0 / 0.1);
-    --color-glass-hairline: rgb(0 0 0 / 0.16);
-    --color-glass-border: rgb(0 0 0 / 0.18);
-    --color-brand: #17171c;
-    --color-brand-soft: rgb(0 0 0 / 0.12);
-    --color-brand-on: var(--color-card-notes);
-    --color-normal: #14532d;
-    --color-normal-soft: rgb(255 255 255 / 0.4);
-    --color-caution: #7c3d05;
-    --color-caution-soft: rgb(255 255 255 / 0.4);
-    --color-abnormal: #991b1b;
-    --color-abnormal-soft: rgb(255 255 255 / 0.4);
-    --color-critical: #7f1d1d;
-    --color-critical-on: #ffffff;
-    /* The open-count pill: dark on gold, not yellow on gold. */
-    --color-pri-pending-fill: #17171c;
-    --color-pri-on-warning: var(--color-card-notes);
-  }
-  /* An attention card takes its top urgency; the status shapes and count
-     pills inside go pale so they still stand on the deep fill. */
-  .card-urgency-critical {
-    --card-fill: var(--color-card-critical);
-    --color-pri-critical: #fecaca;
-    --color-pri-critical-ink: #ffffff;
-    --color-pri-critical-fill: #ffffff;
-    --color-pri-on-critical: var(--card-fill);
-  }
-  .card-urgency-warning {
-    --card-fill: var(--color-card-warning);
-    --color-pri-warning: #fde68a;
-    --color-pri-warning-ink: #ffffff;
-    --color-pri-warning-fill: #ffffff;
-    --color-pri-on-warning: var(--card-fill);
-    --color-caution: #ffffff;
-  }
-  .card-urgency-pending {
-    --card-fill: var(--color-card-pending);
-    --color-pri-pending: #fef08a;
-    --color-pri-pending-ink: #ffffff;
-    --color-pri-pending-fill: #ffffff;
-    --color-pri-on-warning: var(--card-fill);
-    --color-caution: #ffffff;
-  }
+  .card-tone-patient { --card-tint: var(--color-card-patient-tint); --card-line: var(--color-card-patient-line); }
+  .card-tone-inpatients { --card-tint: var(--color-card-inpatients-tint); --card-line: var(--color-card-inpatients-line); }
+  .card-tone-schedule { --card-tint: var(--color-card-schedule-tint); --card-line: var(--color-card-schedule-line); }
+  .card-tone-signoff { --card-tint: var(--color-card-signoff-tint); --card-line: var(--color-card-signoff-line); }
+  .card-tone-notes { --card-tint: var(--color-card-notes-tint); --card-line: var(--color-card-notes-line); }
+  .card-tone-discharge { --card-tint: var(--color-card-discharge-tint); --card-line: var(--color-card-discharge-line); }
+  .card-tone-ai { --card-tint: var(--color-card-ai-tint); --card-line: var(--color-card-ai-line); }
+  .card-tone-investigations { --card-tint: var(--color-card-investigations-tint); --card-line: var(--color-card-investigations-line); }
+  .card-tone-medication { --card-tint: var(--color-card-medication-tint); --card-line: var(--color-card-medication-line); }
+  .card-tone-stroke { --card-tint: var(--color-card-stroke-tint); --card-line: var(--color-card-stroke-line); }
+  /* An attention card takes its top urgency's faint tint — and nothing more.
+     The coloured rule across the top is gone: the rows' own shapes say how
+     urgent each item is, and a card does not need to shout it as well. */
+  .card-urgency-critical { --card-tint: var(--color-card-critical-tint); --card-line: var(--color-card-critical-line); }
+  .card-urgency-warning { --card-tint: var(--color-card-warning-tint); --card-line: var(--color-card-warning-line); }
+  .card-urgency-pending { --card-tint: var(--color-card-pending-tint); --card-line: var(--color-card-pending-line); }
 
   /* Secondary, cooler fill — the reference image's #e6edef cards. */
   .glass-muted {
@@ -226,7 +128,7 @@
     border: 1px solid var(--color-glass-hairline);
   }
 
-  /* Nested inside a .glass parent: no second backdrop-filter (rule 5). */
+  /* Nested inside a panel: a faint well, set off by its hairline. */
   .glass-inset {
     background-color: var(--color-glass-inset);
     border: 1px solid var(--color-glass-hairline);
@@ -236,8 +138,6 @@
      is a property of the bar rather than of the page scrolling under it. */
   .chrome-bar {
     background-color: var(--color-chrome);
-    backdrop-filter: blur(var(--blur-glass));
-    -webkit-backdrop-filter: blur(var(--blur-glass));
   }
 
   /* Floating menus and dropdown lists. Contrast is a property of the menu,
@@ -246,19 +146,15 @@
     background-color: var(--color-menu);
     border: 1px solid var(--color-menu-border);
     box-shadow: var(--shadow-menu);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 
   /* Drawers, modals and toasts. They sit over the whole page, so whatever is
-     under them must not show through — the same near-opaque fill as a menu,
-     in both themes. The blur stays so the surface still reads as glass. */
+     under them must not show through — the same opaque fill as a menu, in
+     both themes, lifted off the page by the one real shadow in the system. */
   .overlay-surface {
     background-color: var(--color-menu);
     border: 1px solid var(--color-menu-border);
     box-shadow: var(--shadow-menu);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 
   .glass-card {
@@ -277,40 +173,25 @@
     box-shadow: var(--shadow-glass-lg);
   }
 
-  /* The brief's hover: the card lifts 2px over .25s. For CARDS and TILES a
-     pointer can rest on — never for list rows, which must not move under a
-     reader mid-scan. Reduced motion zeroes the duration globally (above). */
+  /* A card a pointer can rest on answers with a slightly firmer shadow — it
+     does not move. Nothing on a clinical screen jumps under the reader. The
+     class name is the old hover lift's, kept so the cards that use it follow. */
   .lift {
-    transition: all var(--duration-lift) var(--ease-lift);
+    transition: box-shadow 150ms var(--ease-out-clinical);
   }
 
   .lift:hover {
-    transform: translateY(-2px);
     box-shadow: var(--shadow-glass-lg);
   }
 
-  /* Opaque fallback where backdrop-filter is unavailable, so text never lands
-     on the raw gradient. */
-  @supports not (backdrop-filter: blur(1px)) {
-    .glass,
-    .glass-strong {
-      background-color: color-mix(in srgb, var(--color-page-from) 75%, white);
-    }
-
-    [data-theme='night'] .glass,
-    [data-theme='night'] .glass-strong {
-      background-color: color-mix(in srgb, var(--color-page-to) 80%, black);
-    }
-  }
-
   /* ------------------------------------------------------- AI SURFACES
-     The reference image's indigo hero card. §5.3 puts AI deliberately outside
-     the clinical range, so this gradient is used for AI and nothing else. */
+     A solid AI-indigo, for AI actions and nothing else — §5.3 keeps AI outside
+     the clinical range. No gradient: the colour is the signal, not the sheen.
+     White on it measures 6.3:1 in both themes. */
   .ai-surface {
-    background-image: linear-gradient(135deg, var(--color-ai-grad-from), var(--color-ai-grad-to));
+    background-color: var(--color-ai-grad-from);
     color: #fff;
-    border: 1px solid rgb(255 255 255 / 0.18);
-    box-shadow: var(--shadow-glass);
+    border: 1px solid transparent;
   }
 
   /* AIP-01 inline ghost content: 85% opacity, left accent rule in AI-indigo.
@@ -348,13 +229,208 @@
   }
 }
 
-/* The brief's `.voice-active`: an AI-accent border and glow while the
-   microphone is live. The one place the accent is allowed. Declared as a
-   utility — in the components layer it lost to the element's own
-   `border-transparent`, and the glow never rendered. */
+/* The brief's `.voice-active`: an AI-accent border while the microphone is
+   live — the one place the accent is allowed. A border, not a glow. Declared
+   as a utility — in the components layer it lost to the element's own
+   `border-transparent`. */
 @utility voice-active {
   border-color: var(--color-ai-accent);
-  box-shadow: 0 0 12px var(--color-ai-glow);
+}
+
+/* The assistant bubble's glow: a slow indigo breath that invites a click
+   without asking for one — no flash, no scale. It owns the bubble's whole
+   shadow, because Tailwind's ring writes box-shadow too. Reduced motion stops
+   the breath (the base rule above) and leaves the static ring. */
+@keyframes assistant-breathe {
+  0%,
+  100% {
+    box-shadow:
+      var(--shadow-bubble),
+      0 0 0 1px var(--color-glass-hairline),
+      0 0 0 3px var(--color-ai-glow);
+  }
+
+  50% {
+    box-shadow:
+      var(--shadow-bubble),
+      0 0 0 1px var(--color-glass-hairline),
+      0 0 0 8px var(--color-ai-glow),
+      0 0 26px 6px var(--color-ai-glow);
+  }
+}
+
+@utility assistant-glow {
+  box-shadow:
+    var(--shadow-bubble),
+    0 0 0 1px var(--color-glass-hairline),
+    0 0 0 3px var(--color-ai-glow);
+  animation: assistant-breathe 3.6s ease-in-out infinite;
+}
+
+/* Side panels slide in from the edge they belong to; the backdrop behind a
+   modal one fades rather than snapping. Opening only — closing is instant, so
+   Esc never waits on an animation. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@utility drawer-in {
+  animation: drawer-in 240ms var(--ease-out-clinical) both;
+}
+
+@utility fade-in {
+  animation: fade-in 180ms ease-out both;
+}
+
+/* The calendar's month change: the new month slides in from the side you
+   moved towards, and fades up. Short, and off under reduced motion. */
+@keyframes cal-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cal-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility cal-in-next {
+  animation: cal-in-next 180ms var(--ease-out-clinical) both;
+}
+
+@utility cal-in-prev {
+  animation: cal-in-prev 180ms var(--ease-out-clinical) both;
+}
+
+/* A date's card popping out of the calendar: a small rise from the side of its
+   date and a fade, quick enough to feel like the date opened rather than a
+   window arriving. Off under reduced motion. */
+@keyframes peek-in-below {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes peek-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility peek-in-below {
+  transform-origin: top center;
+  animation: peek-in-below 200ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+@utility peek-in-above {
+  transform-origin: bottom center;
+  animation: peek-in-above 200ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+/* The date card's own surface: lifted well off the page, with a soft glow of
+   the brand blue under it — the one place the system allows a glow, because
+   the card is a moment, not a surface you work on. */
+@utility peek-card {
+  background-color: var(--color-menu);
+  border: 1px solid var(--color-menu-border);
+  border-radius: 16px;
+  box-shadow:
+    0 28px 56px -16px var(--color-peek-glow),
+    0 12px 28px -8px rgb(15 23 42 / 0.22),
+    0 0 0 1px rgb(255 255 255 / 0.04) inset;
+}
+
+/* Its head: a soft wash with a faint grid of dots, like a page from a diary. */
+@utility peek-head {
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--color-peek-dots) 1px, transparent 0),
+    linear-gradient(135deg, var(--color-peek-from), var(--color-peek-to));
+  background-size:
+    14px 14px,
+    100% 100%;
+}
+
+/* My Day's Today card: the one solid card the flat system keeps, at the
+   doctor's request — the day as a slate-blue card with white inks, as it was
+   in the highlighted-card design. Scoped to that card alone. Everything the
+   timeline draws inside it (the rail, the badge rings, the Now band and pill,
+   the done checks, the coloured counts, the white "Now · …" pill) re-resolves
+   from the tokens below. A utility, so it wins over `.glass-strong` and
+   `rounded-card`. The fill is the same in both themes; white on it is 7:1, and
+   the faintest ink (78%) about 4.9:1. */
+@utility card-today {
+  --card-fill: #3d5a80;
+  background-color: var(--card-fill);
+  border-color: rgb(255 255 255 / 0.25);
+  border-radius: 18px;
+  color: #ffffff;
+  --color-ink: #ffffff;
+  --color-ink-2: rgb(255 255 255 / 0.9);
+  --color-ink-3: rgb(255 255 255 / 0.82);
+  --color-ink-muted: rgb(255 255 255 / 0.78);
+  --color-glass-fill: rgb(0 0 0 / 0.16);
+  --color-glass-fill-strong: rgb(0 0 0 / 0.16);
+  --color-glass-fill-muted: rgb(0 0 0 / 0.12);
+  --color-glass-fill-hover: rgb(255 255 255 / 0.12);
+  --color-glass-inset: rgb(0 0 0 / 0.18);
+  --color-glass-hairline: rgb(255 255 255 / 0.22);
+  --color-glass-border: rgb(255 255 255 / 0.3);
+  --color-brand: #ffffff;
+  --color-brand-soft: rgb(0 0 0 / 0.18);
+  --color-brand-on: #3d5a80;
+  --color-pri-normal: #3b82f6;
+  --color-pri-normal-fill: #2563eb;
+  --color-pri-normal-soft: rgb(59 130 246 / 0.2);
+  --color-pri-on-normal: #ffffff;
+  --color-pri-safe-soft: rgb(34 197 94 / 0.18);
+  --color-pri-critical-ink: #fee2e2;
+  --color-pri-warning-ink: #fde68a;
+  --color-pri-pending-ink: #fef08a;
+  --color-pri-normal-ink: #dbeafe;
+  --color-pri-safe-ink: #bbf7d0;
+  --color-ai: #e0e7ff;
 }
 
 @layer utilities {

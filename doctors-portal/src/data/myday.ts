@@ -1,17 +1,14 @@
 /**
- * S-06-01 · My Day — the day plan, the patient counts and the attention list.
+ * S-06-01 · My Day — the day plan, the patient lists and the attention list.
  *
  * Everything here is DERIVED from the §8 sample-data kit and the records in
- * `clinical.ts`. Nothing is invented (§8.6), with two labelled exceptions noted
- * at their definitions: `WARD_EXTENSIONS` and the OPD cohort size.
+ * `clinical.ts`. Nothing is invented (§8.6), with one labelled exception noted
+ * at its definition: `WARD_EXTENSIONS`.
  *
- * On the OPD count. §8.6 says "18 in clinic, 4 seen", but the §8 cast is ten
- * patients and three of them are an inpatient, a stroke transfer and an ED
- * MLC — so eighteen distinct outpatient slots cannot be filled without
- * inventing patients, which §8 forbids. The counts here are therefore the
- * cohort sizes of the MODELLED rows (OPD 7), and the figure 18 does not appear
- * on screen. The brief asks for only the numbers that mean something, so
- * dropping it is also the calmer reading.
+ * On OPD. §8.6 says "18 in clinic, 4 seen", but the §8 cast cannot fill
+ * eighteen outpatient slots without inventing patients, which §8 forbids. The
+ * OPD list is therefore the MODELLED clinic rows, less anyone who is in a bed
+ * (`opdRows`) — six today — and the figure 18 does not appear on screen.
  */
 
 import type { ConfidenceBand } from '@/atlas/confidence'
@@ -24,6 +21,7 @@ import {
   INPATIENTS,
   REFERRALS,
   RESULTS,
+  TELECONSULT_QUEUE,
   RISK_STRIPS,
   TIMELINE,
   VITALS,
@@ -32,10 +30,12 @@ import {
   ordersFor,
   timelineFor,
 } from './clinical'
-import type { DischargeRow } from './clinical'
+import type { TeleRow } from './clinical'
+import { TYPE_LABEL, inpatientRows, isAdmittedHere, opdRows, pendingAdmissions } from './admissions'
+import type { Admissions } from './admissions'
 import { NOW, formatTime, minutesAgo } from './format'
 import { maybePatient, patient } from './kit'
-import { NETWORK_TODAY, PAGING_LOG, STROKE_CASES, STROKE_TASKS } from './stroke'
+import { NETWORK_TODAY, PAGING_LOG, STROKE_CASES, STROKE_TASKS, TELESTROKE_QUEUE } from './stroke'
 
 // ═══════════════════════════════════════════════════════════ The day plan
 
@@ -62,6 +62,16 @@ export interface DayBlock {
   band?: ConfidenceBand
 }
 
+/** What the day plan reads from the session, so a count follows what was done in it. */
+export interface DayState {
+  admissions?: Admissions
+  /** Result ids acknowledged this session. */
+  acknowledgements?: Record<string, unknown>
+  /** Co-sign queue items actioned this session. */
+  coSigned?: Record<string, unknown>
+}
+
+
 /** The session opened 70 minutes before the fixed moment — 07:30. */
 const SHIFT_START = minutesAgo(70)
 
@@ -70,13 +80,17 @@ function at(hour: number, minute = 0): Date {
 }
 
 /** The clinical day — P-04 and P-05. */
-function clinicalDay(persona: PersonaId): DayBlock[] {
-  const toReview = RESULTS.filter((r) => !r.acknowledged)
+function clinicalDay(persona: PersonaId, state: DayState): DayBlock[] {
+  const { admissions = {}, acknowledgements = {}, coSigned = {} } = state
+  const toReview = RESULTS.filter((r) => !r.acknowledged && acknowledgements[r.id] === undefined)
   const critical = toReview.filter((r) => r.critical)
-  const attention = INPATIENTS.filter((r) => r.risk === 'HIGH').length
-  const followUps = CLINIC_LIST.filter((c) => isFollowUp(c.patientId)).length
+  const inpatients = inpatientRows(admissions)
+  const clinic = opdRows(admissions)
+  const attention = inpatients.filter((r) => r.risk === 'HIGH').length
+  const followUps = clinic.filter((c) => isFollowUp(c.patientId)).length
   const tele = encounter('E-118430')
-  const dischargesToday = DISCHARGE_BOARD.filter((d) => d.likelihood === 'Today').length
+  const cosign = COSIGN_QUEUE.filter((c) => coSigned[c.id] === undefined)
+  const discharges = DISCHARGE_BOARD.filter((d) => d.likelihood === 'Today')
   const canSign = persona === 'P-04'
 
   const blocks: DayBlock[] = [
@@ -104,7 +118,7 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
        * seen count, not the next token — the home screen says what the block
        * IS; the OPD list says where it has got to.
        */
-      summary: `${CLINIC_LIST.length} patients · ${CLINIC_LIST.length - followUps} new · ${followUps} follow-ups`,
+      summary: `${clinic.length} patients · ${clinic.length - followUps} new · ${followUps} follow-ups`,
       icon: 'Stethoscope',
       to: '/op-queue',
     },
@@ -120,7 +134,7 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
       id: 'round',
       at: at(10, 30),
       title: 'Ward round',
-      summary: `${INPATIENTS.length} patients · ${attention} need attention`,
+      summary: `${inpatients.length} patients · ${attention} need attention`,
       emphasis: [{ text: `${attention} need attention`, tone: 'warning' }],
       icon: 'BedDouble',
       to: '/ip/patients',
@@ -129,7 +143,7 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
       id: 'cosign',
       at: at(12, 0),
       title: canSign ? 'Co-sign' : 'Awaiting co-sign',
-      summary: `${COSIGN_QUEUE.length} pending`,
+      summary: `${cosign.length} pending`,
       icon: 'PenLine',
       to: '/clinician/cosign',
     },
@@ -146,7 +160,7 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
       id: 'discharge',
       at: at(16, 30),
       title: 'Discharge round',
-      summary: `${dischargesToday} predicted today`,
+      summary: `${discharges.length} predicted today`,
       icon: 'DoorOpen',
       to: '/discharge/board',
       ai: 'AI-610',
@@ -160,7 +174,8 @@ function clinicalDay(persona: PersonaId): DayBlock[] {
 
 /** The stroke day — P-35, P-36, P-38. */
 function strokeDay(): DayBlock[] {
-  const active = STROKE_CASES.filter((c) => c.status === 'active').length
+  const activeCases = STROKE_CASES.filter((c) => c.status === 'active')
+  const active = activeCases.length
 
   return [
     {
@@ -209,9 +224,14 @@ function strokeDay(): DayBlock[] {
 
 const STROKE_PERSONAS: PersonaId[] = ['P-35', 'P-36', 'P-38']
 
-export function dayPlanFor(persona: PersonaId): DayBlock[] {
+/** The stroke network's clinicians, whose day is the network's rather than a clinic's and a ward's. */
+export function isStrokePersona(persona: PersonaId): boolean {
+  return STROKE_PERSONAS.includes(persona)
+}
+
+export function dayPlanFor(persona: PersonaId, state: DayState = {}): DayBlock[] {
   if (STROKE_PERSONAS.includes(persona)) return strokeDay()
-  return clinicalDay(persona)
+  return clinicalDay(persona, state)
 }
 
 /** The block covering `NOW` — rendered as in progress. */
@@ -222,20 +242,49 @@ export function currentBlock(blocks: DayBlock[]): DayBlock | undefined {
   })
 }
 
-// ═══════════════════════════════════════════════════════ My patients — counts
+// ═══════════════════════════════════════════════════════ My patients — lists
 
-export interface PatientCount {
-  key: string
+/**
+ * One row of a My Day patient list: the name, one kind tag and — only when
+ * it says something — one status tag. Nothing else: vitals, results and the
+ * reason for admission are one tap away, on the patient's record.
+ */
+/**
+ * A row's status, drawn as a picture first and a word second: a coloured icon,
+ * then a small secondary word. Colour only where it means something — red
+ * critical, amber needs attention, blue normal — and neutral otherwise.
+ */
+export interface RowMark {
   label: string
-  value: number
-  /** Where the count opens, already narrowed. */
-  to: string
   icon: string
-  /** ONE quiet line under the number — what is pending in that place, or how far the clinic has got. */
-  sub?: string
-  /** The tile's solid colour — the same one that place takes on every other screen. */
-  tone?: 'patient' | 'inpatients'
+  tone: 'critical' | 'attention' | 'normal' | 'neutral'
+  /**
+   * The icon alone, for a state that would otherwise repeat the same word down
+   * the list (Follow-up, Seen). The word stays in the tooltip and the row's
+   * accessible name, so it is never the icon's alone to carry.
+   */
+  iconOnly?: boolean
 }
+
+export interface PatientListRow {
+  patientId: string
+  /**
+   * Where the patient is — OPD, Ward, ICU, ED, or a telestroke spoke — as the
+   * icon that leads the row. The label is read out and shown on hover.
+   */
+  place: { icon: string; label: string }
+  /** Quiet text after the name — a bed, a spoke. */
+  detail?: string
+  /** What kind of visit this is, in OPD: New patient or Follow-up. */
+  kind?: RowMark
+  /** One status at most, the one that matters most. */
+  status?: RowMark
+  /** Already seen: the row goes quiet. */
+  done?: boolean
+}
+
+const FOLLOW_UP: RowMark = { label: 'Follow-up', icon: 'History', tone: 'neutral', iconOnly: true }
+const NEW_PATIENT: RowMark = { label: 'New patient', icon: 'UserPlus', tone: 'normal' }
 
 /**
  * A clinic row is a follow-up where the patient's documented scenario says so,
@@ -247,61 +296,116 @@ export function isFollowUp(patientId: string): boolean {
   return (TIMELINE[patientId]?.length ?? 0) > 0
 }
 
-export function patientCounts(persona: PersonaId): PatientCount[] {
-  if (STROKE_PERSONAS.includes(persona)) {
-    const active = STROKE_CASES.filter((c) => c.status === 'active')
-    return [
-      { key: 'active', label: 'Active', value: active.length, to: '/stroke/wall', icon: 'Brain', sub: `${NETWORK_TODAY.activations} activations today` },
-      { key: 'transfer', label: 'Transfer', value: active.filter((c) => c.originFacility !== c.destinationFacility).length, to: '/stroke/wall', icon: 'Ambulance', sub: 'drip-and-ship in progress' },
-      { key: 'sites', label: 'Sites', value: 4, to: '/stroke/network/sites', icon: 'Network', sub: '1 without CT' },
-      { key: 'registry', label: 'Follow-up', value: NETWORK_TODAY.transfers, to: '/stroke/registry', icon: 'ClipboardList', sub: '90-day outcomes due' },
-    ]
-  }
+/** A teleconsult's row: the video icon for its place, and when the call is — or that it will be a phone call. */
+const TELECONSULT_PLACE: PatientListRow['place'] = { icon: 'Video', label: 'Teleconsult' }
 
-  /*
-   * A PARTITION, not a set of interesting numbers. Every patient this
-   * consultant holds appears in exactly one tile, so the two add up to the
-   * total and the total is true.
-   *
-   * OPD · Inpatients — where the patient is, in the two words the nav uses.
-   * `Follow-up` is a visit TYPE inside OPD, so it is a filter on the OPD
-   * screen (`?type=follow-up`), never a count beside it. Ward, ICU and ED are
-   * parts of Inpatients (VOCABULARY.md), so they are the filter on the
-   * Inpatients screen rather than three tiles competing with the whole.
-   */
-  const bedOf = (r: (typeof INPATIENTS)[number]) => r.bed ?? ''
-  const icu = INPATIENTS.filter((r) => bedOf(r).startsWith('ICU'))
-  const ed = INPATIENTS.filter((r) => bedOf(r).startsWith('ED'))
-  const ward = INPATIENTS.filter(
-    (r) => bedOf(r) !== '' && !bedOf(r).startsWith('ICU') && !bedOf(r).startsWith('ED'),
-  )
+function teleStatus(t: TeleRow): RowMark {
+  return t.videoReady
+    ? { label: formatTime(t.scheduledAt), icon: 'Clock', tone: 'neutral' }
+    : { label: 'Telephone only', icon: 'Phone', tone: 'attention' }
+}
 
-  const seen = CLINIC_LIST.filter((r) => r.status === 'Seen').length
-  const pendingIn = (rows: typeof INPATIENTS) => {
-    const n = rows.reduce((sum, r) => sum + r.pending.length, 0)
-    return n === 0 ? 'nothing pending' : `${n} pending`
-  }
+/**
+ * Today's OPD, who is next first. A patient being admitted leads, because the
+ * hospital is acting on them now; then the waiting room, then those still to
+ * arrive, then those already seen.
+ *
+ * The teleconsult queue belongs here too — they are today's outpatients, seen
+ * by video. A patient on it carries the video icon instead of the person, and
+ * the call's time as their status; one who is on both lists appears once, as
+ * the teleconsult. Anyone in a bed stays on Inpatients, so the two lists remain
+ * a partition.
+ */
+export function opdList(admissions: Admissions = {}): PatientListRow[] {
+  const teleFor = (patientId: string) => TELECONSULT_QUEUE.find((t) => t.patientId === patientId)
+  const inBed = new Set(inpatientRows(admissions).map((r) => r.patientId))
+  const rank = (patientId: string, status: string) =>
+    admissions[patientId]
+      ? 0
+      : teleFor(patientId)
+        ? 2.5
+        : ({ Waiting: 1, 'In room': 2, 'Not arrived': 3, Seen: 4 } as Record<string, number>)[status] ?? 5
 
-  return [
-    {
-      key: 'opd',
-      label: 'OPD',
-      value: CLINIC_LIST.length,
-      to: '/op-queue',
-      icon: 'Stethoscope',
-      sub: `${seen} seen · ${CLINIC_LIST.length - seen} to see`,
-      tone: 'patient',
-    },
-    {
-      key: 'inpatients',
-      label: 'Inpatients',
-      value: ward.length + icu.length + ed.length,
-      to: '/ip/patients',
-      icon: 'BedDouble',
-      sub: pendingIn([...ward, ...icu, ...ed]),
-      tone: 'inpatients',
-    },
-  ]
+  const clinic = opdRows(admissions)
+    .slice()
+    .sort((a, b) => rank(a.patientId, a.status) - rank(b.patientId, b.status) || a.bookedAt.getTime() - b.bookedAt.getTime())
+    .map<PatientListRow>((r) => {
+      const tele = admissions[r.patientId] ? undefined : teleFor(r.patientId)
+      return {
+        patientId: r.patientId,
+        place: tele ? TELECONSULT_PLACE : { icon: 'UserRound', label: 'OPD' },
+        kind: isFollowUp(r.patientId) ? FOLLOW_UP : NEW_PATIENT,
+        status: admissions[r.patientId]
+          ? { label: 'Admission in progress', icon: 'Hourglass', tone: 'attention' }
+          : tele
+            ? teleStatus(tele)
+            : r.status === 'Waiting'
+              ? { label: 'Waiting', icon: 'Clock', tone: 'attention' }
+              : r.status === 'In room'
+                ? { label: 'In room', icon: 'DoorOpen', tone: 'normal' }
+                : r.status === 'Seen'
+                  ? { label: 'Seen', icon: 'Check', tone: 'neutral', iconOnly: true }
+                  : { label: 'Not arrived', icon: 'CircleDashed', tone: 'neutral' },
+        done: !admissions[r.patientId] && !tele && r.status === 'Seen',
+      }
+    })
+
+  // Teleconsults booked for someone not already in the clinic list, and not in a bed.
+  const listed = new Set(clinic.map((r) => r.patientId))
+  const teleOnly = TELECONSULT_QUEUE.filter((t) => !listed.has(t.patientId) && !inBed.has(t.patientId))
+    .slice()
+    .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
+    .map<PatientListRow>((t) => ({
+      patientId: t.patientId,
+      place: TELECONSULT_PLACE,
+      kind: isFollowUp(t.patientId) ? FOLLOW_UP : NEW_PATIENT,
+      status: teleStatus(t),
+    }))
+
+  return [...clinic, ...teleOnly]
+}
+
+/** Where a bed is, in the three words the Inpatients screen filters by, and the icon each gets. */
+function placeOf(bed: string | null): PatientListRow['place'] {
+  if (bed?.startsWith('ICU')) return { icon: 'HeartPulse', label: 'ICU' }
+  if (bed?.startsWith('ED')) return { icon: 'Ambulance', label: 'ED' }
+  return { icon: 'BedDouble', label: 'Ward' }
+}
+
+/**
+ * Everyone in a bed, in the Inpatients screen's order. Ward, ICU or ED is the
+ * row's icon and its bed, so it carries no location tag as well. One status
+ * tag at most, and the one that matters most wins: a high risk before a new
+ * admission before a discharge.
+ */
+export function inpatientList(admissions: Admissions = {}): PatientListRow[] {
+  const goingHome = new Set(DISCHARGE_BOARD.filter((d) => d.likelihood === 'Today').map((d) => d.patientId))
+  return inpatientRows(admissions).map<PatientListRow>((r) => ({
+    patientId: r.patientId,
+    place: placeOf(r.bed),
+    detail: r.bed ?? undefined,
+    status:
+      r.risk === 'HIGH'
+        ? { label: 'High risk', icon: 'TriangleAlert', tone: 'critical' }
+        : isAdmittedHere(r.patientId, admissions)
+          ? { label: 'Admitted today', icon: 'LogIn', tone: 'neutral' }
+          : goingHome.has(r.patientId)
+            ? { label: 'Discharge today', icon: 'LogOut', tone: 'neutral' }
+            : undefined,
+  }))
+}
+
+/** The stroke network's own list: the spokes' requests waiting on a telestroke consult. */
+export function telestrokeList(): PatientListRow[] {
+  return TELESTROKE_QUEUE.map<PatientListRow>((r) => ({
+    patientId: r.patientId,
+    place: { icon: 'Video', label: 'Telestroke' },
+    detail: `${r.site} · NIHSS ${r.nihss}`,
+    status:
+      r.status === 'In session'
+        ? { label: 'In session', icon: 'CircleDot', tone: 'normal' }
+        : { label: 'Waiting', icon: 'Clock', tone: 'attention' },
+  }))
 }
 
 // ═══════════════════════════════════════════════════ Pending today
@@ -310,7 +414,7 @@ export function patientCounts(persona: PersonaId): PatientCount[] {
  * The third question the calm home now answers: what must I finish before I
  * leave? Documentation and sign-offs only — the things that are the doctor's
  * to close, not things to read. Results are deliberately absent: a critical
- * one interrupts through "Needs my attention"; the rest live in Results.
+ * one interrupts through Attention in Needs Action; the rest live in Results.
  */
 export interface FinishItem {
   key: string
@@ -414,13 +518,6 @@ export function toFinishFor(
   return items.filter((i) => i.count > 0)
 }
 
-// ═══════════════════════════════════════════════════ Discharges today
-
-/** AI-610's "Today" rows, with the one thing standing in each one's way. */
-export function dischargesToday(): DischargeRow[] {
-  return DISCHARGE_BOARD.filter((r) => r.likelihood === 'Today')
-}
-
 // ══════════════════════════════════════════════ Needs my attention (3–5 max)
 
 /** The brief's three colour rules, as a closed set. */
@@ -445,9 +542,13 @@ const URGENCY_ORDER: Record<Urgency, number> = { critical: 0, warning: 1, pendin
 
 /**
  * Derived, ranked, and capped at five — "List only 3–5 items max". Anything
- * that does not make the cut is still reachable through `See all`.
+ * that does not make the cut is still on the Inpatients screen, from the nav.
  */
-export function attentionFor(persona: PersonaId, acknowledged: Record<string, unknown> = {}): AttentionItem[] {
+export function attentionFor(
+  persona: PersonaId,
+  acknowledged: Record<string, unknown> = {},
+  admissions: Admissions = {},
+): AttentionItem[] {
   if (STROKE_PERSONAS.includes(persona)) {
     return STROKE_CASES.filter((c) => c.status === 'active').map((c) => ({
       id: `stroke-${c.id}`,
@@ -492,6 +593,24 @@ export function attentionFor(persona: PersonaId, acknowledged: Record<string, un
       ai: 'AI-201',
       band: 'HIGH',
       since: row.chronologicalAt,
+    })
+  }
+
+  /*
+   * 🟠 A critical admission still waiting on the hospital. Orange, like the
+   * patient's chip: it is being handled, so it never outranks a critical
+   * result that nobody has answered for.
+   */
+  for (const a of pendingAdmissions(admissions)) {
+    if (a.priority !== 'critical') continue
+    if (items.some((i) => i.patientId === a.patientId)) continue
+    items.push({
+      id: `admission-${a.patientId}`,
+      patientId: a.patientId,
+      urgency: 'warning',
+      reason: 'Admission in progress',
+      detail: `${TYPE_LABEL[a.type]} · Critical · ${a.bed ? `bed ${a.bed} allocated` : 'waiting for bed'}`,
+      since: NOW,
     })
   }
 

@@ -119,6 +119,67 @@ console.log(
     : `\n---- ${bad.length} suggested prompt${bad.length === 1 ? '' : 's'} answer nothing ----`,
 )
 
+/**
+ * The bubble's own list, which is composed rather than static: per screen, per
+ * patient in context, per session. Walk every bubble screen with every patient
+ * it could name (and with none, for a route that names nobody), under a plain
+ * session, a stroke persona's, and sessions that have just signed a note and
+ * just requested an admission. Each list must hold 1 to the cap, repeat no
+ * answer, and resolve every entry to a cited answer in the same context.
+ */
+const composed = await evaluate(`
+  (() => {
+    const { resolveAnswer, suggestionsFor, maxSuggestions, bubbleScreens, patientIds } = window.__rag
+    const base = { persona: 'P-04', acknowledgements: {}, seenAt: {}, admissions: {}, breakGlass: {} }
+    const admission = {
+      id: 'ADM-audit', patientId: 'SD-P-01', type: 'ward', priority: 'urgent',
+      requestedBy: 'Dr. Ananya Iyer', requestedById: 'audit', requestedAt: Date.now(),
+    }
+    const sessions = {
+      plain: base,
+      stroke: { ...base, persona: 'P-35' },
+      signed: { ...base, recent: { event: 'NOTE.SIGNED', subject: 'SD-P-03' } },
+      admitted: { ...base, admissions: { 'SD-P-01': admission }, recent: { event: 'ADMISSION.REQUESTED', subject: 'SD-P-01' } },
+    }
+    const rows = []
+    for (const s of bubbleScreens) {
+      const patients = s.patientScoped ? [undefined, ...patientIds] : [undefined]
+      for (const patientId of patients) {
+        for (const [session, live] of Object.entries(sessions)) {
+          const ctx = { screenId: s.id, patientId, patientScoped: Boolean(patientId), live }
+          const list = suggestionsFor(ctx)
+          const answers = list.map((text) => resolveAnswer(text, ctx))
+          const problems = []
+          if (list.length === 0) problems.push('no suggestions')
+          if (list.length > maxSuggestions) problems.push(list.length + ' suggestions')
+          if (new Set(answers.map((a) => a.body)).size !== answers.length) problems.push('repeats an answer')
+          answers.forEach((a, i) => {
+            if (a.kind !== 'cited' || a.citations.length === 0) problems.push('"' + list[i] + '" → ' + a.kind)
+            if (a.about && patientId && a.about !== patientId) problems.push('"' + list[i] + '" is about ' + a.about)
+          })
+          rows.push({ screenId: s.id, patientId: patientId ?? '—', session, list, problems })
+        }
+      }
+    }
+    return rows
+  })()
+`)
+
+const failing = composed.filter((r) => r.problems.length > 0)
+const fixed = new Set(report.map((r) => r.text))
+const personalised = composed.filter((r) => r.patientId !== '—' && r.list.some((t) => !fixed.has(t)))
+console.log(`\n${composed.length} composed suggestion lists (screen × patient × session)`)
+console.log(`${personalised.length} of them carry a question read from the patient's record`)
+for (const r of failing.slice(0, 40)) {
+  console.log(`  FAIL  ${r.screenId}  ${r.patientId}  ${r.session}  ${r.problems.join(' · ')}`)
+}
+if (failing.length > 40) console.log(`  …and ${failing.length - 40} more`)
+console.log(
+  failing.length === 0
+    ? 'OK: every composed list is 1–4 cited, distinct answers'
+    : `---- ${failing.length} composed list${failing.length === 1 ? '' : 's'} fail ----`,
+)
+
 ws.close()
 chrome.kill()
 try {
@@ -126,4 +187,4 @@ try {
 } catch {
   /* Chrome is still flushing; the OS will reap /tmp. */
 }
-process.exit(bad.length === 0 ? 0 : 1)
+process.exit(bad.length === 0 && failing.length === 0 ? 0 : 1)

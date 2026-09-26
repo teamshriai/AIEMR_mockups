@@ -53,7 +53,7 @@ export function S1802({ caseId, onClose }: { caseId: string | null; onClose: () 
   )
 
   return (
-    <div className="fixed inset-0 z-90 overflow-y-auto bg-[rgb(10_14_26/0.55)] backdrop-blur-[4px]">
+    <div className="fixed inset-0 z-90 overflow-y-auto bg-[rgb(10_14_26/0.55)]">
       <div className="mx-auto max-w-5xl p-4 md:p-8">
         <div className="overlay-surface glass-card p-5 md:p-7">
           <header className="flex flex-wrap items-start justify-between gap-3">

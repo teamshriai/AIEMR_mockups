@@ -10,6 +10,7 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
+import { useAdmissionService } from '@/api/admissions'
 import { isBare, screenForPath } from '@/atlas/registry'
 import { useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
@@ -22,6 +23,8 @@ import { OverlayHost } from './OverlayHost'
 export function AppShell() {
   const { pathname } = useLocation()
   const theme = useSession((s) => s.theme)
+  // The front office's side of an admission, running wherever the doctor is in the app.
+  useAdmissionService()
 
   const spec = screenForPath(pathname)
   // The registry decides this, not the shell — a wall through its archetype,

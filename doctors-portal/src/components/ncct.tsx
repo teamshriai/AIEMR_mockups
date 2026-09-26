@@ -45,12 +45,15 @@ export function NcctViewer({
   footer,
   initialSlice,
   className,
+  compact,
 }: {
   study: NcctStudy
   overlays?: NcctOverlay[]
   footer?: ReactNode
   initialSlice?: number
   className?: string
+  /** A narrow frame — a shorter slider and an icon-only zoom, so the controls stay on one line. */
+  compact?: boolean
 }) {
   const mid = Math.max(1, Math.round(study.slices / 2))
   const [slice, setSlice] = useState(initialSlice ?? mid)
@@ -207,7 +210,7 @@ export function NcctViewer({
             value={slice}
             onChange={(e) => setSlice(Number(e.target.value))}
             aria-label="Slice"
-            className="h-9 w-28 accent-[var(--color-brand)]"
+            className={cx('h-9 accent-[var(--color-brand)]', compact ? 'w-16' : 'w-28')}
           />
           <button
             type="button"
@@ -227,10 +230,15 @@ export function NcctViewer({
         <button
           type="button"
           onClick={() => setZoom((z) => (z >= 2 ? 1 : Number((z + 0.5).toFixed(1))))}
-          className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-pill bg-glass-inset px-3 text-[0.86em] font-medium text-ink-2 hover:bg-glass-fill-hover"
+          aria-label={zoom === 1 ? 'Zoom' : `Zoom ${Math.round(zoom * 100)}%`}
+          title={zoom === 1 ? 'Zoom' : `Zoom ${Math.round(zoom * 100)}%`}
+          className={cx(
+            'ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-pill bg-glass-inset text-[0.86em] font-medium text-ink-2 hover:bg-glass-fill-hover',
+            compact ? 'min-w-9 justify-center px-2' : 'px-3',
+          )}
         >
           <Icon name="Scan" size={14} />
-          {zoom === 1 ? 'Zoom' : `${Math.round(zoom * 100)}%`}
+          {(!compact || zoom !== 1) && (zoom === 1 ? 'Zoom' : `${Math.round(zoom * 100)}%`)}
         </button>
       </div>
 

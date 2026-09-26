@@ -1,65 +1,44 @@
 /**
  * My Day's own components.
  *
- * The brief for this screen is a brief about restraint: "scannable in under
- * three seconds", "no long paragraphs anywhere", "do NOT overload with icons",
- * "lots of white space". The first cut took that as "draw as little as
- * possible" and the result read as unfinished — text floating on the page
- * gradient, cards with no interior structure. This cut keeps the restraint in
- * the INFORMATION and puts the definition back in the SURFACES: one frosted
- * card per section, a visible rail through the day, one icon badge per
- * activity, big tabular numbers, a tinted status block per attention item.
+ * My Day is a work surface, not a dashboard: three panels rather than seven
+ * cards. The left panel holds the Schedule and Patients Today, the right one
+ * Needs Action, and the month sits under both. What used to be a card is a
+ * section inside a panel, set off by a hairline and a quiet label rather than
+ * a frame, a tint and a shadow of its own.
  *
- * What is NOT on the surface, deliberately: AI provenance marks next to patient
- * names, predicted-wait chips, seen counts, next-token hints, the clinician's
- * registration number. All of it is one tap away on the inner screens.
+ * Restraint is in the INFORMATION as much as the surface. What is NOT here,
+ * deliberately: AI provenance marks next to patient names, predicted-wait
+ * chips, seen counts, next-token hints, the clinician's registration number,
+ * and "See all" links that only repeat the nav. All of it is one tap away.
+ *
+ * Three type levels only — panel title, the name on a row, its metadata —
+ * in three weights (400/500/600).
  *
  * One rule is kept from §5.3 rather than the brief, because it is a safety
  * rule: colour is never the only carrier. Every status renders a SHAPE and a
  * WORD as well as a hue — a filled octagon and "Critical lab report identified", not a red dot.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Diamond } from '@/components/ai'
 import { Icon, IconButton, cx } from '@/components/primitives'
-import type { DischargeRow as DischargeRowData } from '@/data/clinical'
-import type { DayBlock, FinishItem, PatientCount, Urgency } from '@/data/myday'
+import type { DayBlock, FinishItem, PatientListRow, RowMark, Urgency } from '@/data/myday'
 import { NOW, formatDateTime, formatTime } from '@/data/format'
 import { patient } from '@/data/kit'
 import type { VoiceNote } from '@/store/clinical'
 
-import { CountPill, SectionCard } from '@/components/calm'
+import { CountPill } from '@/components/calm'
 
 // ───────────────────────────────────────────────────────────── Status shape
 
-const URGENCY: Record<
-  Urgency,
-  { label: string; ink: string; soft: string; solid: string; shape: 'octagon' | 'triangle' | 'ring' }
-> = {
-  critical: {
-    label: 'Critical',
-    ink: 'text-pri-critical-ink',
-    soft: 'bg-pri-critical-soft',
-    solid: 'bg-pri-critical-fill text-pri-on-critical',
-    shape: 'octagon',
-  },
-  warning: {
-    label: 'Warning',
-    ink: 'text-pri-warning-ink',
-    soft: 'bg-pri-warning-soft',
-    solid: 'bg-pri-warning-fill text-pri-on-warning',
-    shape: 'triangle',
-  },
-  pending: {
-    label: 'Pending',
-    ink: 'text-pri-pending-ink',
-    soft: 'bg-pri-pending-soft',
-    solid: 'bg-pri-pending-fill text-pri-on-warning',
-    shape: 'ring',
-  },
+const URGENCY: Record<Urgency, { label: string; ink: string; shape: 'octagon' | 'triangle' | 'ring' }> = {
+  critical: { label: 'Critical', ink: 'text-pri-critical-ink', shape: 'octagon' },
+  warning: { label: 'Warning', ink: 'text-pri-warning-ink', shape: 'triangle' },
+  pending: { label: 'Pending', ink: 'text-pri-pending-ink', shape: 'ring' },
 }
 
 /**
@@ -95,21 +74,6 @@ export function StatusDot({ urgency, size = 11 }: { urgency: Urgency; size?: num
   )
 }
 
-/** The status shape on a tinted square — the leading element of an attention row. */
-export function StatusBlock({ urgency, size = 'md' }: { urgency: Urgency; size?: 'sm' | 'md' }) {
-  return (
-    <span
-      className={cx(
-        'grid shrink-0 place-items-center rounded-field',
-        URGENCY[urgency].soft,
-        size === 'md' ? 'size-10' : 'size-8',
-      )}
-    >
-      <StatusDot urgency={urgency} size={size === 'md' ? 15 : 12} />
-    </span>
-  )
-}
-
 // ─────────────────────────────────────────────────────────────── Greeting
 
 /** §5.4 note: the salutation follows the clock, the name follows the session. */
@@ -126,6 +90,76 @@ export function Greeting({ name }: { name: string }) {
 
 // The shared surface kit lives in calm.tsx; re-exported so existing imports hold.
 export { SectionCard, CountPill, PillLink, PillTabs } from '@/components/calm'
+
+// ────────────────────────────────────────────────────────────── Panels
+
+/** A panel: one solid surface. What sits inside it are blocks and sections, not cards. */
+export function Panel({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx('glass-strong min-w-0 overflow-hidden rounded-card', className)}>{children}</div>
+}
+
+/**
+ * A titled block of a panel — Schedule, Patients Today, Needs Action. Its title
+ * is the top of the hierarchy: sentence case, semibold, one size.
+ */
+export function PanelBlock({
+  title,
+  meta,
+  children,
+  className,
+}: {
+  title: string
+  /** Quiet, right of the title — a time, a count. */
+  meta?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  const id = useId()
+  return (
+    <section aria-labelledby={id} className={cx('min-w-0', className)}>
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-5 pt-4 pb-2">
+        <h2 id={id} className="text-[1.05em] font-semibold tracking-tight text-ink">
+          {title}
+        </h2>
+        {meta}
+      </header>
+      {children}
+    </section>
+  )
+}
+
+/**
+ * A section inside a block — OPD, Inpatients, Attention, Tasks, To-do notes. A
+ * small muted label and a plain count; the hairline above it is the parent's.
+ */
+export function PanelSection({
+  label,
+  count,
+  action,
+  children,
+}: {
+  label: string
+  count?: ReactNode
+  /** The section's own controls, right of the label. */
+  action?: ReactNode
+  children: ReactNode
+}) {
+  const id = useId()
+  return (
+    <section aria-labelledby={id} className="min-w-0 px-3 pt-3 pb-2 sm:px-4">
+      <header className="flex min-h-9 items-center justify-between gap-2 px-2 pb-1">
+        <span className="flex items-baseline gap-2">
+          <h3 id={id} className="text-[0.76em] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+            {label}
+          </h3>
+          {count !== undefined && <span className="tabular text-[0.82em] text-ink-3">{count}</span>}
+        </span>
+        {action}
+      </header>
+      {children}
+    </section>
+  )
+}
 
 // ──────────────────────────────────────────────────────── Timeline blocks
 
@@ -254,94 +288,233 @@ export function DayTimeline({
   )
 }
 
-// ────────────────────────────────────────────────────────── My patients
+// ────────────────────────────────────────────────────────── Patient lists
 
-export function PatientCounts({ counts, columns = 4 }: { counts: PatientCount[]; columns?: 2 | 4 }) {
+/** Which of Patients Today's sections a list sits in — it sets the ground, the header icon and the row tiles. */
+export type PatientGroupTone = 'opd' | 'inpatients' | 'stroke'
+
+const GROUP_TONE: Record<PatientGroupTone, { ground: string; tile: string; ink: string }> = {
+  opd: { ground: 'bg-section-opd', tile: 'bg-section-opd-tile', ink: 'text-brand' },
+  inpatients: { ground: 'bg-section-inpatients', tile: 'bg-section-inpatients-tile', ink: 'text-section-inpatients-ink' },
+  stroke: { ground: 'bg-card-stroke-tint', tile: 'bg-card-stroke-line', ink: 'text-ink-2' },
+}
+
+/**
+ * One of Patients Today's sections — OPD, Inpatients, or a stroke clinician's
+ * telestroke queue. Told apart before a word is read: its function's soft hue
+ * (blue for OPD, green for Inpatients), its icon beside a bold label, the same
+ * hue behind every row's icon, and a clear gap from the next section.
+ */
+export function PatientGroup({
+  label,
+  icon,
+  tone,
+  count,
+  children,
+}: {
+  label: string
+  icon: string
+  tone: PatientGroupTone
+  count: number
+  children: ReactNode
+}) {
+  const id = useId()
+  const t = GROUP_TONE[tone]
   return (
-    <dl
+    <section aria-labelledby={id} className={cx('min-w-0 rounded-panel px-2 pt-2 pb-1.5 sm:px-3', t.ground)}>
+      <header className="mb-1.5 flex min-h-9 items-center gap-2 border-b border-glass-hairline px-1 pb-1.5">
+        <Icon name={icon} size={17} className={cx('shrink-0', t.ink)} />
+        <h3 id={id} className="text-[0.84em] font-semibold tracking-[0.06em] text-ink uppercase">
+          {label}
+        </h3>
+        <span className="tabular text-[0.84em] text-ink-3">{count}</span>
+      </header>
+      {children}
+    </section>
+  )
+}
+
+const MARK_TONE: Record<RowMark['tone'], string> = {
+  critical: 'bg-pri-critical-soft text-pri-critical-ink',
+  attention: 'bg-pri-warning-soft text-pri-warning-ink',
+  normal: 'bg-pri-normal-soft text-pri-normal-ink',
+  neutral: 'text-ink-3',
+}
+
+/**
+ * A status as a picture first: the coloured icon, then a small word. A mark
+ * that would repeat down the list — Follow-up, Seen — is the icon alone; its
+ * word is in the tooltip and the row's accessible name.
+ */
+function Mark({ mark }: { mark: RowMark }) {
+  if (mark.iconOnly) {
+    return (
+      <span title={mark.label} className="inline-grid size-6 place-items-center text-ink-3">
+        <Icon name={mark.icon} size={15} />
+        <span className="sr-only">{mark.label}</span>
+      </span>
+    )
+  }
+  return (
+    <span
       className={cx(
-        'grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-2',
-        columns === 4 && 'sm:grid-cols-[repeat(4,minmax(0,1fr))]',
+        'inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-chip text-[0.8em]',
+        mark.tone === 'neutral' ? 'px-0.5' : 'px-1.5 font-medium',
+        MARK_TONE[mark.tone],
       )}
     >
-      {counts.map((c) => (
-        <Link
-          key={c.key}
-          to={c.to}
-          className={cx(
-            'group lift flex min-h-[5.5rem] min-w-0 flex-col justify-between gap-2 rounded-panel px-3.5 py-3',
-            /* A place's tile is solid in that place's colour; a plain tile stays inset glass. */
-            c.tone ? `card-toned card-tone-${c.tone} hover:brightness-110` : 'bg-glass-inset hover:bg-brand-soft',
-          )}
-        >
-          <span className="flex items-center justify-between gap-2">
-            <span className="grid size-9 shrink-0 place-items-center rounded-field bg-brand-soft text-brand transition-colors duration-[250ms] group-hover:bg-brand group-hover:text-brand-on">
-              <Icon name={c.icon} size={17} />
-            </span>
-            <dd className="tabular text-3xl leading-none font-bold tracking-tight">{c.value}</dd>
-          </span>
-          <span className="min-w-0">
-            <dt className="truncate text-[0.86em] font-medium text-ink-3">{c.label}</dt>
-            {/* One quiet line: what is pending there. Counts only — the lists live on their own screens. */}
-            {c.sub && <span className="tabular mt-0.5 block truncate text-[0.8em] text-ink-3">{c.sub}</span>}
-          </span>
-        </Link>
-      ))}
-    </dl>
+      <Icon name={mark.icon} size={14} className="shrink-0" />
+      <span className="truncate">{mark.label}</span>
+    </span>
+  )
+}
+
+/**
+ * The rows of one Patients Today section. Every row has the same structure, on
+ * a grid, so the eye runs down columns rather than reading lines:
+ *
+ *   place tile · name and bed · kind · status · ›
+ *
+ * The tile carries where the patient is (OPD, Ward, ICU, ED) at full strength,
+ * and a red dot on its corner when the patient is high risk, so a high-risk
+ * patient stands out down the left edge. Kind and status sit in fixed slots on
+ * the right, so every status starts at the same place in both sections. Below
+ * `sm` the marks drop to a line under the name. Every row opens the record.
+ * About five rows show (seven from `lg`, where the column has the height); the
+ * list scrolls inside its section, with a soft fade while there is more.
+ */
+export function PatientList({
+  rows,
+  tone,
+  label,
+  empty,
+}: {
+  rows: PatientListRow[]
+  tone: PatientGroupTone
+  /** The list's accessible name. */
+  label: string
+  empty: string
+}) {
+  const listRef = useRef<HTMLUListElement>(null)
+  /** More below the fold of the list — shown as a soft fade, so a cut-off row reads as "scroll", not as broken. */
+  const [more, setMore] = useState(false)
+  const measure = () => {
+    const list = listRef.current
+    if (list) setMore(list.scrollHeight - list.scrollTop - list.clientHeight > 4)
+  }
+
+  useEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const ro = new ResizeObserver(() => {
+      setMore(list.scrollHeight - list.scrollTop - list.clientHeight > 4)
+    })
+    ro.observe(list)
+    return () => ro.disconnect()
+  }, [rows.length])
+
+  if (rows.length === 0) return <p className="px-1 py-3 text-[0.95em] text-ink-2">{empty}</p>
+
+  const t = GROUP_TONE[tone]
+
+  return (
+    <ul
+      ref={listRef}
+      aria-label={label}
+      onScroll={measure}
+      className={cx(
+        'thin-scroll relative max-h-[16.5rem] min-h-0 space-y-0.5 overflow-y-auto lg:max-h-[22rem]',
+        more && '[mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]',
+      )}
+    >
+      {rows.map((r) => {
+        const p = patient(r.patientId)
+        const critical = r.status?.tone === 'critical'
+        const marks = r.kind || r.status
+        return (
+          <li key={r.patientId}>
+            <Link
+              to={`/patient/${p.uhid}/record`}
+              className={cx(
+                'grid min-h-12 grid-cols-[2.25rem_minmax(0,1fr)_1rem] items-center gap-x-3 gap-y-0.5 rounded-panel px-1 py-1.5',
+                'sm:grid-cols-[2.25rem_minmax(0,1fr)_7.5em_11.5em_1rem]',
+                'transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover',
+              )}
+            >
+              {/* Where they are, at full strength. Read out and on hover, so the icon never carries it alone. */}
+              <span
+                title={r.place.label}
+                className={cx('relative row-span-2 grid size-9 place-items-center rounded-field sm:row-span-1', t.tile, t.ink)}
+              >
+                <Icon name={r.place.icon} size={18} />
+                <span className="sr-only">{r.place.label}</span>
+                {critical && (
+                  <span
+                    aria-hidden
+                    className="absolute -top-0.5 -right-0.5 size-2.5 rounded-pill bg-pri-critical ring-2 ring-[var(--color-glass-fill-strong)]"
+                  />
+                )}
+              </span>
+
+              <span className={cx('min-w-0 truncate font-medium', r.done ? 'text-ink-3' : 'text-ink')}>
+                {p.name}
+                {r.detail && <span className="tabular font-normal text-ink-3"> · {r.detail}</span>}
+              </span>
+
+              {/* Kind and status: a line under the name on a phone, two fixed columns from `sm`. */}
+              {marks && (
+                <span className="col-start-2 row-start-2 flex min-w-0 items-center gap-2 sm:contents">
+                  {r.kind && (
+                    <span className="flex min-w-0 sm:col-start-3 sm:row-start-1">
+                      <Mark mark={r.kind} />
+                    </span>
+                  )}
+                  {r.status && (
+                    <span className="flex min-w-0 sm:col-start-4 sm:row-start-1">
+                      <Mark mark={r.status} />
+                    </span>
+                  )}
+                </span>
+              )}
+
+              <Icon
+                name="ChevronRight"
+                size={16}
+                className="col-start-3 row-span-2 row-start-1 shrink-0 text-ink-muted sm:col-start-5 sm:row-span-1"
+              />
+            </Link>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
 // ──────────────────────────────────────────────────── Pending today
 
-/** One line of documentation or sign-off still the doctor's to close. The row is the link. */
+/**
+ * One line of documentation or sign-off still the doctor's to close. The row is
+ * the link. The count is plain unless the item is urgent.
+ */
 export function FinishRow({ item }: { item: FinishItem }) {
+  const urgent = item.urgency === 'critical' || item.urgency === 'warning'
   return (
     <li>
       <Link
         to={item.to}
         className={cx(
-          'flex min-h-12 items-center gap-3 rounded-panel px-2 py-1.5',
+          'flex min-h-11 items-center gap-3 rounded-panel px-2 py-1.5',
           'transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover',
         )}
       >
-        <span className="grid size-9 shrink-0 place-items-center rounded-field bg-glass-inset text-ink-2">
+        <span className="grid w-5 shrink-0 place-items-center text-ink-3">
           <Icon name={item.icon} size={16} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold tracking-tight">{item.label}</span>
+          <span className="block truncate font-medium">{item.label}</span>
           {item.detail && <span className="block truncate text-[0.86em] text-ink-3">{item.detail}</span>}
         </span>
-        <CountPill tone={item.urgency ?? 'neutral'}>{item.count}</CountPill>
-        <Icon name="ChevronRight" size={16} className="shrink-0 text-ink-muted" />
-      </Link>
-    </li>
-  )
-}
-
-// ──────────────────────────────────────────────────── Discharges today
-
-/** A patient predicted to go home today, and what is in the way. The row opens the board. */
-export function DischargeRow({ row }: { row: DischargeRowData }) {
-  const p = patient(row.patientId)
-  const clear = row.blockers.length === 0
-  return (
-    <li>
-      <Link
-        to="/discharge/board"
-        className={cx(
-          'flex min-h-14 items-center gap-3 rounded-panel px-2 py-2',
-          'transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover',
-        )}
-      >
-        <StatusBlock urgency={clear ? 'pending' : 'warning'} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold tracking-tight">
-            {p.name} <span className="tabular font-normal text-ink-3">· {row.bed}</span>
-          </span>
-          <span className="block truncate text-[0.86em] text-ink-3">
-            {clear ? 'Cleared for discharge' : row.blockers.join(' · ')}
-          </span>
-        </span>
+        <CountPill tone={urgent ? item.urgency : 'neutral'}>{item.count}</CountPill>
         <Icon name="ChevronRight" size={16} className="shrink-0 text-ink-muted" />
       </Link>
     </li>
@@ -369,16 +542,19 @@ export function AttentionRow({
         type="button"
         onClick={onOpen}
         className={cx(
-          'flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-panel px-2 py-2 text-left',
+          'flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-panel px-2 py-1.5 text-left',
           'transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover',
         )}
       >
-        <StatusBlock urgency={urgency} />
+        {/* The shape alone — no tinted square behind it. */}
+        <span className="grid w-5 shrink-0 place-items-center">
+          <StatusDot urgency={urgency} size={12} />
+        </span>
         <span className="min-w-0 flex-1">
           {/* Colour + shape + the word. The word is plain ink, because none of
               the four hues clears 4.5:1 as text on this surface. */}
-          <span className="block truncate font-semibold tracking-tight">{reason}</span>
-          <span className="block truncate text-[0.88em] text-ink-3">{patientName}</span>
+          <span className="block truncate font-medium">{reason}</span>
+          <span className="block truncate text-[0.86em] text-ink-3">{patientName}</span>
         </span>
         <Icon name="ChevronRight" size={16} className="shrink-0 text-ink-muted" />
       </button>
@@ -498,66 +674,55 @@ export function TodoNoteRow({
  * Open ones first, newest first; ticked ones sink below them, struck through,
  * until they are deleted.
  *
- * Adding one is the card's own job, and there is exactly one way in on each
- * side of the title: the microphone dictates, the plus types. Nothing else on
- * the screen adds a to-do note.
+ * A section of Needs Action rather than a card of its own: these are the
+ * doctor's tasks too. Adding one is the section's own job, and there is exactly
+ * one way in on each side: the microphone dictates, the plus types. Nothing
+ * else on the screen adds a to-do note.
  */
-export function TodoNotesCard({
+export function TodoNotesSection({
   notes,
   onAdd,
   onToggle,
   onDelete,
-  className,
 }: {
   notes: VoiceNote[]
   /** Opens the note dialog, listening or ready to type. */
   onAdd: (mode: 'voice' | 'type') => void
   onToggle: (id: string) => void
   onDelete: (note: VoiceNote) => void
-  className?: string
 }) {
   const open = notes.filter((n) => !n.done).length
   const sorted = [...notes].sort((a, b) => Number(a.done === true) - Number(b.done === true) || b.at.localeCompare(a.at))
 
   return (
-    <SectionCard
-      title="To-Do Note"
-      tone="notes"
-      lift
-      className={className}
-      leading={
-        <IconButton
-          icon="Mic"
-          label="Dictate a to-do note"
-          onClick={() => onAdd('voice')}
-          compact
-          className="-ml-1 text-brand"
-          size={15}
-        />
-      }
-      meta={notes.length > 0 && <CountPill tone={open > 0 ? 'pending' : 'neutral'}>{open > 0 ? open : 'All done'}</CountPill>}
+    <PanelSection
+      label="To-do notes"
+      count={notes.length > 0 ? (open > 0 ? open : 'All done') : undefined}
       action={
-        <IconButton
-          icon="Plus"
-          label="Type a to-do note"
-          onClick={() => onAdd('type')}
-          compact
-          className="-mr-1"
-          size={15}
-        />
+        <span className="flex items-center gap-0.5">
+          <IconButton
+            icon="Mic"
+            label="Dictate a to-do note"
+            onClick={() => onAdd('voice')}
+            compact
+            className="text-brand"
+            size={15}
+          />
+          <IconButton icon="Plus" label="Type a to-do note" onClick={() => onAdd('type')} compact size={15} />
+        </span>
       }
     >
       {sorted.length === 0 ? (
-        <p className="px-2 py-3 text-[0.95em] text-ink-2">
+        <p className="px-2 pb-2 text-[0.95em] text-ink-2">
           Nothing noted for today yet. Dictate one with the microphone, or type one with +.
         </p>
       ) : (
-        <ul aria-label="To-Do Notes" className="divide-y divide-glass-hairline">
+        <ul aria-label="To-do notes" className="divide-y divide-glass-hairline">
           {sorted.map((n) => (
             <TodoNoteRow key={n.id} note={n} onToggle={() => onToggle(n.id)} onDelete={() => onDelete(n)} />
           ))}
         </ul>
       )}
-    </SectionCard>
+    </PanelSection>
   )
 }

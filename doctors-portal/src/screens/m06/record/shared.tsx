@@ -116,12 +116,15 @@ export function RecordScreen({
   section,
   subheading,
   actions,
+  wide,
   children,
 }: {
   id?: string
   section: RecordSection
   subheading?: (p: Patient) => React.ReactNode
   actions?: (p: Patient) => React.ReactNode
+  /** The full frame rather than the reading measure — the Overview's cards, not a tab's single list. */
+  wide?: boolean
   children: (p: Patient) => React.ReactNode
 }) {
   const p = patientByAnyId(id)
@@ -142,6 +145,7 @@ export function RecordScreen({
     <Screen
       screenId={meta.screenId}
       patient={p}
+      wide={wide}
       loadingShape="list"
       states={['LOADING', 'EMPTY', 'ERROR', 'DENIED', 'OFFLINE', 'STALE', 'AI-OFF']}
       subheading={subheading?.(p) ?? defaultSubheading(p)}

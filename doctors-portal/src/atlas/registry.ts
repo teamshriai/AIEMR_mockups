@@ -99,7 +99,7 @@ export const SCREENS: ScreenSpec[] = [
     archetype: 'ARC-20',
     tier: 'T1',
     personas: ['P-04', 'P-05'],
-    ai: ['AI-613', 'AI-201'],
+    ai: ['AI-613', 'AI-201', 'AI-608'],
     zones: SHELL,
     density: 'compact',
     nightDefault: false,

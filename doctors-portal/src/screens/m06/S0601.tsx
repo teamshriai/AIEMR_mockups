@@ -3,28 +3,33 @@
  *
  * "The consultant's day, ranked by who needs them first."
  *
- * Deck beat #5, rebuilt for calm. The screen answers three questions and
- * declines to answer a fourth:
- *   1. What is my day?                   → the timeline card
- *   2. What needs me right now?          → the attention card
- *   3. What must I finish before I leave? → the to-finish card, and who is
- *                                           going home today
- * Anything about a specific patient is ONE TAP AWAY, in the Quick-Panel. Put it
- * here instead and the screen stops being scannable, which is the whole point.
- * Results are deliberately absent as a widget: a critical one interrupts
- * through the attention card; the rest belong in Results, not on the home.
+ * Deck beat #5, rebuilt as a workspace rather than a dashboard. The screen
+ * answers four questions and declines to answer a fifth:
+ *   1. What is my day?                    → Today
+ *   2. Who is mine today?                 → Patients Today — OPD and Inpatients
+ *   3. What needs me, and what must I     → Needs Action — Attention, Tasks and
+ *      finish before I leave?                my own to-do notes
+ *   4. What is the rest of my month?      → Calendar
+ * Anything about a specific patient is ONE TAP AWAY — the Quick-Panel from an
+ * attention row, the record from a patient row. Put it here instead and the
+ * screen stops being scannable, which is the whole point. Results are
+ * deliberately absent as a widget: a critical one interrupts through
+ * Attention; the rest belong in Results, not on the home.
  *
- * Six surfaces, all on the same frosted frame (`SectionCard`), so the screen
- * has structure without a single table: the day, the attention list, the work
- * to finish, the doctor's own to-do notes, the counts, today's discharges. The attention card carries a top
- * accent in the top urgency's hue and a count pill — it is the one thing on
- * the screen allowed to be loud.
+ * Two columns. The left is the day and what to do about it: Today — the one
+ * solid slate card the flat system keeps, with its rail, badges and Now band —
+ * then Needs Action. The right is who is in the day: Patients Today, then the
+ * month, which fills the rest of the column so both columns end level. The
+ * patient lists are names, not counts, with a place icon, at most two marks and
+ * no "See all" — OPD and Inpatients are one tap away in the nav. A date in the
+ * month opens in a side panel with an AI brief of that day, its schedule and
+ * who is booked.
  *
  * `ARC-20` is a tile dashboard and this is not tiled, which is a deliberate
  * deviation. What the archetype's drawing notes actually require is kept:
  *   • the needs-attention group at the top with its reason;
- *   • all the work types on one screen — clinic, ward, ICU and follow-up as
- *     counts, co-sign and discharge as blocks in the day;
+ *   • all the work types on one screen — clinic and ward as lists, co-sign
+ *     and discharge as blocks in the day;
  *   • "Sorted by AI acuity ▾" reversible and visible — the line under the
  *     attention list, because AI-613's guardrail is that the deterministic sort
  *     is always one click away.
@@ -32,23 +37,26 @@
  * Sample data: SD-S-01 at 08:40.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Diamond } from '@/components/ai'
+import { MonthCalendarCard } from '@/components/monthcalendar'
+import { CountPill, SectionCard } from '@/components/calm'
 import {
   AttentionRow,
-  CountPill,
   DayTimeline,
-  DischargeRow,
   FinishRow,
   Greeting,
-  PatientCounts,
-  PillLink,
-  SectionCard,
-  TodoNotesCard,
+  Panel,
+  PanelBlock,
+  PanelSection,
+  PatientGroup,
+  PatientList,
+  TodoNotesSection,
 } from '@/components/myday'
 import { DictationPanel } from '@/components/dictation'
-import { Button, Card, Chip, Icon, IconButton } from '@/components/primitives'
+import { Button, Card, Chip, Icon, IconButton, cx } from '@/components/primitives'
 import { PartialRegion } from '@/components/states'
+import { entriesOn } from '@/data/calendar'
 import { NOW, formatDateLong, formatTime } from '@/data/format'
 import { facility, patient } from '@/data/kit'
 import {
@@ -56,11 +64,14 @@ import {
   attentionFor,
   currentBlock,
   dayPlanFor,
-  dischargesToday,
-  patientCounts,
+  inpatientList,
+  isStrokePersona,
+  opdList,
+  telestrokeList,
   toFinishFor,
 } from '@/data/myday'
 import type { AttentionItem } from '@/data/myday'
+import { useAdmissions } from '@/store/admissions'
 import { selectAiActive, useAI } from '@/store/ai'
 import { UNATTACHED, useClinical } from '@/store/clinical'
 import { useCurrentStaff, useSession } from '@/store/session'
@@ -88,7 +99,8 @@ export function S0601() {
   const voiceNotes = useClinical((s) => s.voiceNotes)
   const toggleVoiceNoteDone = useClinical((s) => s.toggleVoiceNoteDone)
   const deleteVoiceNote = useClinical((s) => s.deleteVoiceNote)
-  /** The doctor's own reminders — saved from the To-Do Note card, attached to no patient. */
+  const admissions = useAdmissions((s) => s.admissions)
+  /** The doctor's own reminders — saved from Needs Action's to-do notes, attached to no patient. */
   const todos = voiceNotes[UNATTACHED] ?? []
 
   const [open, setOpen] = useState<AttentionItem | null>(null)
@@ -99,24 +111,33 @@ export function S0601() {
   const [rankingExpanded, setRankingExpanded] = useState(false)
   const [aiSort, setAiSort] = useState(true)
 
-  const blocks = useMemo(() => dayPlanFor(persona), [persona])
-  const counts = useMemo(() => patientCounts(persona), [persona])
+  const isStroke = isStrokePersona(persona)
+  const blocks = useMemo(
+    () => dayPlanFor(persona, { admissions, acknowledgements, coSigned }),
+    [persona, admissions, acknowledgements, coSigned],
+  )
   const toFinish = useMemo(
     () => toFinishFor(persona, { notes, coSigned, triagedReferrals, voiceNotes }),
     [persona, notes, coSigned, triagedReferrals, voiceNotes],
   )
-  const discharges = useMemo(() => dischargesToday(), [])
-  const isStroke = counts[0]?.key === 'active'
+  const opd = useMemo(() => opdList(admissions), [admissions])
+  const inpatients = useMemo(() => inpatientList(admissions), [admissions])
+  const telestroke = useMemo(() => telestrokeList(), [])
   const current = currentBlock(blocks)
   const upNext = blocks.find((b) => b.at > NOW && b.id !== current?.id)
+  /** Everything on a date of the month calendar — today is the day plan above. */
+  const entriesFor = useCallback(
+    (day: Date) => entriesOn(day, { staffName: me.name, stroke: isStroke, today: blocks }),
+    [me.name, isStroke, blocks],
+  )
 
   /**
    * Anyone marked seen drops off the list — that is what marking seen is for.
    * Recomputed from the store so it survives a reload.
    */
   const ranked = useMemo(
-    () => attentionFor(persona, acknowledgements).filter((i) => seenAt[i.patientId] === undefined),
-    [persona, acknowledgements, seenAt],
+    () => attentionFor(persona, acknowledgements, admissions).filter((i) => seenAt[i.patientId] === undefined),
+    [persona, acknowledgements, seenAt, admissions],
   )
 
   const lowConfidence = forced === 'AI-LOW'
@@ -198,200 +219,209 @@ export function S0601() {
         }
       >
         {/*
-          Vertical flow on a phone: the day, then attention, then what is left to
-          finish, then counts, then discharges. From `lg` two columns; from `xl`
-          three — the day, the two attention cards, the two patient cards — each
-          a column whose last card takes the slack, so the three bottoms align
-          and the frame is full at 1440 and 1920 without a fact that is not the
-          doctor's to act on. `wide` because the reading measure is set in rem
-          and compact density shrinks it; a home screen should fill its frame.
+          Two columns from `lg`. Left: Today — the day, on its own slate card —
+          then Needs Action under it. Right: Patients Today, then the month,
+          which takes whatever height is left so the two columns end level.
+          Below `lg` the same order, stacked: Today, Needs Action, Patients
+          Today, Calendar. `wide` because the reading measure is set in rem and
+          compact density shrinks it; a home screen should fill its frame.
         */}
-        <div className="grid min-w-0 flex-1 gap-5 pt-2 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:grid-rows-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,3fr)] xl:grid-rows-1">
-          {/* THE DAY. The primary focus, and the only thing above the fold. */}
-          <SectionCard
-            title="Today"
-            tone="schedule"
-            fill
-            meta={
-              current ? (
-                <CountPill tone="brand">Now · {current.title}</CountPill>
-              ) : (
-                <CountPill>{blocks.length} activities</CountPill>
-              )
-            }
-            action={
-              upNext && (
-                <span className="tabular flex items-center gap-1.5 text-[0.86em] text-ink-3">
-                  <Icon name="Clock" size={13} />
-                  Up next {formatTime(upNext.at)} · <span className="font-semibold text-ink-2">{upNext.title}</span>
-                </span>
-              )
-            }
-          >
-            <DayTimeline blocks={blocks} currentId={current?.id} aiActive={aiActive} />
-          </SectionCard>
-
-          {/* Column two: attention first, where it matters most, then what is pending. */}
+        <div className="grid min-w-0 flex-1 gap-5 pt-2 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+          {/* LEFT — the day, then what to do about it. */}
           <div className="flex min-w-0 flex-col gap-5">
-            {/* NEEDS MY ATTENTION — the heaviest thing on the screen. */}
+            {/* TODAY — the day as a timeline, on the one solid card the flat system keeps. */}
             <SectionCard
-              title="Needs my attention"
-              accent={ordered[0]?.urgency}
-              lift
+              title="Today"
+              className="card-today"
               meta={
-                ordered.length > 0 &&
-                (criticalCount > 0 ? (
-                  <CountPill tone="critical">
-                    {criticalCount} critical
-                  </CountPill>
-                ) : warningCount > 0 ? (
-                  <CountPill tone="warning">
-                    {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}
-                  </CountPill>
+                current ? (
+                  <CountPill tone="brand">Now · {current.title}</CountPill>
                 ) : (
-                  <CountPill tone="pending">{ordered.length} pending</CountPill>
-                ))
+                  <CountPill>{blocks.length} activities</CountPill>
+                )
               }
-              action={ordered.length > 0 && <PillLink to="/ip/patients">See all</PillLink>}
+              action={
+                upNext && (
+                  <span className="tabular flex items-center gap-1.5 text-[0.86em] text-ink-3">
+                    <Icon name="Clock" size={13} />
+                    Up next {formatTime(upNext.at)} · <span className="font-semibold text-ink-2">{upNext.title}</span>
+                  </span>
+                )
+              }
             >
-              {ordered.length === 0 ? (
-                <p className="px-2 py-4 text-[0.95em] text-ink-2">
-                  Nothing needs you right now. A critical result, a rising risk score or a note awaiting your signature
-                  would appear here.
-                </p>
-              ) : (
-                <div className="flex min-h-0 flex-col">
-                  {/* §4.5 — LOW arrives COLLAPSED and cannot be used until expanded. */}
-                  {lowConfidence && aiActive && !rankingExpanded && (
-                    <div className="mx-1 mb-2 rounded-panel border border-caution/35 bg-caution-soft px-3 py-2.5">
-                      <p className="flex items-center gap-2 text-[0.9em] font-semibold text-caution">
-                        <Icon name="TriangleAlert" size={14} />
-                        Low confidence in this ranking
-                      </p>
-                      <p className="mt-1 text-[0.88em] text-ink-2">
-                        AI-613 could not rank today&rsquo;s list with confidence. The list below is in time order until
-                        you review the ranking.
-                      </p>
-                      <Button size="sm" icon="ChevronDown" className="mt-2" onClick={() => setRankingExpanded(true)}>
-                        Show the ranking
-                      </Button>
-                    </div>
-                  )}
+              <DayTimeline blocks={blocks} currentId={current?.id} aiActive={aiActive} />
+            </SectionCard>
 
-                  <ul className="divide-y divide-glass-hairline">
-                    {ordered.map((i) => (
-                      <AttentionRow
-                        key={i.id}
-                        urgency={i.urgency}
-                        reason={i.reason}
-                        patientName={patient(i.patientId).name}
-                        onOpen={() => setOpen(i)}
-                        onDictate={() => setDictating(i)}
-                      />
-                    ))}
-                  </ul>
-
-                  {/* AI-613's guardrail, in one quiet line. */}
-                  {aiActive ? (
-                    <button
-                      type="button"
-                      onClick={() => setAiSort((v) => !v)}
-                      className="flex min-h-10 items-center gap-1.5 self-start rounded-pill px-2 pt-2 text-[0.82em] text-ink-3 hover:bg-glass-fill-hover hover:text-ink-2"
-                    >
-                      {aiSort ? <Diamond size={9} /> : <Icon name="Clock" size={11} />}
-                      {aiSort ? 'Sorted by AI acuity' : 'Sorted by time'}
-                      <Icon name="ChevronDown" size={11} />
-                    </button>
+            {/* NEEDS ACTION — what is urgent, what is the doctor's to close, and their own to-dos.
+                Its hue is its top urgency's, as an attention card's is everywhere. */}
+            <Panel className={cx(ordered.length > 0 && `card-toned card-urgency-${ordered[0].urgency}`)}>
+              <PanelBlock
+                title="Needs Action"
+                meta={
+                  ordered.length > 0 &&
+                  (criticalCount > 0 ? (
+                    <span className="text-[0.86em] font-medium text-pri-critical-ink">{criticalCount} critical</span>
+                  ) : warningCount > 0 ? (
+                    <span className="text-[0.86em] font-medium text-pri-warning-ink">
+                      {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}
+                    </span>
                   ) : (
-                    <p className="px-2 pt-2 text-[0.82em] text-ink-3">Sorted by time · AI ranking is off</p>
-                  )}
-                </div>
-              )}
-            </SectionCard>
+                    <span className="text-[0.86em] text-ink-3">{ordered.length} pending</span>
+                  ))
+                }
+              >
+                <div className="divide-y divide-glass-hairline">
+                  {/* ATTENTION — the ranked items; a row opens its Quick-Panel. */}
+                  <PanelSection label="Attention" count={ordered.length > 0 ? ordered.length : undefined}>
+                    {ordered.length === 0 ? (
+                      <p className="px-2 pb-2 text-[0.95em] text-ink-2">
+                        Nothing needs you right now. A critical result, a rising risk score or a note awaiting your
+                        signature would appear here.
+                      </p>
+                    ) : (
+                      <div className="flex min-h-0 flex-col">
+                        {/* §4.5 — LOW arrives COLLAPSED and cannot be used until expanded. */}
+                        {lowConfidence && aiActive && !rankingExpanded && (
+                          <div className="mx-1 mb-2 rounded-panel border border-caution/35 bg-caution-soft px-3 py-2.5">
+                            <p className="flex items-center gap-2 text-[0.9em] font-semibold text-caution">
+                              <Icon name="TriangleAlert" size={14} />
+                              Low confidence in this ranking
+                            </p>
+                            <p className="mt-1 text-[0.88em] text-ink-2">
+                              AI-613 could not rank today&rsquo;s list with confidence. The list below is in time order
+                              until you review the ranking.
+                            </p>
+                            <Button size="sm" icon="ChevronDown" className="mt-2" onClick={() => setRankingExpanded(true)}>
+                              Show the ranking
+                            </Button>
+                          </div>
+                        )}
 
-            {/* PENDING TODAY — documentation and sign-offs that are the doctor's to close. Takes the slack. */}
-            <SectionCard
-              title="Pending today"
-              tone="signoff"
-              lift
-              fill
-              className="flex-1"
-              meta={toFinish.length > 0 && <CountPill>{toFinish.reduce((n, i) => n + i.count, 0)}</CountPill>}
-            >
-              {toFinish.length === 0 ? (
-                <p className="px-2 py-4 text-[0.95em] text-ink-2">
-                  Nothing left to sign or write. A ward round note, a co-sign or a referral to review would appear here.
-                </p>
-              ) : (
-                <ul className="divide-y divide-glass-hairline">
-                  {toFinish.map((i) => (
-                    <FinishRow key={i.key} item={i} />
-                  ))}
-                </ul>
-              )}
-            </SectionCard>
+                        <ul className="divide-y divide-glass-hairline">
+                          {ordered.map((i) => (
+                            <AttentionRow
+                              key={i.id}
+                              urgency={i.urgency}
+                              reason={i.reason}
+                              patientName={patient(i.patientId).name}
+                              onOpen={() => setOpen(i)}
+                              onDictate={() => setDictating(i)}
+                            />
+                          ))}
+                        </ul>
+
+                        {/* AI-613's guardrail, in one quiet line. */}
+                        {aiActive ? (
+                          <button
+                            type="button"
+                            onClick={() => setAiSort((v) => !v)}
+                            className="flex min-h-10 items-center gap-1.5 self-start rounded-chip px-2 pt-1 text-[0.82em] text-ink-3 hover:bg-glass-fill-hover hover:text-ink-2"
+                          >
+                            {aiSort ? <Diamond size={9} /> : <Icon name="Clock" size={11} />}
+                            {aiSort ? 'Sorted by AI acuity' : 'Sorted by time'}
+                            <Icon name="ChevronDown" size={11} />
+                          </button>
+                        ) : (
+                          <p className="px-2 pt-2 text-[0.82em] text-ink-3">Sorted by time · AI ranking is off</p>
+                        )}
+                      </div>
+                    )}
+                  </PanelSection>
+
+                  {/* TASKS — documentation and sign-offs that are the doctor's to close. */}
+                  <PanelSection
+                    label="Tasks"
+                    count={toFinish.length > 0 ? toFinish.reduce((n, i) => n + i.count, 0) : undefined}
+                  >
+                    {toFinish.length === 0 ? (
+                      <p className="px-2 pb-2 text-[0.95em] text-ink-2">
+                        Nothing left to sign or write. A ward round note, a co-sign or a referral to review would appear
+                        here.
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-glass-hairline">
+                        {toFinish.map((i) => (
+                          <FinishRow key={i.key} item={i} />
+                        ))}
+                      </ul>
+                    )}
+                  </PanelSection>
+
+                  {/* TO-DO NOTES — what the doctor told themselves to do. Added from the section's own mic or plus. */}
+                  <TodoNotesSection
+                    notes={todos}
+                    onAdd={setFreeNote}
+                    onToggle={(id) => toggleVoiceNoteDone(UNATTACHED, id)}
+                    onDelete={(n) => {
+                      deleteVoiceNote(UNATTACHED, n.id)
+                      toast({
+                        tone: 'info',
+                        title: 'To-do note deleted',
+                        detail: `“${n.body.length > 60 ? `${n.body.slice(0, 60).trimEnd()}…` : n.body}”`,
+                      })
+                    }}
+                  />
+                </div>
+              </PanelBlock>
+            </Panel>
           </div>
 
-          {/* Column three: my own to-dos, then who is mine and who goes home — those two side by side at lg, stacked from xl. */}
-          <div className="flex min-w-0 flex-col gap-5 lg:col-span-2 xl:col-span-1">
-            {/* TO-DO NOTE — what the doctor told themselves to do. Added from the card's own mic or plus. */}
-            <TodoNotesCard
-              notes={todos}
-              onAdd={setFreeNote}
-              onToggle={(id) => toggleVoiceNoteDone(UNATTACHED, id)}
-              onDelete={(n) => {
-                deleteVoiceNote(UNATTACHED, n.id)
-                toast({
-                  tone: 'info',
-                  title: 'To-do note deleted',
-                  detail: `“${n.body.length > 60 ? `${n.body.slice(0, 60).trimEnd()}…` : n.body}”`,
-                })
-              }}
-            />
-
-            <div className="flex min-w-0 flex-1 flex-col gap-5 lg:flex-row xl:flex-col">
-              {/* MY PATIENTS — counts only, with one line each on what is pending. The lists live on their own screens. */}
-              <SectionCard
-                title="My patients"
-                lift
-                fill={isStroke}
-                className={isStroke ? 'flex-1' : 'lg:flex-1 xl:flex-none'}
-                meta={<CountPill>{counts.reduce((n, c) => n + c.value, 0)}</CountPill>}
-              >
-                {forced === 'PARTIAL' ? (
-                  <PartialRegion what="Bed state" since="08:12" onRetry={() => forceState(null)} />
-                ) : (
-                  <PatientCounts counts={counts} columns={2} />
-                )}
-              </SectionCard>
-
-              {/* DISCHARGES TODAY — who is going home, and what is in the way. The consultant's afternoon. */}
-              {!isStroke && (
-                <SectionCard
-                  title="Discharges today"
-                  tone="discharge"
-                  lift
-                  fill
-                  className="flex-1"
-                  meta={<CountPill tone={discharges.length > 0 ? 'pending' : 'neutral'}>{discharges.length} today</CountPill>}
-                  action={<PillLink to="/discharge/board">See all</PillLink>}
-                >
-                  {discharges.length === 0 ? (
-                    <p className="px-2 py-4 text-[0.95em] text-ink-2">No one is predicted to go home today.</p>
+          {/* RIGHT — who is mine today, then the month filling the rest of the column. */}
+          <div className="flex min-w-0 flex-col gap-5">
+            <Panel>
+              <PanelBlock title="Patients Today">
+                {/* Two sections that read as different places — ground, icon, row tiles — with a gap between. */}
+                <div className="space-y-3 px-3 pb-3 sm:px-4">
+                  {isStroke ? (
+                    <PatientGroup label="Telestroke queue" icon="Video" tone="stroke" count={telestroke.length}>
+                      {forced === 'PARTIAL' ? (
+                        <PartialRegion what="Telestroke queue" since="08:12" onRetry={() => forceState(null)} />
+                      ) : (
+                        <PatientList
+                          rows={telestroke}
+                          tone="stroke"
+                          label="Telestroke requests from the spokes"
+                          empty="No spoke is waiting on a telestroke consult."
+                        />
+                      )}
+                    </PatientGroup>
                   ) : (
-                    <ul className="divide-y divide-glass-hairline">
-                      {discharges.map((r) => (
-                        <DischargeRow key={r.patientId} row={r} />
-                      ))}
-                    </ul>
+                    <>
+                      {/* OPD — today's clinic, who is next first. */}
+                      <PatientGroup label="OPD" icon="UserRound" tone="opd" count={opd.length}>
+                        <PatientList
+                          rows={opd}
+                          tone="opd"
+                          label="Today's OPD patients"
+                          empty="No one is booked into OPD today."
+                        />
+                      </PatientGroup>
+
+                      {/* INPATIENTS — everyone in a bed under this consultant. */}
+                      <PatientGroup label="Inpatients" icon="BedDouble" tone="inpatients" count={inpatients.length}>
+                        {forced === 'PARTIAL' ? (
+                          <PartialRegion what="Bed state" since="08:12" onRetry={() => forceState(null)} />
+                        ) : (
+                          <PatientList
+                            rows={inpatients}
+                            tone="inpatients"
+                            label="Inpatients under you"
+                            empty="No inpatients are assigned to you. An admission under your name would put them here."
+                          />
+                        )}
+                      </PatientGroup>
+                    </>
                   )}
-                </SectionCard>
-              )}
-            </div>
+                </div>
+              </PanelBlock>
+            </Panel>
+
+            {/* CALENDAR — sessions and bookings by date; a date opens with an AI brief. */}
+            <MonthCalendarCard entriesFor={entriesFor} fill className="lg:flex-1" />
           </div>
 
           {pendingSeen.length > 0 && (
-            <div className="px-1 lg:col-span-2 xl:col-span-3">
+            <div className="px-1 lg:col-span-2">
               <Chip tone="caution" icon="WifiOff">
                 {pendingSeen.length} queued for sync
               </Chip>

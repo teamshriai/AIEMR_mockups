@@ -34,11 +34,13 @@ import { Diamond, WhyLink } from '@/components/ai'
 import { PillTabs } from '@/components/myday'
 import { Button, Card, Chip, Icon, cx } from '@/components/primitives'
 import { StaleChip } from '@/components/states'
-import { CLINIC_LIST, encounterForPatient } from '@/data/clinical'
+import { opdRows } from '@/data/admissions'
+import { encounterForPatient } from '@/data/clinical'
 import type { ClinicRow } from '@/data/clinical'
 import { formatElapsed, formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
 import { isFollowUp } from '@/data/myday'
+import { useAdmissions } from '@/store/admissions'
 import { selectAiActive, useAI } from '@/store/ai'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
@@ -51,9 +53,12 @@ export function S0503() {
   const forceState = useAI((s) => s.forceState)
   const [called, setCalled] = useState<string[]>([])
   const [view, setView] = useState<'list' | 'board'>('list')
+  const admissions = useAdmissions((s) => s.admissions)
 
   const followUpOnly = params.get('type') === 'follow-up'
   const status = (r: ClinicRow) => (called.includes(r.token) ? 'In room' : r.status)
+  /** Admitted from this clinic and waiting for a bed. Anyone who already has one has left OPD. */
+  const admitting = (r: ClinicRow) => admissions[r.patientId] !== undefined
 
   function call(r: ClinicRow) {
     setCalled((c) => [...c, r.token])
@@ -66,8 +71,8 @@ export function S0503() {
     if (enc) navigate(`/encounter/${enc.id}/note`)
   }
 
-  const scoped = CLINIC_LIST.filter((r) => (followUpOnly ? isFollowUp(r.patientId) : true))
-  const waiting = scoped.filter((r) => status(r) === 'Waiting')
+  const scoped = opdRows(admissions).filter((r) => (followUpOnly ? isFollowUp(r.patientId) : true))
+  const waiting = scoped.filter((r) => status(r) === 'Waiting' && !admitting(r))
   const next = waiting[0]
   const seen = scoped.filter((r) => status(r) === 'Seen').length
 
@@ -111,6 +116,13 @@ export function S0503() {
       role: 'status',
       cell: (r) => {
         const st = status(r)
+        if (admitting(r)) {
+          return (
+            <Chip tone="caution" icon="Hourglass">
+              Admission in progress
+            </Chip>
+          )
+        }
         if (st === 'Seen') {
           return (
             <Chip tone="normal" icon="Check">
@@ -144,7 +156,7 @@ export function S0503() {
       label: '',
       role: 'status',
       cell: (r) =>
-        status(r) === 'Waiting' ? (
+        status(r) === 'Waiting' && !admitting(r) ? (
           <span
             role="button"
             tabIndex={-1}

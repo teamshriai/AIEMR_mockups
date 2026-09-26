@@ -32,7 +32,7 @@ import type { ScreenSpec } from '@/atlas/registry'
 import type { DeclaredState } from '@/atlas/states'
 import { SectionTitle } from '@/components/calm'
 import { MenuSection, Popover } from '@/components/popover'
-import { Chip, Icon, IconButton, cx } from '@/components/primitives'
+import { CardToneContext, Chip, Icon, IconButton, cx } from '@/components/primitives'
 import {
   AiOffLine,
   DeniedPanel,
@@ -48,6 +48,7 @@ import { useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
 import { PatientBanner } from './PatientBanner'
+import { screenTone } from './screenTones'
 
 export interface ScreenProps {
   screenId: string
@@ -194,172 +195,175 @@ export function Screen({
   return (
     /**
      * `data-screen-id` is how the route walk proves a component mounted rather
-     * than falling through to the router's fallback.
+     * than falling through to the router's fallback. The provider gives every
+     * card on the screen its function's hue (shell/screenTones.ts).
      */
-    <div data-screen-id={spec.id} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {showBanner && <PatientBanner patient={patient} extra={bannerExtra} />}
+    <CardToneContext.Provider value={screenTone(spec.id)}>
+      <div data-screen-id={spec.id} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {showBanner && <PatientBanner patient={patient} extra={bannerExtra} />}
 
-      {forced === 'OFFLINE' && (
-        <OfflineStrip
-          pendingCount={3}
-          works={['Reading the record', 'Typing and drafting', 'Static protocols']}
-          queued={['Sign', 'Order placement', 'ABDM publish']}
-          blocked={['Live bed state', 'New imaging']}
-        />
-      )}
+        {forced === 'OFFLINE' && (
+          <OfflineStrip
+            pendingCount={3}
+            works={['Reading the record', 'Typing and drafting', 'Static protocols']}
+            queued={['Sign', 'Order placement', 'ABDM publish']}
+            blocked={['Live bed state', 'New imaging']}
+          />
+        )}
 
-      {/* Z4 — page header. Separated by space, not by a rule. */}
-      <header className="gutter shrink-0 pt-6 pb-1">
-        <div className={cx('mx-auto flex flex-wrap items-start justify-between gap-x-4 gap-y-3', measure)}>
-          <div className="min-w-0">
-            <BackLink />
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{heading ?? spec.name}</h1>
-            {(subheading || chips) && (
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.95em] text-ink-3">
-                {subheading && <p className="min-w-0">{subheading}</p>}
-                {chips && <span className="flex flex-wrap items-center gap-1.5">{chips}</span>}
-              </div>
-            )}
-          </div>
+        {/* Z4 — page header. Separated by space, not by a rule. */}
+        <header className="gutter shrink-0 pt-6 pb-1">
+          <div className={cx('mx-auto flex flex-wrap items-start justify-between gap-x-4 gap-y-3', measure)}>
+            <div className="min-w-0">
+              <BackLink />
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{heading ?? spec.name}</h1>
+              {(subheading || chips) && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.95em] text-ink-3">
+                  {subheading && <p className="min-w-0">{subheading}</p>}
+                  {chips && <span className="flex flex-wrap items-center gap-1.5">{chips}</span>}
+                </div>
+              )}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {forced === 'STALE' && (
-              <StaleChip asOf={new Date(NOW.getTime() - 1000 * 60 * 34)} onRefresh={() => forceState(null)} />
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {forced === 'STALE' && (
+                <StaleChip asOf={new Date(NOW.getTime() - 1000 * 60 * 34)} onRefresh={() => forceState(null)} />
+              )}
 
-            {/*
-              §5.3 makes night mandatory on this screen. The brief is light-by-default
-              with an explicit toggle, so the rule is surfaced rather than enforced:
-              one pill, one click, dismissible, and it never switches underneath you.
-            */}
-            {spec.nightDefault && theme === 'light' && !nightPromptDismissed && (
-              <span className="inline-flex items-center gap-0.5 rounded-pill bg-glass-fill-muted pl-1">
-                <button
-                  type="button"
-                  onClick={() => setTheme('night')}
-                  title="This screen is specified for night use — ICU, radiology reading rooms and stroke calls happen at 03:00."
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-pill px-2.5 text-[0.86em] font-medium text-ink-2 hover:bg-glass-fill-hover"
-                >
-                  <Icon name="Moon" size={13} />
-                  Night recommended
-                </button>
-                <IconButton icon="X" label="Dismiss" onClick={dismissNightPrompt} className="size-8" size={12} />
-              </span>
-            )}
-
-            {actions}
-            <ScreenInfo spec={spec} />
-          </div>
-        </div>
-      </header>
-
-      {/* Z5 + Z6. */}
-      <div className="thin-scroll min-h-0 flex-1 overflow-y-auto">
-        <div
-          className={cx(
-            /*
-              `min-h-full` + the bottom padding (rather than a spacer sibling)
-              makes Z5 as tall as the frame, so a screen whose root is `flex-1`
-              fills the viewport instead of floating in the top third. The
-              padding is what the Z7b bubble, the Z7a bar and the phone tab bar
-              need to clear.
-            */
-            'gutter mx-auto flex min-h-full w-full flex-col gap-6 py-4',
-            actionBar ? 'pb-28' : 'pb-24',
-            'max-sm:pb-40',
-            measure,
-            // The rail — open or collapsed to its tab — sits beside Z5 from lg.
-            rail ? 'lg:flex-row' : undefined,
-          )}
-        >
-          <main className="flex min-w-0 flex-1 flex-col">
-            {forced === 'AI-OFF' && <AiOffLine className="mb-4" />}
-
-            {replacesContent ? (
-              forced === 'LOADING' ? (
-                <LoadingFrame shape={loadingShape} />
-              ) : forced === 'DENIED' ? (
-                <DeniedPanel capability={spec.permission} />
-              ) : forced === 'ERROR' ? (
-                <ErrorFrame
-                  what="That did not save"
-                  preserved="Everything you typed"
-                  onRetry={() => forceState(null)}
-                  onCopyOut={() => forceState(null)}
-                />
-              ) : (
-                (empty ?? (
-                  <div className="glass-strong glass-card p-10 text-center text-ink-2">
-                    Nothing to show here yet, and the reason is stated on the screen this stands in for.
-                  </div>
-                ))
-              )
-            ) : (
-              children
-            )}
-          </main>
-
-          {/* Z6 — 320px right rail. Opens collapsed; the tab carries a count. */}
-          {rail && !replacesContent && (
-            <aside className={cx('shrink-0', railCollapsed ? 'lg:w-12' : 'w-full lg:w-z6')}>
-              {railCollapsed ? (
-                <>
+              {/*
+                §5.3 makes night mandatory on this screen. The brief is light-by-default
+                with an explicit toggle, so the rule is surfaced rather than enforced:
+                one pill, one click, dismissible, and it never switches underneath you.
+              */}
+              {spec.nightDefault && theme === 'light' && !nightPromptDismissed && (
+                <span className="inline-flex items-center gap-0.5 rounded-pill bg-glass-fill-muted pl-1">
                   <button
                     type="button"
-                    onClick={toggleRail}
-                    className="glass-strong lift sticky top-0 hidden w-12 flex-col items-center gap-2 rounded-card py-3 lg:flex"
-                    title={`Show ${railTitle}`}
+                    onClick={() => setTheme('night')}
+                    title="This screen is specified for night use — ICU, radiology reading rooms and stroke calls happen at 03:00."
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-pill px-2.5 text-[0.86em] font-medium text-ink-2 hover:bg-glass-fill-hover"
                   >
-                    <Icon name="PanelRight" size={16} className="text-ink-3" />
-                    {railBadge !== undefined && railBadge !== null && (
-                      <span className="tabular inline-flex min-h-5 min-w-5 items-center justify-center rounded-pill bg-brand px-1 text-[0.72em] font-bold text-brand-on">
-                        {railBadge}
-                      </span>
-                    )}
-                    <span className="text-[0.72em] font-semibold text-ink-3 [writing-mode:vertical-rl]">{railTitle}</span>
+                    <Icon name="Moon" size={13} />
+                    Night recommended
                   </button>
-                  {/* Below lg the rail has no column of its own, so it opens inline. */}
-                  <button
-                    type="button"
-                    onClick={toggleRail}
-                    className="glass-strong mt-2 flex min-h-11 w-full items-center justify-between gap-2 rounded-card px-4 text-[0.9em] font-semibold text-ink-2 lg:hidden"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Icon name="PanelRight" size={15} className="text-ink-3" />
-                      {railTitle}
+                  <IconButton icon="X" label="Dismiss" onClick={dismissNightPrompt} className="size-8" size={12} />
+                </span>
+              )}
+
+              {actions}
+              <ScreenInfo spec={spec} />
+            </div>
+          </div>
+        </header>
+
+        {/* Z5 + Z6. */}
+        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto">
+          <div
+            className={cx(
+              /*
+                `min-h-full` + the bottom padding (rather than a spacer sibling)
+                makes Z5 as tall as the frame, so a screen whose root is `flex-1`
+                fills the viewport instead of floating in the top third. The
+                padding is what the Z7b bubble, the Z7a bar and the phone tab bar
+                need to clear.
+              */
+              'gutter mx-auto flex min-h-full w-full flex-col gap-6 py-4',
+              actionBar ? 'pb-28' : 'pb-24',
+              'max-sm:pb-40',
+              measure,
+              // The rail — open or collapsed to its tab — sits beside Z5 from lg.
+              rail ? 'lg:flex-row' : undefined,
+            )}
+          >
+            <main className="flex min-w-0 flex-1 flex-col">
+              {forced === 'AI-OFF' && <AiOffLine className="mb-4" />}
+
+              {replacesContent ? (
+                forced === 'LOADING' ? (
+                  <LoadingFrame shape={loadingShape} />
+                ) : forced === 'DENIED' ? (
+                  <DeniedPanel capability={spec.permission} />
+                ) : forced === 'ERROR' ? (
+                  <ErrorFrame
+                    what="That did not save"
+                    preserved="Everything you typed"
+                    onRetry={() => forceState(null)}
+                    onCopyOut={() => forceState(null)}
+                  />
+                ) : (
+                  (empty ?? (
+                    <div className="glass-strong glass-card p-10 text-center text-ink-2">
+                      Nothing to show here yet, and the reason is stated on the screen this stands in for.
+                    </div>
+                  ))
+                )
+              ) : (
+                children
+              )}
+            </main>
+
+            {/* Z6 — 320px right rail. Opens collapsed; the tab carries a count. */}
+            {rail && !replacesContent && (
+              <aside className={cx('shrink-0', railCollapsed ? 'lg:w-12' : 'w-full lg:w-z6')}>
+                {railCollapsed ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={toggleRail}
+                      className="glass-strong lift sticky top-0 hidden w-12 flex-col items-center gap-2 rounded-card py-3 lg:flex"
+                      title={`Show ${railTitle}`}
+                    >
+                      <Icon name="PanelRight" size={16} className="text-ink-3" />
                       {railBadge !== undefined && railBadge !== null && (
-                        <span className="tabular inline-flex min-h-5 min-w-5 items-center justify-center rounded-pill bg-brand px-1 text-[0.76em] font-bold text-brand-on">
+                        <span className="tabular inline-flex min-h-5 min-w-5 items-center justify-center rounded-pill bg-brand px-1 text-[0.72em] font-bold text-brand-on">
                           {railBadge}
                         </span>
                       )}
-                    </span>
-                    <Icon name="ChevronDown" size={14} className="text-ink-3" />
-                  </button>
-                </>
-              ) : (
-                <div className="space-y-4">
-                  <SectionTitle
-                    title={railTitle}
-                    action={
-                      <IconButton icon="PanelRight" label={`Collapse ${railTitle}`} onClick={toggleRail} className="size-9" size={15} />
-                    }
-                  />
-                  {rail}
-                </div>
-              )}
-            </aside>
-          )}
+                      <span className="text-[0.72em] font-semibold text-ink-3 [writing-mode:vertical-rl]">{railTitle}</span>
+                    </button>
+                    {/* Below lg the rail has no column of its own, so it opens inline. */}
+                    <button
+                      type="button"
+                      onClick={toggleRail}
+                      className="glass-strong mt-2 flex min-h-11 w-full items-center justify-between gap-2 rounded-card px-4 text-[0.9em] font-semibold text-ink-2 lg:hidden"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Icon name="PanelRight" size={15} className="text-ink-3" />
+                        {railTitle}
+                        {railBadge !== undefined && railBadge !== null && (
+                          <span className="tabular inline-flex min-h-5 min-w-5 items-center justify-center rounded-pill bg-brand px-1 text-[0.76em] font-bold text-brand-on">
+                            {railBadge}
+                          </span>
+                        )}
+                      </span>
+                      <Icon name="ChevronDown" size={14} className="text-ink-3" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <SectionTitle
+                      title={railTitle}
+                      action={
+                        <IconButton icon="PanelRight" label={`Collapse ${railTitle}`} onClick={toggleRail} className="size-9" size={15} />
+                      }
+                    />
+                    {rail}
+                  </div>
+                )}
+              </aside>
+            )}
+          </div>
+
         </div>
 
+        {/* Z7a — sticky action bar. The Z7b bubble floats ABOVE this, never in it. */}
+        {actionBar && !replacesContent && (
+          <div className="chrome-bar sticky bottom-0 z-50 shrink-0 border-t border-glass-hairline max-sm:mb-14">
+            <div className={cx('gutter mx-auto flex flex-wrap items-center gap-3 py-3', measure)}>{actionBar}</div>
+          </div>
+        )}
       </div>
-
-      {/* Z7a — sticky action bar. The Z7b bubble floats ABOVE this, never in it. */}
-      {actionBar && !replacesContent && (
-        <div className="chrome-bar sticky bottom-0 z-50 shrink-0 border-t border-glass-hairline max-sm:mb-14">
-          <div className={cx('gutter mx-auto flex flex-wrap items-center gap-3 py-3', measure)}>{actionBar}</div>
-        </div>
-      )}
-    </div>
+    </CardToneContext.Provider>
   )
 }
 

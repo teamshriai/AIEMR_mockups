@@ -23,7 +23,7 @@ import { TrendChart } from '@/components/charts'
 import type { TrendPoint } from '@/components/charts'
 import { Disclosure, Why } from '@/components/calm'
 import { Alert, Button, Card, Chip, ClinicalFlag, KeyValue, Table, Td, Th, Tr } from '@/components/primitives'
-import { RESULT_TRENDS, encounterForPatient, maybeResult } from '@/data/clinical'
+import { RESULT_TRENDS, encounterForPatient, maybeResult, trendPointsFor } from '@/data/clinical'
 import type { ResultRow } from '@/data/clinical'
 import { formatDateTime, formatTime, NOW } from '@/data/format'
 import { patient } from '@/data/kit'
@@ -69,18 +69,7 @@ function ResultDetail({ r }: { r: ResultRow }) {
   const bounds = r.refLow !== undefined && r.refHigh !== undefined ? { low: r.refLow, high: r.refHigh } : undefined
   const series = RESULT_TRENDS[r.id] ?? []
 
-  const points: TrendPoint[] = series.map((s, i) => ({
-    at: s.at,
-    value: s.value,
-    flag:
-      i === series.length - 1 && r.critical
-        ? 'critical'
-        : bounds && s.value > bounds.high
-          ? 'high'
-          : bounds && s.value < bounds.low
-            ? 'low'
-            : undefined,
-  }))
+  const points: TrendPoint[] = trendPointsFor(r)
 
   const acked = r.acknowledged || acknowledgements[r.id] !== undefined
 

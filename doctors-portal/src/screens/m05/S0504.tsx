@@ -23,57 +23,11 @@ import { ScopeTabs, Why, useScope } from '@/components/calm'
 import { Modal } from '@/components/overlays'
 import { Button, Card, Chip, Field, Select, TextInput } from '@/components/primitives'
 import { formatTime, NOW } from '@/data/format'
+import { SESSIONS } from '@/data/schedule'
+import type { Session } from '@/data/schedule'
 import { useCurrentStaff } from '@/store/session'
 import { useUI } from '@/store/ui'
 import { Screen } from '@/shell/Screen'
-
-interface Session {
-  id: string
-  day: string
-  start: string
-  end: string
-  slotMin: number
-  clinic: string
-  capacity: number
-  effectiveFrom: string
-  /** AI-608's observation about this session. */
-  observation?: string
-  observationBand?: 'HIGH' | 'MED' | 'LOW'
-  observationConfidence?: number
-}
-
-const SESSIONS: Session[] = [
-  {
-    id: 'T-1',
-    day: 'Monday',
-    start: '08:00',
-    end: '12:00',
-    slotMin: 10,
-    clinic: 'General medicine, new and follow-up',
-    capacity: 24,
-    effectiveFrom: '01-Apr-2026',
-    observation:
-      'This session has run over by a median of 34 minutes across the last 12 weeks. At 24 slots of 10 minutes against a mean consultation of 11, the template is 24 minutes short before anything goes wrong.',
-    observationBand: 'HIGH',
-    observationConfidence: 0.91,
-  },
-  { id: 'T-2', day: 'Tuesday', start: '14:00', end: '17:00', slotMin: 15, clinic: 'Thyroid and endocrine follow-up', capacity: 12, effectiveFrom: '01-Apr-2026' },
-  { id: 'T-3', day: 'Thursday', start: '08:00', end: '11:00', slotMin: 10, clinic: 'General medicine, follow-up only', capacity: 18, effectiveFrom: '01-Apr-2026' },
-  {
-    id: 'T-4',
-    day: 'Friday',
-    start: '09:00',
-    end: '12:00',
-    slotMin: 20,
-    clinic: 'Complex and multi-morbidity',
-    capacity: 9,
-    effectiveFrom: '01-Jul-2026',
-    observation:
-      'Consistently finishes 18 minutes early. Two more slots would fit without pushing the mean consultation down.',
-    observationBand: 'MED',
-    observationConfidence: 0.74,
-  },
-]
 
 /** NOW is Mon 21-Sep-2026, so "today" is the Monday pattern. */
 const TODAY_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][NOW.getDay()]

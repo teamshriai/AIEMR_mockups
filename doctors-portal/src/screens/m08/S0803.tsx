@@ -19,16 +19,21 @@
  * narrowed, and the narrowing is visible and removable rather than silent.
  */
 
-import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Worklist } from '@/archetypes'
 import type { WorklistColumn } from '@/archetypes'
+import { PriorityChip, StageChip } from '@/components/admission'
 import { PillTabs } from '@/components/myday'
-import { Button, Chip } from '@/components/primitives'
-import { INPATIENTS, NEEDS_ATTENTION, encounterForPatient } from '@/data/clinical'
+import { Button, Card, Chip, Icon } from '@/components/primitives'
+import { TYPE_LABEL, inpatientRows, isAdmittedHere, pendingAdmissions } from '@/data/admissions'
+import type { Admission } from '@/data/admissions'
+import { NEEDS_ATTENTION, encounterForPatient } from '@/data/clinical'
 import type { WorklistRow } from '@/data/clinical'
+import { ageSex } from '@/data/format'
 import { patient } from '@/data/kit'
+import { useAdmissions } from '@/store/admissions'
 import { useClinical } from '@/store/clinical'
 import { useCurrentStaff } from '@/store/session'
 import { Screen } from '@/shell/Screen'
@@ -56,17 +61,24 @@ export function S0803() {
   const [params, setParams] = useSearchParams()
   const me = useCurrentStaff()
   const notes = useClinical((s) => s.notes)
+  const admissions = useAdmissions((s) => s.admissions)
   const [aiSort, setAiSort] = useState(true)
+
+  /** Everyone in a bed — the seeded list plus anyone admitted here — and who is still waiting for one. */
+  const inpatients = useMemo(() => inpatientRows(admissions), [admissions])
+  const pending = useMemo(() => pendingAdmissions(admissions), [admissions])
 
   const raw = params.get('location')
   const location: Location = raw === 'ward' || raw === 'icu' || raw === 'ed' ? raw : 'all'
 
   const noteDone = (patientId: string) => {
+    // Admitted here from OPD: their encounter is the clinic visit, so a signed OPD note is not a round note.
+    if (isAdmittedHere(patientId, admissions)) return false
     const enc = encounterForPatient(patientId)
     return enc ? notes[enc.id]?.status === 'signed' : false
   }
 
-  const scoped = INPATIENTS.filter((r) => inLocation(r, location))
+  const scoped = inpatients.filter((r) => inLocation(r, location))
   const pinned = NEEDS_ATTENTION.filter((r) => inLocation(r, location))
   const others = scoped.filter((r) => !pinned.some((n) => n.patientId === r.patientId))
   const rows = aiSort
@@ -132,11 +144,11 @@ export function S0803() {
           <Chip tone="caution" icon="CircleAlert">
             Moderate
           </Chip>
-        ) : (
+        ) : r.risk === 'LOW' ? (
           <Chip tone="normal" icon="Check">
             Low risk
           </Chip>
-        ),
+        ) : null,
     },
     {
       /*
@@ -172,6 +184,8 @@ export function S0803() {
       states={['LOADING', 'EMPTY', 'PARTIAL', 'ERROR', 'DENIED', 'BREAKGLASS', 'OFFLINE', 'STALE', 'AI-OFF', 'AI-ABSTAIN']}
     >
       <div className="max-w-4xl space-y-6">
+        {pending.length > 0 && <PendingAdmissions admissions={pending} />}
+
         <Worklist
           variant="calm"
           tone="inpatients"
@@ -211,7 +225,7 @@ export function S0803() {
                   key: l,
                   label: LOCATION_LABEL[l],
                   icon: l === 'ward' ? 'BedDouble' : l === 'icu' ? 'Activity' : l === 'ed' ? 'Siren' : undefined,
-                  count: INPATIENTS.filter((r) => inLocation(r, l)).length,
+                  count: inpatients.filter((r) => inLocation(r, l)).length,
                 }))}
                 onChange={(l) => setParams(l === 'all' ? {} : { location: l })}
               />
@@ -220,5 +234,51 @@ export function S0803() {
         />
       </div>
     </Screen>
+  )
+}
+
+/**
+ * The front desk's queue, as the doctor sees it: who they admitted, how
+ * urgently, and where each admission has got to. A row opens the patient's
+ * record. Each patient moves into the list below once they have a bed.
+ */
+function PendingAdmissions({ admissions }: { admissions: Admission[] }) {
+  return (
+    <Card strong className="overflow-hidden">
+      <div className="flex items-center gap-2 bg-pri-warning-soft/60 px-4 py-2">
+        <Icon name="Hourglass" size={13} className="text-pri-warning-ink" />
+        <h2 className="text-[0.78em] font-bold tracking-[0.08em] text-pri-warning-ink uppercase">Pending admissions</h2>
+        <span className="tabular inline-flex min-h-5 items-center rounded-pill bg-pri-warning-fill px-2 text-[0.76em] font-bold text-pri-on-warning">
+          {admissions.length}
+        </span>
+      </div>
+      <ol className="divide-y divide-glass-hairline">
+        {admissions.map((a) => {
+          const p = patient(a.patientId)
+          return (
+            <li key={a.id}>
+              <Link
+                to={`/patient/${p.uhid}/record`}
+                className="grid min-h-16 grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-3 py-3 transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover sm:grid-cols-[4.75rem_1fr_auto] sm:px-4"
+              >
+                <span className="order-2 inline-flex min-h-8 items-center justify-center self-center justify-self-start rounded-field bg-glass-inset px-2.5 text-[0.86em] font-bold whitespace-nowrap text-ink-2 sm:order-none sm:w-full">
+                  {TYPE_LABEL[a.type]}
+                </span>
+                <span className="order-1 min-w-0 sm:order-none">
+                  <span className="block truncate text-[1.02em] font-semibold tracking-tight">{p.name}</span>
+                  <span className="tabular mt-0.5 block text-[0.88em] text-ink-3">
+                    {ageSex(p.age, p.sex)} · {p.uhid}
+                  </span>
+                </span>
+                <span className="order-3 flex shrink-0 flex-col items-end gap-1.5 sm:order-none">
+                  <PriorityChip priority={a.priority} />
+                  <StageChip admission={a} />
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+      </ol>
+    </Card>
   )
 }

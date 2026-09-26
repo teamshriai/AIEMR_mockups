@@ -8,6 +8,7 @@
  *          which in a hospital is all of them.
  */
 
+import { createContext, useContext } from 'react'
 import type { ComponentProps, ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { ICONS } from './icons'
@@ -17,14 +18,38 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 }
 
 /**
- * The kinds of card that carry a colour. One purpose, one solid fill, on every
- * screen (theme.css CARD FILLS, glass.css .card-toned). Anything not in this
- * list stays glass on purpose.
+ * The functions a card can carry a soft hue for. One function, one hue, on
+ * every screen and in both themes (theme.css CARD TINTS, glass.css
+ * .card-toned). `none` keeps a card plain where the screen would tint it.
  */
-export type CardTone = 'patient' | 'inpatients' | 'schedule' | 'signoff' | 'notes' | 'discharge' | 'ai'
+export type CardTone =
+  | 'patient'
+  | 'inpatients'
+  | 'schedule'
+  | 'signoff'
+  | 'notes'
+  | 'discharge'
+  | 'ai'
+  | 'investigations'
+  | 'medication'
+  | 'stroke'
+  | 'none'
+
+/**
+ * The hue a screen gives its cards by default — its function. Set once by
+ * `Screen` from shell/screenTones.ts, so every card on the screen carries it
+ * unless the card does a different job and names its own tone.
+ */
+export const CardToneContext = createContext<CardTone | undefined>(undefined)
+
+/** The card's own tone, else the screen's. */
+export function useCardTone(tone?: CardTone): CardTone | undefined {
+  const inherited = useContext(CardToneContext)
+  return tone ?? inherited
+}
 
 export function toneClass(tone?: CardTone): string | false {
-  return tone !== undefined && `card-toned card-tone-${tone}`
+  return tone !== undefined && tone !== 'none' && `card-toned card-tone-${tone}`
 }
 
 // ─────────────────────────────────────────────────────────────────── Icon
@@ -81,7 +106,7 @@ export function Button({
       type="button"
       {...rest}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-pill font-medium',
+        'inline-flex items-center justify-center gap-2 rounded-field font-medium',
         'transition-all duration-150 ease-out-clinical',
         'disabled:cursor-not-allowed disabled:opacity-45',
         size !== 'sm' && 'min-h-11',
@@ -154,13 +179,14 @@ export function Card({
   /** Retained for callers that asked for the strong fill explicitly; now the default. */
   strong?: boolean
   quiet?: boolean
-  /** A solid, highlighted fill for the kinds of card that carry a colour. */
+  /** The card's function hue; defaults to the screen's. */
   tone?: CardTone
   as?: 'section' | 'div' | 'article' | 'aside'
 }) {
   void strong
+  const resolved = useCardTone(tone)
   return (
-    <As {...rest} className={cx(quiet ? 'glass' : 'glass-strong', 'glass-card', toneClass(tone), className)}>
+    <As {...rest} className={cx(quiet ? 'glass' : 'glass-strong', 'glass-card', toneClass(resolved), className)}>
       {children}
     </As>
   )

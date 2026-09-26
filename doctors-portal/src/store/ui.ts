@@ -94,7 +94,15 @@ export const useUI = create<UIState>()((set, get) => ({
   /** Collapsed by default: the rail is context, and context is one tap away. */
   railCollapsed: true,
 
-  openAssistant: (assistantFrom) => set({ assistantOpen: true, assistantFrom, assistantNudge: false }),
+  /**
+   * Also called when the page changes under an open panel. A conversation about
+   * one patient is never left showing under another (guardrail 4), so a change
+   * of patient starts a fresh one.
+   */
+  openAssistant: (assistantFrom) => {
+    const samePatient = get().assistantFrom?.patientId === assistantFrom.patientId
+    set({ assistantOpen: true, assistantFrom, assistantNudge: false, ...(samePatient ? {} : { thread: [] }) })
+  },
   /** Closing leaves the thread intact — "leaves the page state untouched". */
   closeAssistant: () => set({ assistantOpen: false }),
 

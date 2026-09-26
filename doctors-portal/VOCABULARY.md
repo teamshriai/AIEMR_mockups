@@ -22,7 +22,9 @@ to; the screen states both.
 
 ## Counts
 
-`OPD · Inpatients` is a **partition** — every patient appears in exactly one.
+`OPD · Inpatients` is a **partition** — every patient appears in exactly one,
+as a count or as a name. My Day lists them by name, so a patient in a bed is
+never also on the OPD list.
 Ward, ICU and ED are parts of Inpatients, so they are the filter on the
 Inpatients screen and never tiles beside the whole. `Follow-up` is a *visit
 type* inside OPD, so it is a filter on the OPD screen and never a count beside
@@ -76,16 +78,23 @@ read 15 when this consultant has 13.
 | **Save draft** · **Saved 15:15** · **Autosave on** | "Autosaves every 20 seconds" |
 | **Addendum** | Amendment (an amendment changes; an addendum appends — CMP-NABH-10) |
 | **Break-glass** | Emergency access, override access |
+| **Admit** | "Request admission", "Send for admission", "IPD admit" — one button, one small modal (Ward or ICU, a priority, an optional note) |
 
 ## My Day
 
 | Canonical | Never write |
 |---|---|
-| **Needs my attention** | "Alerts", "Urgent" as a heading |
-| **Pending today** | "To finish today", "To do", "Tasks" |
+| **Today** (the day's timeline card) · **Patients Today** (the patient panel, sections **OPD** · **Inpatients**) · **Calendar** (the month) | "My patients", "Outpatients", "Agenda", "Planner" |
+| **Needs Action** (the action panel, sections **Attention** · **Tasks** · **To-do notes**) | "Alerts", "Urgent" or "Critical" as a heading — not every attention item is critical |
+| **AI brief** (a calendar date's summary) · **Your sessions** · **Appointments with you** | "Day summary", "AI summary", "Events" |
+| **New patient** · **Follow-up** (an OPD row's kind) · **Ward** · **ICU** · **ED** (an inpatient row's place, shown as its icon and bed — not as a tag). *Follow-up* and *Seen* show as their icon alone on My Day, and the word is kept in the tooltip and the accessible name. A **Teleconsult** row in OPD leads with the video icon | "New" alone, "Revisit" |
+| **High risk** · **Admitted today** · **Discharge today** (an inpatient row's one status tag) | "Going home", "New admission" |
+| **Tasks** — only as the Needs Action section for documentation and sign-offs | "To finish today", "To do" |
+| **To-do notes** (the doctor's own reminders) · **To-do note saved** | "To-Do Note" in title case, "Reminders" |
 | **Ward round notes due** · **Notes to co-sign** · **Dictated notes to sign** · **Discharge summary to sign** · **Referrals to review** | "Round notes to write", "Co-sign" alone, "Drafts" |
 | **Discharges today** · **Cleared for discharge** | "Going home", "Nothing in the way" |
 | **Sign assessment** | "Complete the assessment" |
+| **Pending admissions** · **Admission in progress** · **Waiting for bed** · **Bed ICU-3 allocated** · **Admitted · ICU-3** | "Admission requested" as a status, "Bed assigned", "admitted patients" — three states only: not admitted (no chip), admission in progress, admitted |
 
 ## Links and filters
 

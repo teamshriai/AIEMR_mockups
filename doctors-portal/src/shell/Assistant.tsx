@@ -24,22 +24,36 @@
  * The retrieval backend is explicitly hypothetical (OQ-539, OQ-540); what the
  * mockup must show is the affordance and the surface. The guardrails, though,
  * are real behaviour here — see resolveAnswer() in data/assistant.ts.
+ *
+ * The panel is a right sidebar that leaves the page usable behind it, because
+ * the assistant is consulted in the middle of work, not instead of it. It opens
+ * on up to four suggestions composed for the patient and the doctor's day
+ * (suggestionsFor), and once a question is asked, the question and its answer
+ * are all it shows.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { assistantScreenFor } from '@/atlas/nav'
 import { screenForPath, maybeScreen, routeForSource } from '@/atlas/registry'
-import { AttestStrip, Confidence, Diamond } from '@/components/ai'
+import { AttestStrip, Confidence } from '@/components/ai'
 import { AssistantIcon } from '@/components/assistant-icon'
 import { Drawer } from '@/components/overlays'
 import { Button, Chip, Icon, IconButton, cx } from '@/components/primitives'
-import type { AssistantAnswer } from '@/data/assistant'
-import { promptsFor, resolveAnswer } from '@/data/assistant'
+import type { AssistantAnswer, Citation } from '@/data/assistant'
+import { resolveAnswer, suggestionsFor } from '@/data/assistant'
+import { callName } from '@/data/assistant-record'
+import type { LiveContext } from '@/data/assistant-record'
+import { maybeEncounter, maybeResult } from '@/data/clinical'
+import { maybeImagingStudy } from '@/data/imaging'
 import { patientByAnyId } from '@/data/kit'
+import { maybeStrokeCase } from '@/data/stroke'
+import { useAdmissions } from '@/store/admissions'
 import { selectAiActive, useAI } from '@/store/ai'
-import { useSession } from '@/store/session'
+import { useAudit } from '@/store/audit'
+import type { AuditRow } from '@/store/audit'
+import { useClinical } from '@/store/clinical'
+import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 import type { ThreadTurn } from '@/store/ui'
 
@@ -82,6 +96,27 @@ export function AssistantBubble() {
     return () => window.removeEventListener('keydown', onKey)
   }, [renders, assistantOpen, openAssistant, spec, patientId])
 
+  /**
+   * The panel does not block the page, so the doctor can move while it is
+   * open — and its context moves with them. Only on a real change of page: a
+   * screen that opens the panel itself (the imaging viewer's question box)
+   * names its own patient and must not be overridden on the same page.
+   */
+  const lastPath = useRef(pathname)
+  useEffect(() => {
+    if (!assistantOpen) {
+      lastPath.current = pathname
+      return
+    }
+    if (!renders) {
+      closeAssistant()
+      return
+    }
+    if (lastPath.current === pathname) return
+    lastPath.current = pathname
+    openAssistant({ screenId: spec!.id, patientId })
+  }, [pathname, assistantOpen, renders, spec, patientId, openAssistant, closeAssistant])
+
   if (!renders) return null
 
   return (
@@ -103,9 +138,14 @@ export function AssistantBubble() {
           'fixed right-6 z-70 flex items-center justify-center rounded-pill',
           // 48px below 1024px, 56px above — §6.1's responsive line.
           'size-12 md:size-z7b',
-          /* A white disc, in both themes, so the assistant's face keeps its own colours. */
-          'bg-bubble shadow-bubble ring-1 ring-glass-hairline',
-          'transition-all duration-150 ease-out-clinical hover:brightness-110 active:scale-95',
+          /*
+           * A white disc, in both themes, so the assistant's face keeps its own
+           * colours. A slow indigo glow while it is closed invites the click;
+           * once the panel is open there is nothing left to invite.
+           */
+          'bg-bubble',
+          assistantOpen ? 'shadow-bubble ring-1 ring-glass-hairline' : 'assistant-glow',
+          'transition-[filter,transform] duration-150 ease-out-clinical hover:brightness-110 active:scale-95',
           'max-sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))]!',
         )}
       >
@@ -121,22 +161,62 @@ export function AssistantBubble() {
   )
 }
 
-/** The Z3 patient, if the calling screen had one. No Z3 ⇒ no patient scope. */
+/**
+ * The Z3 patient, if the calling screen had one. No Z3 ⇒ no patient scope.
+ *
+ * Routes carry a UHID, or an id that names exactly one patient — an encounter,
+ * a result, a study, a stroke case. Anything else names no patient rather than
+ * guessing one, since showing the wrong patient matters more than convenience.
+ */
 function usePatientInContext(): string | undefined {
   const { pathname } = useLocation()
   const spec = screenForPath(pathname)
-  if (!spec?.patientScoped) return undefined
+  if (!spec?.patientScoped || !spec.route) return undefined
 
-  // Routes carry either a UHID (/patient/:id/...) or an encounter/case id.
-  const parts = pathname.split('/').filter(Boolean)
-  for (const part of parts) {
-    const hit = patientByAnyId(part)
-    if (hit) return hit.id
+  const at = spec.route.split('/').filter(Boolean).indexOf(':id')
+  const id = at >= 0 ? pathname.split('/').filter(Boolean)[at] : undefined
+  if (!id) return undefined
+  return (
+    patientByAnyId(id)?.id ??
+    maybeEncounter(id)?.patientId ??
+    maybeResult(id)?.patientId ??
+    maybeImagingStudy(id)?.patientId ??
+    (spec.route.startsWith('/stroke/case/') ? maybeStrokeCase(id)?.patientId : undefined)
+  )
+}
+
+/** Audit rows written before this page load are history, not something the doctor has just done. */
+const LOADED_AFTER = useAudit.getState().rows.at(-1)?.id
+
+function recentAction(rows: AuditRow[], actorId: string): AuditRow | undefined {
+  const start = LOADED_AFTER ? rows.findIndex((r) => r.id === LOADED_AFTER) + 1 : 0
+  for (let i = rows.length - 1; i >= start; i -= 1) {
+    if (rows[i].actorId === actorId) return rows[i]
   }
-  // Stroke and encounter routes resolve their patient in the screen itself; the
-  // panel falls back to naming no patient rather than guessing one, since
-  // guarding against showing the wrong patient matters more than convenience.
   return undefined
+}
+
+/** What the record answers read — the same session state My Day reads. */
+function useLiveContext(): LiveContext {
+  const persona = useSession((s) => s.persona)
+  const breakGlass = useSession((s) => s.breakGlassPatients)
+  const acknowledgements = useClinical((s) => s.acknowledgements)
+  const seenAt = useClinical((s) => s.seenAt)
+  const admissions = useAdmissions((s) => s.admissions)
+  const rows = useAudit((s) => s.rows)
+  const me = useCurrentStaff()
+
+  return useMemo(() => {
+    const recent = recentAction(rows, me.id)
+    return {
+      persona,
+      breakGlass,
+      acknowledgements,
+      seenAt,
+      admissions,
+      recent: recent && { event: recent.event, subject: recent.subject },
+    }
+  }, [persona, breakGlass, acknowledgements, seenAt, admissions, rows, me.id])
 }
 
 // ──────────────────────────────────────────────────────────── The panel
@@ -145,32 +225,50 @@ export function AssistantPanel() {
   const { assistantOpen, assistantFrom, closeAssistant, thread, pushTurn, reportAnswer, clearThread } = useUI()
   const navigate = useNavigate()
   const toast = useUI((s) => s.toast)
+  const live = useLiveContext()
 
-  /** A citation opens its screen where this build has one; otherwise it says so. */
-  function openSource(label: string, source: string) {
-    const route = routeForSource(source)
-    if (route) {
-      closeAssistant()
-      navigate(route)
-    } else {
-      toast({ tone: 'info', title: label, detail: `${source} — documentation, not a screen in this build.` })
+  /**
+   * A citation opens what it cites. The panel stays open beside it on a wide
+   * screen — that is what a sidebar is for — and gets out of the way on a
+   * narrow one, where it would cover the page it just opened.
+   */
+  function openSource(c: Citation) {
+    const route = c.to ?? routeForSource(c.source)
+    if (!route) {
+      toast({ tone: 'info', title: c.label, detail: `${c.source} — documentation, not a screen in this build.` })
+      return
     }
+    if (!window.matchMedia('(min-width: 1024px)').matches) closeAssistant()
+    navigate(route)
   }
-  const language = useSession((s) => s.language)
+
   const [draft, setDraft] = useState('')
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  const threadEndRef = useRef<HTMLDivElement>(null)
-  const persona = useSession((s) => s.persona)
+  const latestQuestionRef = useRef<HTMLDivElement>(null)
 
   const from = assistantFrom ? maybeScreen(assistantFrom.screenId) : undefined
   const patient = patientByAnyId(assistantFrom?.patientId)
-  const assistantId = assistantScreenFor(persona)
-  const assistantName = assistantId === 'S-28-09' ? 'Stroke Command Assistant' : 'Clinician Assistant'
 
-  // Scroll the thread, but never move focus off the composer — §M-28's
-  // accessibility rule: "a new answer must not steal focus from the composer."
+  const context = useMemo(
+    () =>
+      assistantFrom && {
+        screenId: assistantFrom.screenId,
+        patientId: assistantFrom.patientId,
+        patientScoped: Boolean(assistantFrom.patientId),
+        live,
+      },
+    [assistantFrom, live],
+  )
+  const suggestions = useMemo(
+    () => (context && thread.length === 0 ? suggestionsFor(context) : []),
+    [context, thread.length],
+  )
+
+  // Bring the newest question to the top, with its answer under it — but never
+  // move focus off the composer: "a new answer must not steal focus from the
+  // composer" (§M-28).
   useEffect(() => {
-    if (thread.length > 0) threadEndRef.current?.scrollIntoView({ block: 'end' })
+    if (thread.length > 0) latestQuestionRef.current?.scrollIntoView({ block: 'start' })
   }, [thread.length])
 
   useEffect(() => {
@@ -179,60 +277,44 @@ export function AssistantPanel() {
 
   function ask(question: string) {
     const q = question.trim()
-    if (q.length < 3 || !assistantFrom) return
+    if (q.length < 3 || !context) return
     pushTurn({ role: 'user', text: q })
-    const answer = resolveAnswer(q, {
-      screenId: assistantFrom.screenId,
-      patientId: assistantFrom.patientId,
-      patientScoped: Boolean(assistantFrom.patientId),
-    })
+    const answer = resolveAnswer(q, context)
     pushTurn({ role: 'assistant', text: answer.body, answer })
     setDraft('')
+    composerRef.current?.focus()
+  }
+
+  /** Back to the suggestions, for a question that starts afresh. */
+  function newQuestion() {
+    clearThread()
+    setDraft('')
+    composerRef.current?.focus()
   }
 
   if (!assistantOpen || !assistantFrom) return null
 
-  const prompts = promptsFor(assistantFrom.screenId)
+  const lastQuestion = thread.findLastIndex((t) => t.role === 'user')
 
   return (
     <Drawer
       open={assistantOpen}
       onClose={closeAssistant}
-      width={420}
+      modal={false}
+      width={440}
       labelledBy="assistant-title"
       header={
-        <header className="border-b border-glass-hairline px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 id="assistant-title" className="flex items-center gap-2 font-semibold tracking-tight">
-                <Diamond size={13} />
-                {assistantName}
-              </h2>
-              {/* The panel names the calling screen and the Z3 patient. */}
-              <p className="mt-0.5 truncate text-[0.86em] text-ink-3">
-                from: {from ? `${from.id} ${from.name}` : 'this screen'}
-                {patient && ` — ${patient.name}`}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {thread.length > 0 && (
-                <IconButton icon="Eraser" label="Clear this conversation" onClick={clearThread} className="size-9" size={15} />
-              )}
-              <IconButton icon="X" label="Close the assistant" onClick={closeAssistant} className="size-9" size={16} />
-            </div>
+        <header className="flex items-start justify-between gap-4 border-b border-glass-hairline px-5 py-4">
+          <div className="min-w-0">
+            <h2 id="assistant-title" className="text-lg font-semibold tracking-tight">
+              Assistant
+            </h2>
+            {/* The panel names the Z3 patient and the calling screen — the scope of every answer. */}
+            <p className="mt-0.5 truncate text-[0.92em] text-ink-3">
+              {patient ? `${patient.name} · ${from?.name ?? 'this screen'}` : (from?.name ?? 'This screen')}
+            </p>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {/* Scope is stated, because guardrails 3 and 4 depend on it. */}
-            <Chip tone="ai" icon="Focus">
-              {patient ? `scope: ${patient.name}` : 'scope: this screen'}
-            </Chip>
-            <Chip tone="neutral" icon="Globe">
-              {language}
-            </Chip>
-            <Chip tone="neutral" icon="ShieldCheck" title="Retrieval is filtered to what you may already read">
-              your access only
-            </Chip>
-          </div>
+          <IconButton icon="X" label="Close the assistant" onClick={closeAssistant} className="-mt-2 -mr-2" />
         </header>
       }
       footer={
@@ -241,36 +323,31 @@ export function AssistantPanel() {
           value={draft}
           onChange={setDraft}
           onSubmit={() => ask(draft)}
+          placeholder={
+            thread.length > 0 ? 'Ask a follow-up…' : patient ? `Ask about ${callName(patient)}…` : 'Ask a question…'
+          }
         />
       }
     >
-      <div className="px-4 py-4">
-        {/* role="log" so answers are announced without stealing focus. */}
-        <div role="log" aria-live="polite" aria-label="Conversation" className="space-y-4">
-          {thread.length === 0 && <EmptyThread />}
-          {thread.map((turn) => (
-            <Turn key={turn.id} turn={turn} onReport={() => reportAnswer(turn.id)} onOpenSource={openSource} />
-          ))}
-          <div ref={threadEndRef} />
-        </div>
-
+      <div className="px-5 py-4">
         {/*
-          "3–4 screen-specific suggested prompts, because a blank chat box on a
-          clinical screen gets no use." Shown when the thread is empty AND
-          after any refusal.
+          "A blank chat box on a clinical screen gets no use" — so it opens on
+          suggestions. They are for starting, and only for starting: once a
+          question is asked they go, so a question and its answer are the only
+          thing in view.
         */}
-        {showPrompts(thread) && (
-          <div className="mt-5">
-            <p className="mb-2 text-[0.8em] font-semibold tracking-wider text-ink-3 uppercase">
-              {thread.length === 0 ? 'Try one of these' : 'Things I can answer here'}
-            </p>
+        {thread.length === 0 && suggestions.length > 0 && (
+          <section aria-labelledby="assistant-suggested">
+            <h3 id="assistant-suggested" className="mb-2.5 text-[0.8em] font-semibold tracking-wider text-ink-3 uppercase">
+              {patient ? `Suggested for ${callName(patient)}` : 'Suggested'}
+            </h3>
             <ul className="space-y-1.5">
-              {prompts.map((p) => (
+              {suggestions.map((p) => (
                 <li key={p}>
                   <button
                     type="button"
                     onClick={() => ask(p)}
-                    className="glass flex w-full items-center gap-2.5 rounded-panel px-3 py-2.5 text-left text-[0.95em] hover:bg-glass-fill-hover"
+                    className="glass flex min-h-11 w-full items-center gap-2.5 rounded-panel px-3 py-2.5 text-left text-[0.95em] hover:bg-glass-fill-hover"
                   >
                     <Icon name="CornerDownRight" size={14} className="shrink-0 text-ink-muted" />
                     <span className="min-w-0 flex-1">{p}</span>
@@ -278,47 +355,31 @@ export function AssistantPanel() {
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         )}
 
-        <p className="mt-6 border-t border-glass-hairline pt-3 text-[0.8em] leading-relaxed text-ink-3">
-          AI-911 · answers come only from cited documentation. Clinical questions are routed to the capability that owns
-          them, under its own gate. No task in this product requires me to complete — the{' '}
+        {/* role="log" so answers are announced without stealing focus. */}
+        <div role="log" aria-live="polite" aria-label="Conversation" className="space-y-4">
+          {thread.map((turn, i) => (
+            <div key={turn.id} ref={i === lastQuestion ? latestQuestionRef : undefined} className="scroll-mt-4">
+              <Turn turn={turn} onReport={() => reportAnswer(turn.id)} onOpenSource={openSource} />
+            </div>
+          ))}
+        </div>
+
+        {/* A follow-up goes in the composer; this is the way back to a fresh start. */}
+        {thread.length > 0 && (
           <button
             type="button"
-            className="underline underline-offset-2"
-            onClick={() =>
-              toast({ tone: 'info', title: 'Help centre', detail: 'Static help lives on the hospital intranet and is not part of this build. The service desk is on extension 4400.' })
-            }
+            onClick={newQuestion}
+            className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-chip px-2 py-1 text-[0.88em] font-medium text-ai hover:bg-glass-fill-hover"
           >
-            help centre
-          </button>{' '}
-          and the service desk are always available.
-        </p>
+            <Icon name="RotateCcw" size={13} />
+            New question
+          </button>
+        )}
       </div>
     </Drawer>
-  )
-}
-
-/** Prompts reappear after a refusal, per §M-28's EMPTY rule. */
-function showPrompts(thread: ThreadTurn[]): boolean {
-  if (thread.length === 0) return true
-  const last = thread[thread.length - 1]
-  return last.role === 'assistant' && last.answer !== undefined && last.answer.kind !== 'cited'
-}
-
-function EmptyThread() {
-  return (
-    <div className="rounded-panel bg-glass-fill-muted px-4 py-4">
-      <p className="flex items-center gap-2 font-medium">
-        <Diamond />
-        I answer from documentation, with the source cited.
-      </p>
-      <p className="mt-1.5 text-[0.92em] text-ink-3">
-        Process, policy, accreditation obligations and how this product works. Not clinical advice — those questions go
-        to the capability that owns them.
-      </p>
-    </div>
   )
 }
 
@@ -331,7 +392,7 @@ function Turn({
 }: {
   turn: ThreadTurn
   onReport: () => void
-  onOpenSource: (label: string, source: string) => void
+  onOpenSource: (c: Citation) => void
 }) {
   if (turn.role === 'user') {
     return (
@@ -366,25 +427,26 @@ function Turn({
         </div>
       )}
 
-      {/* Citations: real links with discernible text, never a bare [1]. */}
-      <div className="mt-3 border-t border-glass-hairline pt-3">
-        <p className="mb-1.5 text-[0.78em] font-semibold tracking-wider text-ink-3 uppercase">Sources</p>
-        <ul className="space-y-1">
+      {/* Citations: real links with discernible text, never a bare [1]. One line each. */}
+      <div className="mt-3 border-t border-glass-hairline pt-2.5">
+        <p className="mb-1 text-[0.75em] font-semibold tracking-wider text-ink-3 uppercase">Sources</p>
+        <ul>
           {answer.citations.map((c) => (
             <li key={c.n}>
               <button
                 type="button"
-                onClick={() => onOpenSource(c.label, c.source)}
-                className="flex w-full items-start gap-2 rounded-chip px-1.5 py-1 text-left hover:bg-glass-fill-hover"
+                onClick={() => onOpenSource(c)}
+                title={`${c.label} — ${c.source}`}
+                className="flex w-full items-center gap-2 rounded-chip px-1.5 py-1 text-left text-[0.86em] hover:bg-glass-fill-hover"
               >
-                <span className="mt-0.5 flex size-4.5 shrink-0 items-center justify-center rounded-[5px] bg-ai-soft text-[0.72em] font-bold text-ai">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-[5px] bg-ai-soft text-[0.8em] font-bold text-ai">
                   {c.n}
                 </span>
-                <span className="min-w-0 flex-1 text-[0.9em]">
-                  <span className="block">{c.label}</span>
-                  <span className="block text-[0.9em] text-ink-3">{c.source}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {c.label}
+                  <span className="text-ink-3"> · {c.source}</span>
                 </span>
-                <Icon name="ExternalLink" size={12} className="mt-1 shrink-0 text-ink-muted" />
+                <Icon name="ExternalLink" size={12} className="shrink-0 text-ink-muted" />
               </button>
             </li>
           ))}
@@ -478,17 +540,12 @@ function AbstainFrame({ answer }: { answer: AssistantAnswer }) {
         <Icon name="CircleHelp" size={16} />
         {answer.body}
       </p>
-      <p className="mt-1.5 text-[0.92em] text-ink-2">
-        Nothing relevant was retrieved, so there is nothing to cite — and I will not extrapolate a policy this hospital
-        has not written.
-      </p>
       {answer.supportRoute && (
         <p className="mt-2.5 flex items-start gap-2 text-[0.9em] text-ink-2">
           <Icon name="LifeBuoy" size={14} className="mt-0.5 shrink-0" />
           {answer.supportRoute}
         </p>
       )}
-      <p className="mt-2 text-[0.8em] text-ink-3">AI-ABSTAIN · an uncited answer is not rendered at all.</p>
     </article>
   )
 }
@@ -500,11 +557,13 @@ function Composer({
   value,
   onChange,
   onSubmit,
+  placeholder,
 }: {
   ref: React.RefObject<HTMLTextAreaElement | null>
   value: string
   onChange: (v: string) => void
   onSubmit: () => void
+  placeholder: string
 }) {
   /** Send enables at >= 3 characters, per S-28-02's composer rule. */
   const ready = value.trim().length >= 3
@@ -523,7 +582,7 @@ function Composer({
             if (ready) onSubmit()
           }
         }}
-        placeholder="Ask about this screen…"
+        placeholder={placeholder}
         aria-label="Ask the assistant"
         className="max-h-32 min-h-11 flex-1 resize-none rounded-field border border-glass-hairline bg-glass-fill-strong px-3.5 py-2.5 leading-snug focus:border-ai focus:outline-none"
       />

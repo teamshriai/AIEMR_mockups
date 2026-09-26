@@ -51,14 +51,25 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('e2e'
  * that offers it. A suggestion that answers "I have nothing on that" is worse
  * than no suggestion, and nothing else in the build would catch one.
  *
+ * The bubble's suggestions are composed per patient and per session, so the
+ * audit also gets the screens that carry the bubble and the patients a
+ * patient-scoped one can open, to walk every combination.
+ *
  * DEV-only, like the flag above: the branch is absent from `dist`.
  */
 if (import.meta.env.DEV) {
-  void import('./data/assistant').then((m) => {
+  void Promise.all([import('./data/assistant'), import('./atlas/registry'), import('./data/kit')]).then(([m, r, k]) => {
     ;(window as unknown as Record<string, unknown>).__rag = {
       resolveAnswer: m.resolveAnswer,
       promptsFor: m.promptsFor,
       screenPrompts: m.SCREEN_PROMPTS,
+      suggestionsFor: m.suggestionsFor,
+      maxSuggestions: m.MAX_SUGGESTIONS,
+      bubbleScreens: r.ROUTED_SCREENS.filter(r.showsAssistantBubble).map((s) => ({
+        id: s.id,
+        patientScoped: s.patientScoped,
+      })),
+      patientIds: k.PATIENTS.map((p) => p.id),
     }
   })
 }
@@ -72,6 +83,10 @@ if (import.meta.env.DEV) {
   void import('./store/ai').then((m) => {
     ;(window as unknown as Record<string, unknown>).__forceState = (s: DeclaredState | 'DEFAULT' | null) =>
       m.useAI.getState().forceState(s === 'DEFAULT' ? null : s)
+  })
+  // Admissions persist, so an admitted patient stays admitted. This clears them, to run the flow again.
+  void import('./store/admissions').then((m) => {
+    ;(window as unknown as Record<string, unknown>).__resetAdmissions = () => m.useAdmissions.getState().reset()
   })
 }
 

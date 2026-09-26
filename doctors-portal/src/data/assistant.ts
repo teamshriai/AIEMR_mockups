@@ -23,11 +23,16 @@
 import type { ConfidenceBand } from '@/atlas/confidence'
 import type { Gate } from '@/atlas/gates'
 
+import { ATTENTION_PROMPT, DEFAULT_LIVE, admissionPrompt, patientPrompts, recordAnswer, recordIntent } from './assistant-record'
+import type { LiveContext } from './assistant-record'
+
 export interface Citation {
   n: number
   label: string
   /** Where it came from — a policy ID, an SOP, a screen spec, a record. */
   source: string
+  /** The route that opens it, where the source is a record entry rather than a document. */
+  to?: string
 }
 
 /**
@@ -65,6 +70,12 @@ export interface AssistantAnswer {
   /** Set on no-evidence: the support route that remains. */
   supportRoute?: string
   /**
+   * Set on a reading about ONE patient. It is only given where that patient is
+   * the one in context — the potassium reading is Joseph Mathew's, and asked
+   * from another patient's result it would be the wrong patient's answer.
+   */
+  about?: string
+  /**
    * Set when the answer READS something clinical rather than describing how
    * the product works. The assistant is allowed to give a view — that is what
    * a clinician actually asks it — but the view is a claim under a gate, so it
@@ -95,11 +106,9 @@ interface Entry {
  */
 export const SCREEN_PROMPTS: Record<string, string[]> = {
   'S-06-01': [
-    'What are your views on what needs me first?',
-    'What does the acuity sort actually rank on?',
-    'What puts a patient on needs-my-attention?',
+    'Who is deteriorating, and why?',
     'What does marking a patient seen change?',
-    'Who covers my list when I am on leave?',
+    'What does the acuity sort actually rank on?',
   ],
   'S-06-03': [
     'How do I add an addendum to a signed note?',
@@ -144,8 +153,7 @@ export const SCREEN_PROMPTS: Record<string, string[]> = {
     'What is a review date for?',
   ],
   'S-08-03': [
-    'What are your views on these patients?',
-    'How is this list ordered?',
+    'Who is deteriorating, and why?',
     'Why has the AI abstained on one patient?',
     'How do I hand over my list?',
   ],
@@ -175,11 +183,9 @@ export const SCREEN_PROMPTS: Record<string, string[]> = {
     'Who is notified when I void an order?',
   ],
   'S-09-04': [
-    'What are your views on this result?',
-    'How is this inbox ranked?',
+    'What are your views on the critical potassium?',
     'What is the acknowledgement window for a critical result?',
-    'What happens if I do not acknowledge?',
-    'How do I sort chronologically instead?',
+    'How is this inbox ranked?',
   ],
   'S-09-05': [
     'What are your views on this result?',
@@ -238,6 +244,11 @@ export const SCREEN_PROMPTS: Record<string, string[]> = {
     'Who reviews my break-glass access?',
     'What is recorded when I break the glass?',
   ],
+  'S-15-01': [
+    'How is this worklist ranked?',
+    'What does the model detect and not detect?',
+    'How do I escalate a critical finding?',
+  ],
   'S-15-04': [
     'What does the overlay show?',
     'Can I turn the overlay off?',
@@ -272,7 +283,6 @@ export const SCREEN_PROMPTS: Record<string, string[]> = {
   'S-18-01': [
     'Which sites are active tonight?',
     'What does a dimmed wall mean?',
-    'Why does the wall carry no assistant bubble?',
   ],
   'S-18-03': [
     'What makes a spoke "not ready"?',
@@ -391,15 +401,9 @@ export const SCREEN_PROMPTS: Record<string, string[]> = {
   ],
 }
 
-/** Fallback prompts where a screen has no specific set. */
-const DEFAULT_PROMPTS = [
-  'What is this screen for?',
-  'Who else can see what I enter here?',
-  'What happens when I save?',
-]
-
+/** A screen's own documentation prompts. The bubble composes these with the record's — see `suggestionsFor`. */
 export function promptsFor(screenId: string): string[] {
-  return SCREEN_PROMPTS[screenId] ?? DEFAULT_PROMPTS
+  return SCREEN_PROMPTS[screenId] ?? []
 }
 
 // ─────────────────────────────────────────────────────── The answer corpus
@@ -484,7 +488,7 @@ const MARK_SEEN: AssistantAnswer = {
 const ATTENTION_LIST: AssistantAnswer = {
   kind: 'cited',
   body:
-    'Three things put a patient on that list, and they are ranked in this order:\n\n• **Critical lab report identified** — a value past a rule-based threshold that no named clinician has acknowledged yet. This one escalates on a clock.\n• **New deterioration** — AI-201 scoring a rising risk from charted observations.\n• **Pending** — something waiting on you rather than on the patient: a note needing your signature, or a score the model could not produce.\n\nThe list is capped at five. Anything below the cut is on the full inpatient list, which is what **See all** opens.',
+    'Four things put a patient on that list, and they are ranked in this order:\n\n• **Critical lab report identified** — a value past a rule-based threshold that no named clinician has acknowledged yet. This one escalates on a clock.\n• **New deterioration** — AI-201 scoring a rising risk from charted observations.\n• **Admission in progress** — a patient you admitted as Critical who is still waiting for a bed.\n• **Pending** — something waiting on you rather than on the patient: a note needing your signature, or a score the model could not produce.\n\nThe list is capped at five. Anything below the cut is on the Inpatients screen, one tap away in the nav.',
   citations: [
     { n: 1, label: 'Deterioration risk — abstains below the vitals-recency floor', source: 'AI-201 · §4.2' },
     { n: 2, label: 'Critical values interrupt a NAMED clinician, not a pool', source: 'AI-213 · §4.2' },
@@ -1780,6 +1784,8 @@ export interface AskContext {
   patientId?: string
   /** Whether the assistant is scoped to a patient at all. */
   patientScoped: boolean
+  /** The doctor's session — what the record answers read. Absent means the defaults. */
+  live?: LiveContext
 }
 
 
@@ -1826,6 +1832,7 @@ const VIEW_RESULT_K: AssistantAnswer = {
     touchpointId: 'assistant:R-88410:view',
     claim: 'Critical hyperkalaemia on a rising trend in a ventilated patient with AKI stage 2.',
   },
+  about: 'SD-P-07',
 }
 
 const VIEW_NCCT: AssistantAnswer = {
@@ -1844,6 +1851,7 @@ const VIEW_NCCT: AssistantAnswer = {
     touchpointId: 'assistant:strokeai:view',
     claim: 'Ischaemic stroke with a left M1 occlusion, no haemorrhage, ASPECTS 8.',
   },
+  about: 'SD-P-05',
 }
 
 const VIEW_DETERIORATION: AssistantAnswer = {
@@ -1921,8 +1929,8 @@ const SCREEN_ANSWERS: Record<string, Entry[]> = {
   'S-18-21': [{ match: [...VIEW_MATCH, 'read the scan', 'what does the scan show'], answer: VIEW_NCCT }],
   'S-18-14': [{ match: [...VIEW_MATCH, 'read the scan', 'what does the scan show'], answer: VIEW_NCCT }],
   'S-28-09': [{ match: [...VIEW_MATCH, 'read the scan', 'what does the scan show'], answer: VIEW_NCCT }],
-  'S-08-03': [{ match: VIEW_MATCH, answer: VIEW_DETERIORATION }],
-  'S-06-01': [{ match: VIEW_MATCH, answer: VIEW_DETERIORATION }],
+  'S-08-03': [{ match: [...VIEW_MATCH, 'deteriorat'], answer: VIEW_DETERIORATION }],
+  'S-06-01': [{ match: [...VIEW_MATCH, 'deteriorat'], answer: VIEW_DETERIORATION }],
   'S-13-01': [{ match: VIEW_MATCH, answer: VIEW_DISCHARGE }],
 
   /**
@@ -1950,9 +1958,18 @@ export function resolveAnswer(question: string, context: AskContext): AssistantA
   // O5 first — a privilege-escalation attempt must not be answered by accident.
   if (CROSS_PATIENT_PATTERNS.some((p) => q.includes(p))) return BEYOND_ACCESS
 
-  // O1, screen-owned — a reading, under a gate, on the screen that owns it.
+  // O1, screen-owned — a reading, under a gate, on the screen that owns it,
+  // and only about the patient that reading is about.
   for (const entry of SCREEN_ANSWERS[context.screenId] ?? []) {
-    if (entry.match.some((m) => q.includes(m))) return entry.answer
+    const other = entry.answer.about && context.patientId && entry.answer.about !== context.patientId
+    if (!other && entry.match.some((m) => q.includes(m))) return entry.answer
+  }
+
+  // O1, read from the record — what changed, the latest reports, what needs me.
+  const intent = recordIntent(q)
+  if (intent) {
+    const read = recordAnswer(intent, context.patientId, context.live ?? DEFAULT_LIVE)
+    if (read) return read
   }
 
   // O2 — clinical questions never reach the corpus.
@@ -1970,6 +1987,71 @@ export function resolveAnswer(question: string, context: AskContext): AssistantA
 
   // O4 — in scope, but nothing retrieved.
   return NO_EVIDENCE
+}
+
+// ──────────────────────────────────────────────── The bubble's suggestions
+
+/** "3–4 suggested prompts" — more is a menu, not a suggestion. */
+export const MAX_SUGGESTIONS = 4
+
+/** Where the doctor's day is the subject, so what needs them leads. */
+const ACTIVITY_SCREENS = new Set(['S-06-01', 'S-08-03', 'S-05-03', 'S-09-04'])
+
+/** The question a doctor has next, after each thing they may just have done. */
+const AFTER_ACTION: Record<string, string> = {
+  'NOTE.SIGNED': 'What gets published to ABDM when I sign?',
+  'NOTE.COSIGN_QUEUED': 'What is the co-sign turnaround target?',
+  'ACCESS.BREAK_GLASS': 'Who reviews my break-glass access?',
+  'AI.SAF.HARD_STOP_OVERRIDDEN': 'What happens after a hard-stop override?',
+}
+
+function afterAction(context: AskContext, live: LiveContext): string | undefined {
+  const recent = live.recent
+  if (!recent) return undefined
+  // About another patient than the one open: not this conversation's question.
+  if (recent.subject && context.patientId && recent.subject !== context.patientId) return undefined
+  if (recent.event === 'ADMISSION.REQUESTED') return admissionPrompt(recent.subject, live)
+  return AFTER_ACTION[recent.event]
+}
+
+/**
+ * The bubble's suggested questions, personalised and capped at four:
+ *   1. what the doctor just did, if it raises a question;
+ *   2. with a patient open — what changed, the latest reports, the screen's
+ *      own question, how they are doing, what they take;
+ *   3. without one — what needs the doctor today (first on the screens that
+ *      are about their day, last elsewhere) around the screen's own questions.
+ *
+ * Every candidate is resolved before it is offered: one that would not come
+ * back cited, or would repeat an answer already on the list, is dropped.
+ */
+export function suggestionsFor(context: AskContext): string[] {
+  const live = context.live ?? DEFAULT_LIVE
+  const own = SCREEN_PROMPTS[context.screenId] ?? []
+  const candidates: string[] = []
+
+  const after = afterAction(context, live)
+  if (after) candidates.push(after)
+
+  const record = context.patientId ? patientPrompts(context.patientId, live).map((r) => r.text) : []
+  if (record.length > 0) {
+    candidates.push(...record.slice(0, 2), ...own.slice(0, 1), ...record.slice(2))
+  } else if (ACTIVITY_SCREENS.has(context.screenId)) {
+    candidates.push(ATTENTION_PROMPT, ...own)
+  } else {
+    candidates.push(...own.slice(0, MAX_SUGGESTIONS - 1), ATTENTION_PROMPT)
+  }
+
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const text of candidates) {
+    if (out.length === MAX_SUGGESTIONS) break
+    const a = resolveAnswer(text, context)
+    if (a.kind !== 'cited' || a.citations.length === 0 || seen.has(a.body)) continue
+    seen.add(a.body)
+    out.push(text)
+  }
+  return out
 }
 
 /** For the demo control that forces each outcome explicitly. */

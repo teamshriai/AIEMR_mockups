@@ -4,25 +4,25 @@
  * The atlas is unusually emphatic about this one:
  *
  *   "Z3 IS THE HIGHEST-LEVERAGE COMPONENT IN THE PRODUCT. It appears on ~150
- *    screens, it is where a wrong-patient error is caught, and it is where the
- *    deterioration risk strip lives. It is SPECIFIED ONCE in GP-05 and MUST
- *    NOT BE REDESIGNED inside a screen spec."
+ *    screens, it is where a wrong-patient error is caught. It is SPECIFIED
+ *    ONCE in GP-05 and MUST NOT BE REDESIGNED inside a screen spec."
  *
- * So it lives here, once, and no screen draws its own. 64px, two lines, plus
- * 48px when a risk strip is present.
+ * So it lives here, once, and no screen draws its own. 64px, two lines.
  *
  * Contents per GP-05: UHID, name, age/sex, ward-bed, consultant, LOS, payer,
- * allergy flag, MLC flag, ABHA chip, optional risk strip.
+ * allergy flag, MLC flag, ABHA chip. The deterioration risk strip (AI-201)
+ * that used to sit beneath it — a full-width red band on every screen — is
+ * gone: the reading now lives with the rest of the AI's in the Overview's AI
+ * insights card, on the Condition tab, and in My Day's attention list.
  */
 
 import { Link, useLocation } from 'react-router-dom'
 
-import { AIBanner, Diamond } from '@/components/ai'
+import { AdmissionChip } from '@/components/admission'
 import { Chip, Icon, cx } from '@/components/primitives'
-import { AbstainCard, BreakGlassBanner } from '@/components/states'
+import { BreakGlassBanner } from '@/components/states'
 import type { Patient } from '@/data/kit'
-import { RISK_STRIPS } from '@/data/clinical'
-import { ageSex, formatTime } from '@/data/format'
+import { ageSex } from '@/data/format'
 import { useSession } from '@/store/session'
 
 export function PatientBanner({
@@ -36,7 +36,6 @@ export function PatientBanner({
   className?: string
 }) {
   const breakGlass = useSession((s) => s.breakGlassPatients[patient.id])
-  const risk = RISK_STRIPS[patient.id]
   const { pathname } = useLocation()
   /** The record's own screens carry their own navigation between its parts. */
   const onRecord = /^\/patient\/[^/]+\/(record|condition|results|reports|notes|prescriptions|appointments)$/.test(pathname)
@@ -90,6 +89,9 @@ export function PatientBanner({
 
           {/* Line 2 — the flags. Each carries an icon and a word, never colour alone. */}
           <div className="flex flex-wrap items-center gap-1.5 md:ml-auto">
+            {/* Where an admission ordered for this patient has got to. Nothing when there is none. */}
+            <AdmissionChip patientId={patient.id} />
+
             {/* The allergy flag is the one that stops a prescription. */}
             {patient.allergies.length > 0 ? (
               <Chip tone="critical" icon="TriangleAlert" title="Documented allergy — prescribing is gated on this">
@@ -135,83 +137,6 @@ export function PatientBanner({
 
         {extra && <div className="mt-2.5">{extra}</div>}
       </div>
-
-      {/* The optional risk strip — +48px. AIP-05, and AI-201's home. */}
-      {risk && <RiskStrip patientId={patient.id} />}
-    </div>
-  )
-}
-
-function RiskStrip({ patientId }: { patientId: string }) {
-  const risk = RISK_STRIPS[patientId]
-  if (!risk) return null
-
-  /**
-   * AI-ABSTAIN rather than a zero: "states what is missing and the action that
-   * would fix it; NEVER a null or zero score."
-   */
-  if (risk.band === 'ABSTAIN') {
-    return (
-      <div className="border-b border-glass-hairline px-4 py-2.5 md:px-6">
-        <AbstainCard
-          capabilityId="AI-201"
-          missing={risk.abstainReason ?? 'Insufficient data to score.'}
-          fixAction={
-            <span className="inline-flex items-center gap-1.5 text-[0.9em] font-medium text-brand">
-              <Icon name="Activity" size={14} />
-              Chart a set of observations
-            </span>
-          }
-        />
-      </div>
-    )
-  }
-
-  const tone = risk.band === 'HIGH' ? 'abnormal' : risk.band === 'MODERATE' ? 'caution' : 'normal'
-
-  return (
-    <div className="border-b border-glass-hairline px-4 py-2 md:px-6">
-      <AIBanner
-        capabilityId="AI-201"
-        tone={tone}
-        title={
-          <>
-            Deterioration risk <strong>{risk.band}</strong> · {risk.score}, {risk.trend}
-          </>
-        }
-        detail={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {risk.drivers.slice(0, 3).map((d) => (
-              <span key={d.label} className="inline-flex items-center gap-1">
-                <Icon name={d.direction === 'up' ? 'ArrowUp' : 'ArrowDown'} size={12} />
-                {d.label}
-              </span>
-            ))}
-          </span>
-        }
-        explain={{
-          touchpointId: `risk-${patientId}`,
-          capabilityId: 'AI-201',
-          claim: `Deterioration risk is ${risk.band} — ${risk.score}, ${risk.trend}. This is a risk of clinical deterioration in the next 24 hours, not a diagnosis.`,
-          confidence: 0.88,
-          band: 'HIGH',
-          computedAt: formatTime(risk.computedAt),
-          inputs: risk.drivers.map((d) => ({ label: d.label, source: 'Flowsheet, most recent set' })),
-          drivers: risk.drivers,
-          model: risk.modelVersion,
-          limits: [
-            'Derived from charted vitals only. It does not see the nursing narrative or the family’s concern.',
-            'Abstains below the vitals-recency floor rather than scoring on stale observations.',
-            'Validated on adult inpatients. Not validated for paediatric or obstetric admissions.',
-          ],
-        }}
-        action={
-          <span className="inline-flex items-center gap-1">
-            <Diamond size={9} />
-            <span className="text-[0.82em]">AI-201</span>
-          </span>
-        }
-      />
     </div>
   )
 }

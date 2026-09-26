@@ -105,7 +105,7 @@ export function Modal({
         tabIndex={-1}
         onClick={dismissible ? onClose : undefined}
         className={cx(
-          'absolute inset-0 bg-[rgb(10_14_26/0.55)] backdrop-blur-[4px]',
+          'absolute inset-0 bg-[rgb(10_14_26/0.55)]',
           !dismissible && 'cursor-not-allowed',
         )}
       />
@@ -145,6 +145,11 @@ export function Modal({
  *   >=1024px  a right drawer of the given width
  *   768–1023  a 70%-height bottom sheet
  *   <768px    a full-screen sheet
+ *
+ * `modal={false}` is the other shape: a right sidebar at every width that
+ * leaves the page usable behind it — no backdrop, no focus trap, Esc closes it
+ * from inside. For a panel a doctor works ALONGSIDE (the assistant), where a
+ * modal would stop the work it is there to help with.
  */
 export function Drawer({
   open,
@@ -153,6 +158,7 @@ export function Drawer({
   onClose,
   width = 420,
   side = 'right',
+  modal = true,
   header,
   footer,
   children,
@@ -164,14 +170,51 @@ export function Drawer({
   onClose: () => void
   width?: number
   side?: 'right' | 'left'
+  modal?: boolean
   /** Replaces the default header entirely, for the assistant's richer one. */
   header?: ReactNode
   footer?: ReactNode
   children: ReactNode
   labelledBy?: string
 }) {
-  const ref = useFocusTrap(open, onClose)
+  const ref = useFocusTrap(open && modal, onClose)
   if (!open) return null
+
+  const body = (
+    <>
+      {header ?? (
+        <header className="flex items-start justify-between gap-4 border-b border-glass-hairline px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-[0.92em] text-ink-3">{subtitle}</p>}
+          </div>
+          <IconButton icon="X" label="Close" onClick={onClose} className="-mt-2 -mr-2" />
+        </header>
+      )}
+      <div className="thin-scroll min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {footer && <footer className="border-t border-glass-hairline px-4 py-3">{footer}</footer>}
+    </>
+  )
+
+  if (!modal) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby={labelledBy}
+        aria-label={!labelledBy && typeof title === 'string' ? title : undefined}
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape') return
+          e.stopPropagation()
+          onClose()
+        }}
+        style={{ ['--drawer-w' as string]: `${width}px` }}
+        className="overlay-surface drawer-in fixed top-0 right-0 z-90 flex h-[100dvh] w-[min(var(--drawer-w),calc(100vw-2.5rem))] flex-col"
+      >
+        {body}
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-90 flex items-end justify-end md:items-stretch">
@@ -180,7 +223,7 @@ export function Drawer({
         aria-hidden
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 bg-[rgb(10_14_26/0.55)] backdrop-blur-[4px]"
+        className="fade-in absolute inset-0 bg-[rgb(10_14_26/0.55)]"
       />
       <div
         ref={ref}
@@ -195,22 +238,12 @@ export function Drawer({
           'h-[100dvh] rounded-none',
           // small tablet: 70%-height bottom sheet
           'sm:h-[70dvh] sm:rounded-t-card',
-          // >=1024: a right drawer at the given width
+          // >=1024: a right drawer at the given width, sliding in from its edge
           'md:h-[100dvh] md:w-[var(--drawer-w)] md:max-w-[92vw] md:rounded-none',
-          side === 'left' && 'md:order-first',
+          side === 'left' ? 'md:order-first' : 'md:drawer-in',
         )}
       >
-        {header ?? (
-          <header className="flex items-start justify-between gap-4 border-b border-glass-hairline px-5 py-4">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-              {subtitle && <p className="mt-0.5 text-[0.92em] text-ink-3">{subtitle}</p>}
-            </div>
-            <IconButton icon="X" label="Close" onClick={onClose} className="-mt-2 -mr-2" />
-          </header>
-        )}
-        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto">{children}</div>
-        {footer && <footer className="border-t border-glass-hairline px-4 py-3">{footer}</footer>}
+        {body}
       </div>
     </div>
   )

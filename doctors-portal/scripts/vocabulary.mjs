@@ -52,7 +52,7 @@ const BANNED = [
   { find: /Draft from the (visit|round|record)/g, use: 'Draft with AI', why: 'one label for the scribe, everywhere, and it names the AI' },
   { find: /\bRecord again\b/g, use: 'Dictate more / Dictate again', why: 'dictate is the ward word; record suggests a recording is kept' },
   { find: /\bVisit record\b/g, use: 'OP number / IP number', why: 'the number staff quote' },
-  { find: /\bTo finish today\b/g, use: 'Pending today', why: 'pending is the ward word' },
+  { find: /\bTo finish today\b/g, use: 'Tasks (in Needs Action)', why: 'one name for what is the doctor\'s to close' },
   { find: /\bComplete the assessment\b/g, use: 'Sign assessment', why: 'it is signed, and Complete is banned as a status' },
   { find: /\bNothing in the way\b/g, use: 'Cleared for discharge', why: 'what the board says' },
   { find: /\bDictate the [a-z ]+\b(?=<)/g, use: 'Dictate', why: 'the label above already names the section' },

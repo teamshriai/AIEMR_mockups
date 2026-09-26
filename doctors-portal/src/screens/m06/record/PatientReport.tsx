@@ -16,7 +16,7 @@ import { STATUS_TONE } from './shared'
 
 const VISIT_WORD = { IP: 'Inpatient', OP: 'OPD', ED: 'ED', TELE: 'Teleconsult' } as const
 
-export function PatientReport({ patient: p }: { patient: Patient }) {
+export function PatientReport({ patient: p, className }: { patient: Patient; className?: string }) {
   const c = conditionFor(p.id)
   const enc = encounterForPatient(p.id)
   const problems = problemsFor(p.id)
@@ -34,6 +34,7 @@ export function PatientReport({ patient: p }: { patient: Patient }) {
   return (
     <SectionCard
       title="Patient report"
+      className={className}
       meta={c && <Chip tone={STATUS_TONE[c.status]}>{c.status}</Chip>}
       action={c && <span className="tabular text-[0.86em] text-ink-3">updated {formatDate(c.updatedAt)}</span>}
       bodyClassName="px-4 pb-4 sm:px-5 sm:pb-5"

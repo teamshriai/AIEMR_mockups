@@ -19,6 +19,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { AdmitButton } from '@/components/admission'
 import { SuggestionCard } from '@/components/ai'
 import { Disclosure, Why } from '@/components/calm'
 import { Button } from '@/components/primitives'
@@ -61,6 +62,7 @@ export function S0603({ id }: { id?: string }) {
             <Button tone="tertiary" icon="ClipboardList" onClick={() => navigate(`/encounter/${enc.id}/orders/new`)}>
               Order
             </Button>
+            <AdmitButton patient={p} encounterId={enc.id} tone="tertiary" />
           </>
         }
         banner={

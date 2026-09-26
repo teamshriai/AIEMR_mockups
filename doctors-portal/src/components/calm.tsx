@@ -2,9 +2,9 @@
  * The calm surface kit — the pieces every screen shares so the product reads
  * as one system rather than one nice home page.
  *
- *   SectionCard   one frosted frame per section (title · meta · action · body)
+ *   SectionCard   one solid panel per section (title · meta · action · body)
  *   CountPill     a small count in a card header
- *   PillLink      a pill-shaped card action — "See all ›"
+ *   PillLink      a small card action — "See all ›"
  *   PillTabs      the one segmented filter, with optional counts
  *   ScopeTabs     PillTabs bound to `?scope=` — today first, the rest on tap
  *   Why           an explanation folded behind one quiet line
@@ -19,7 +19,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { Icon, cx, toneClass } from '@/components/primitives'
+import { Icon, cx, toneClass, useCardTone } from '@/components/primitives'
 import type { CardTone } from '@/components/primitives'
 import type { Urgency } from '@/data/myday'
 
@@ -46,10 +46,10 @@ export function SectionCard({
   /** Quiet, right of the title — a count, a time. */
   meta?: ReactNode
   action?: ReactNode
-  /** A solid fill in this urgency's hue — how an attention card earns prominence. */
+  /** A soft tint and a thin top rule in this urgency's hue — how an attention card earns prominence. */
   accent?: Urgency
   /**
-   * A solid fill naming what the card is about — a patient, the inpatients, the
+   * A soft tint naming what the card is about — a patient, the inpatients, the
    * day, the AI. The colour is the meaning, so it is never decorative, and the
    * same purpose takes the same colour on every screen.
    */
@@ -62,12 +62,13 @@ export function SectionCard({
   className?: string
   bodyClassName?: string
 }) {
+  const resolved = useCardTone(tone)
   return (
     <section
       className={cx(
         'glass-strong relative min-w-0 overflow-hidden rounded-card',
         /* Urgency is the louder signal, so it wins over a tone. */
-        accent ? `card-toned card-urgency-${accent}` : toneClass(tone),
+        accent ? `card-toned card-urgency-${accent}` : toneClass(resolved),
         lift && 'lift',
         fill && 'flex h-full flex-col',
         className,
@@ -113,10 +114,11 @@ export function SectionTitle({
 
 // ─────────────────────────────────────────────────────────────── CountPill
 
-const SOLID: Record<Urgency, string> = {
-  critical: 'bg-pri-critical-fill text-pri-on-critical',
-  warning: 'bg-pri-warning-fill text-pri-on-warning',
-  pending: 'bg-pri-pending-fill text-pri-on-warning',
+/** A count's urgency as a soft tint carrying its darker ink — a pill that informs rather than shouts. */
+const SOFT: Record<Urgency, string> = {
+  critical: 'bg-pri-critical-soft text-pri-critical-ink',
+  warning: 'bg-pri-warning-soft text-pri-warning-ink',
+  pending: 'bg-pri-pending-soft text-pri-pending-ink',
 }
 
 export function CountPill({
@@ -126,7 +128,7 @@ export function CountPill({
   children: ReactNode
   tone?: Urgency | 'neutral' | 'brand'
 }) {
-  const cls = tone === 'neutral' ? 'bg-glass-inset text-ink-2' : tone === 'brand' ? 'bg-brand text-brand-on' : SOLID[tone]
+  const cls = tone === 'neutral' ? 'bg-glass-inset text-ink-2' : tone === 'brand' ? 'bg-brand text-brand-on' : SOFT[tone]
   return (
     <span className={cx('tabular inline-flex min-h-6 items-center rounded-pill px-2.5 text-[0.8em] font-bold', cls)}>
       {children}
@@ -148,7 +150,7 @@ export function PillLink({
   icon?: string
 }) {
   const cls =
-    'inline-flex min-h-9 items-center gap-1 rounded-pill bg-brand-soft px-3.5 text-[0.86em] font-semibold text-brand transition-colors duration-150 ease-out-clinical hover:bg-brand hover:text-brand-on'
+    'inline-flex min-h-9 items-center gap-1 rounded-field bg-brand-soft px-3.5 text-[0.86em] font-semibold text-brand-dark transition-colors duration-150 ease-out-clinical hover:bg-brand hover:text-brand-on'
   if (to) {
     return (
       <Link to={to} className={cls}>
@@ -193,7 +195,7 @@ export function PillTabs<K extends string>({
   className?: string
 }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={cx('inline-flex flex-wrap gap-1 rounded-pill bg-glass-inset p-1', className)}>
+    <div role="tablist" aria-label={ariaLabel} className={cx('inline-flex flex-wrap gap-1 rounded-field bg-glass-inset p-1', className)}>
       {options.map((o) => {
         const active = o.key === value
         return (
@@ -204,8 +206,8 @@ export function PillTabs<K extends string>({
             aria-selected={active}
             onClick={() => onChange(o.key)}
             className={cx(
-              'inline-flex min-h-9 items-center gap-1.5 rounded-pill px-3.5 text-[0.88em] font-semibold transition-colors duration-150 ease-out-clinical',
-              active ? 'bg-brand text-brand-on shadow-glass' : 'text-ink-3 hover:bg-glass-fill-hover hover:text-ink',
+              'inline-flex min-h-9 items-center gap-1.5 rounded-chip px-3.5 text-[0.88em] font-semibold transition-colors duration-150 ease-out-clinical',
+              active ? 'bg-brand text-brand-on' : 'text-ink-3 hover:bg-glass-fill-hover hover:text-ink',
             )}
           >
             {o.icon && <Icon name={o.icon} size={13} />}

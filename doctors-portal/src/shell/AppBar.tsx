@@ -75,7 +75,7 @@ export function AppBar() {
       <button
         type="button"
         onClick={() => navigate(PERSONA_SPECS[persona].landing)}
-        className="hidden shrink-0 items-center gap-2.5 rounded-pill px-1.5 py-1 hover:bg-glass-fill-hover sm:flex"
+        className="hidden shrink-0 items-center gap-2.5 rounded-field px-1.5 py-1 hover:bg-glass-fill-hover sm:flex"
       >
         <span className="flex size-7 items-center justify-center rounded-[9px] bg-brand text-brand-on">
           <Icon name="Hospital" size={16} />
@@ -93,7 +93,7 @@ export function AppBar() {
             type="button"
             onClick={toggle}
             aria-expanded={open}
-            className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-pill border border-glass-hairline bg-glass-fill-muted px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover"
+            className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-field border border-glass-hairline bg-glass-fill-muted px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover"
           >
             <span className="tabular">{facility.code}</span>
             <span className="hidden max-w-36 truncate lg:inline">{facility.short}</span>
@@ -216,7 +216,7 @@ export function AppBar() {
             type="button"
             onClick={toggle}
             aria-expanded={open}
-            className="hidden min-h-9 items-center gap-1 rounded-pill px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover sm:inline-flex"
+            className="hidden min-h-9 items-center gap-1 rounded-field px-2.5 py-1 text-[0.88em] font-medium hover:bg-glass-fill-hover sm:inline-flex"
           >
             <Icon name="Globe" size={15} />
             {language}
@@ -250,7 +250,7 @@ export function AppBar() {
             type="button"
             onClick={toggle}
             aria-expanded={open}
-            className="flex min-h-9 shrink-0 items-center gap-2 rounded-pill py-1 pr-2 pl-1 hover:bg-glass-fill-hover"
+            className="flex min-h-9 shrink-0 items-center gap-2 rounded-field py-1 pr-2 pl-1 hover:bg-glass-fill-hover"
           >
             {/* A person glyph rather than initials: "Ananya Iyer" abbreviates to
                 "AI", which is the one thing an avatar must not say on a product

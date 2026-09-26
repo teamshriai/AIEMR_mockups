@@ -2,47 +2,48 @@
    Indostates Health · Doctors Portal — design tokens
    ---------------------------------------------------------------------------
    The reconciliation, stated once:
-     GLASSMORPHISM GOVERNS SURFACES.  THE ATLAS GOVERNS MEANING.
+     SOLID SURFACES, HAIRLINES, SMALL RADII.  A SOFT HUE FOR FUNCTION,
+     A STRONG ONE ONLY FOR MEANING.
 
-   UI_ATLAS.md §5.3 freezes three palettes that never borrow from each other —
-   brand, clinical semantics, and AI. The reference image supplies only the
-   SURFACE layer (page gradient, frosted fills, blur, borders, radii, shadow).
-   Its indigo accent card happens to sit inside the atlas's AI-indigo family,
-   so the image's hero surface becomes the AI surface and no palette is fought
-   over.
+   A clinical workspace, not a dashboard. The page is one flat colour; every
+   panel is an opaque surface with a hairline edge and almost no shadow; corners
+   are small; nothing blurs, glows or lifts. Each card carries the soft hue of
+   its function — the same on every screen, in both themes (CARD TINTS below) —
+   and strong colour is kept for meaning: red for critical, amber for a
+   warning, blue for what is normal or in progress.
 
-   Sampled from the reference image (median over card regions):
-     page gradient  #e7f0f2 -> #d2dee1
-     glass fill     #f8f8f8 @ ~62%
-     muted fill     #e6edef @ ~55%
-     accent card    #4e568a -> #7980a7,  deep mark #3f467f
+   UI_ATLAS.md §5.3 still freezes three palettes that never borrow from each
+   other — brand, clinical semantics, and AI. This file changes how loudly they
+   are laid down, not what they mean: the INKS keep the values the contrast
+   audit measured, and only the soft fills behind them are toned down.
+
+   The token names keep their glass-era spelling (`--color-glass-fill`,
+   `.glass`) so the 58 screens follow without an edit each; what they hold is
+   now solid.
    =========================================================================== */
 
 @import 'tailwindcss';
 
 @theme {
   /* ---------------------------------------------------------------- SURFACE
-     From the reference image. These are the only tokens the night theme
-     substantially rewrites. */
-  /* The brief's clinical gradient — indigo-white → slate-white → sky-white →
-     indigo-white at 0 / 40 / 70 / 100%. Applied to the page and nowhere else. */
-  --color-page-from: #eef2ff;
-  --color-page-via: #f8fafc;
-  --color-page-via-2: #e0f2fe;
-  --color-page-to: #eef2ff;
+     The page is one flat colour, a step darker than the panels on it, so a
+     panel separates by its edge and not by a shadow or a gradient. These are
+     the only tokens the night theme substantially rewrites. */
+  --color-page-from: #f3f5f8;
+  --color-page-via: #f3f5f8;
+  --color-page-via-2: #f3f5f8;
+  --color-page-to: #f3f5f8;
 
-  /* The blooms are a night-theme device; in light the gradient IS the page. */
-  --color-bloom-a: transparent;
-  --color-bloom-b: transparent;
-
-  /* The brief's `.glass`: white at 0.55, a 0.6 white border, 14px blur. The
-     strong fill is for cards that carry body text (rule 1 in glass.css). */
-  --color-glass-fill: rgb(255 255 255 / 0.55);
-  --color-glass-fill-strong: rgb(255 255 255 / 0.72);
-  --color-glass-fill-muted: rgb(241 245 249 / 0.55);
-  --color-glass-fill-hover: rgb(255 255 255 / 0.78);
-  --color-glass-border: rgb(255 255 255 / 0.6);
-  --color-glass-hairline: rgb(23 32 56 / 0.07);
+  /* Panels are opaque. `strong` and the base fill are the same white now —
+     the distinction was a glass opacity, and there is no glass. `muted` is the
+     quieter inner surface; `hover` a step off white for a row under the
+     pointer. The border is a neutral hairline, not a white glow edge. */
+  --color-glass-fill: #ffffff;
+  --color-glass-fill-strong: #ffffff;
+  --color-glass-fill-muted: #f5f7fa;
+  --color-glass-fill-hover: #f1f4f8;
+  --color-glass-border: rgb(23 32 56 / 0.1);
+  --color-glass-hairline: rgb(23 32 56 / 0.08);
   --color-glass-inset: rgb(23 32 56 / 0.04);
 
   /* ------------------------------------------------------------------- INK */
@@ -57,20 +58,20 @@
      navigation, primary actions and identity — NEVER for clinical status." */
   --color-brand: #1b4d8f;
   --color-brand-dark: #0f2f57;
-  --color-brand-soft: #e8f0f9;
+  --color-brand-soft: #eef4fb;
   --color-brand-on: #ffffff;
 
   /* -------------------------------------------------------------- CLINICAL
      §5.3 closed set. Never glass, never tint-only: every semantic state also
      renders an icon and a text label (~8% of male clinicians have a CVD). */
   --color-normal: #137547;
-  --color-normal-soft: #e3f3ea;
+  --color-normal-soft: #f0f8f3;
   --color-caution: #b05109;
-  --color-caution-soft: #fdf0e1;
+  --color-caution-soft: #fef6ee;
   --color-abnormal: #b42318;
-  --color-abnormal-soft: #fdeceb;
+  --color-abnormal-soft: #fef4f3;
   --color-critical: #7a0c16;
-  --color-critical-soft: #fbe4e6;
+  --color-critical-soft: #fdf0f1;
   /**
    * Ink laid ON the solid critical fill. It is a token rather than `white`
    * because the night fill is a LIGHT red — white on it measures 2.27:1, which
@@ -81,9 +82,9 @@
   --color-abnormal-on: #ffffff;
   --color-normal-on: #ffffff;
   --color-isolation: #7c3aed;
-  --color-isolation-soft: #f2ebfe;
+  --color-isolation-soft: #f8f4fe;
   --color-inactive: #626c80;
-  --color-inactive-soft: #eef0f3;
+  --color-inactive-soft: #f5f6f8;
 
   /* --------------------------------------------------------------------- AI
      §5.3 — "AI palette, deliberately outside the clinical range. AI-indigo
@@ -91,44 +92,98 @@
      cards." Indigo appears nowhere in the clinical table, by design. */
   --color-ai: #4f46e5;
   --color-ai-strong: #3f36cf;
-  --color-ai-soft: #eef2ff;
+  --color-ai-soft: #f4f6ff;
   --color-ai-ghost: rgb(79 70 229 / 0.05);
   --color-ai-on: #ffffff;
   --color-ai-grad-from: #4f46e5;
   --color-ai-grad-to: #7c79e8;
 
-  /* ------------------------------------------------------------- CARD FILLS
-     Solid, one hue per kind of card, the SAME in both themes — a highlighted
-     card, not a wash (glass.css .card-toned). The card carries its own inks:
-     white on every fill but gold, which takes dark ink. A purpose has one
-     colour on every screen: a patient's summary and OPD are blue, inpatients
-     green, the day slate, sign-offs purple, the doctor's own notes gold,
-     discharges teal, the AI indigo, and an attention card its top urgency. */
-  --color-card-patient: #2d5fb3;
-  --color-card-inpatients: #276b43;
-  --color-card-schedule: #3d5a80;
-  --color-card-signoff: #6b4a9e;
-  --color-card-notes: #e0b13a;
-  --color-card-discharge: #196673;
-  --color-card-ai: #4338ca;
-  --color-card-critical: #a1332e;
-  --color-card-warning: #8f5410;
-  --color-card-pending: #7a5f12;
-  /* Ink and surfaces laid on a solid card. */
-  --color-card-ink: #ffffff;
-  --color-card-ink-2: rgb(255 255 255 / 0.9);
-  --color-card-ink-3: rgb(255 255 255 / 0.82);
-  --color-card-ink-muted: rgb(255 255 255 / 0.78);
-  /* Nested panels go a step DARKER than the fill, so white text on them gains contrast rather than losing it. */
-  --color-card-inset: rgb(0 0 0 / 0.18);
-  --color-card-hairline: rgb(255 255 255 / 0.22);
-  --color-card-hover: rgb(255 255 255 / 0.12);
-  --color-card-border: rgb(255 255 255 / 0.25);
+  /* ------------------------------------------------------------- CARD TINTS
+     Every card carries a SOFT HUE that names its function, and a function has
+     one hue on every screen, in both themes — so a doctor learns the colour
+     once. The screen sets its function's hue as the default for its cards
+     (shell/screenTones.ts); a card that does a different job names its own.
+
+       patient         blue    a patient's record, summary, condition, OPD
+       inpatients      green   ward and bed: Inpatients, admission, rounds
+       schedule        slate   the day and the month: sessions, queues, calendar
+       signoff         purple  documentation: notes, co-sign, templates
+       notes           gold    the doctor's own to-do notes
+       discharge       teal    discharge and the end of a stay
+       ai              indigo  anything the AI produced
+       investigations  olive   results, orders, reports and imaging
+       medication      rose    prescriptions, reconciliation, ADRs
+       stroke          coral   the stroke network and its cases
+       critical · warning · pending   an attention card, by its top urgency
+
+     About 9% of the hue over white (gold 16%), a line at about 24%; at night
+     about 22% of the hue over the panel. Static hexes, each measured so ink,
+     ink-3 and the muted ink hold 4.5:1 on it. The night values are in the
+     night block. */
+  --color-card-patient-tint: #ecf1f8;
+  --color-card-patient-line: #cedaed;
+  --color-card-inpatients-tint: #ecf2ee;
+  --color-card-inpatients-line: #ccdcd3;
+  --color-card-schedule-tint: #eef0f4;
+  --color-card-schedule-line: #d2d8e1;
+  --color-card-signoff-tint: #f2eff6;
+  --color-card-signoff-line: #dcd5e8;
+  --color-card-notes-tint: #faf3df;
+  --color-card-notes-line: #f2dfad;
+  --color-card-discharge-tint: #eaf1f2;
+  --color-card-discharge-line: #c9dbde;
+  --color-card-ai-tint: #eeedfa;
+  --color-card-ai-line: #d3d0f3;
+  --color-card-investigations-tint: #f1f3ea;
+  --color-card-investigations-line: #dae1c8;
+  --color-card-medication-tint: #f8ecf2;
+  --color-card-medication-line: #edcfdc;
+  --color-card-stroke-tint: #faeeec;
+  --color-card-stroke-line: #f1d4ce;
+  --color-card-critical-tint: #f7edec;
+  --color-card-critical-line: #e9cfce;
+  --color-card-warning-tint: #f8f1e9;
+  --color-card-warning-line: #eddcc7;
+  --color-card-pending-tint: #f2f3f4;
+  --color-card-pending-line: #dcdfe3;
+  /* Patients Today's two sections take their functions' hues — OPD blue,
+     Inpatients green — as their ground, with a firmer tile behind each row's
+     place icon so the cue repeats down the list. */
+  /* The month calendar sits a touch LIGHTER than the tinted cards around it —
+     the schedule family, lifted — so it reads as its own quiet instrument. */
+  --color-calendar-surface: #fafbfd;
+  /* A date's pop-out card: a soft sky-to-lilac wash across its head, and the
+     one coloured glow in the system, so it reads as the date opening up. */
+  --color-peek-from: #e6effc;
+  --color-peek-to: #efe9fb;
+  --color-peek-glow: rgb(59 99 196 / 0.22);
+  --color-peek-dots: rgb(59 99 196 / 0.13);
+  /* A function's hue at full strength, for the few marks that are drawn rather
+     than tinted — a session's bar on the date card's strip, the icon on its tile. */
+  --color-tone-patient-bar: #6f95d6;
+  --color-tone-patient-ink: var(--color-brand);
+  --color-tone-inpatients-bar: #6fae8a;
+  --color-tone-inpatients-ink: #2f6b4f;
+  --color-tone-signoff-bar: #9a82c4;
+  --color-tone-signoff-ink: #5b3f8a;
+  --color-tone-discharge-bar: #5fa2ad;
+  --color-tone-discharge-ink: #17606b;
+  --color-tone-ai-bar: #8d88e0;
+  --color-tone-ai-ink: var(--color-ai);
+  --color-tone-medication-bar: #cf7fa3;
+  --color-tone-medication-ink: #8f2a58;
+  --color-tone-schedule-bar: #8fa0b8;
+  --color-tone-schedule-ink: var(--color-ink-2);
+  --color-section-opd: var(--color-card-patient-tint);
+  --color-section-opd-tile: #dbe4f2;
+  --color-section-inpatients: var(--color-card-inpatients-tint);
+  --color-section-inpatients-tile: #dae6df;
+  --color-section-inpatients-ink: #2f6b4f;
+  /* Two inks a step darker inside a tint, so they keep 4.5:1 on it. */
+  --color-card-ink-muted: #5f6674;
+  --color-card-caution: #a14a08;
   /* The assistant bubble's disc — white in both themes, behind the robot's own colours. */
   --color-bubble: #ffffff;
-  --color-card-dark-ink: #17171c;
-  --color-card-dark-ink-2: rgb(23 23 28 / 0.86);
-  --color-card-dark-ink-3: rgb(23 23 28 / 0.76);
 
   /* ---------------------------------------------------------------- PRIORITY
      My Day's urgency scale. A fifth job, kept separate from brand, clinical
@@ -139,42 +194,45 @@
      safe, plus the yellow its own 🟡 example implies for "pending". They carry
      every NON-TEXT role — the status shape, a row's left rule, a badge fill.
 
-     As text on white only critical clears AA (4.8); amber, blue and green
-     measure 2.1 / 3.7 / 2.3. So:
-       · `-ink`   a darker step of the same hue that clears 4.5:1 on the soft
-                  fill and on the card. Confirmed by `scripts/contrast.mjs` on
-                  rendered pixels, not by arithmetic.
+     The hues are MUTED — softened from the brief's saturated set so that
+     nothing on a screen shouts, while keeping their order and staying apart
+     from each other. As text on white only critical clears AA (4.8). So:
+       · `-ink`   a darker step of the same hue that clears 4.5:1 on white, on
+                  the soft fill and on a card tint. Confirmed by
+                  `scripts/contrast.mjs` on rendered pixels, not by arithmetic.
        · `-fill`  the solid badge. Critical carries WHITE at 4.8; normal darkens
-                  one step to carry white (5.2); amber, yellow and green take
-                  DARK ink on the raw hue (8+).
+                  one step to carry white (5.1); amber, yellow and green take
+                  DARK ink on the hue (5.5–9).
      Everywhere else the reason text is plain ink and the hue lives in the shape
      alone. That is both the accessible answer and the calmer one. */
-  --color-pri-critical: #dc2626;
-  --color-pri-critical-fill: #dc2626;
-  --color-pri-critical-ink: #b91c1c;
-  --color-pri-critical-soft: rgb(220 38 38 / 0.12);
+  --color-pri-critical: #c24b45;
+  --color-pri-critical-fill: #c24b45;
+  --color-pri-critical-ink: #9a3a36;
+  --color-pri-critical-soft: rgb(194 75 69 / 0.07);
 
   /* "moderate" in the brief; `warning` is the token name the components use. */
-  --color-pri-warning: #f59e0b;
-  --color-pri-warning-fill: #f59e0b;
-  --color-pri-warning-ink: #b45309;
-  --color-pri-warning-soft: rgb(245 158 11 / 0.16);
+  --color-pri-warning: #d4953a;
+  --color-pri-warning-fill: #d4953a;
+  --color-pri-warning-ink: #8a5a14;
+  --color-pri-warning-soft: rgb(212 149 58 / 0.09);
 
-  --color-pri-pending: #facc15;
-  --color-pri-pending-fill: #facc15;
-  --color-pri-pending-ink: #854d0e;
-  --color-pri-pending-soft: rgb(250 204 21 / 0.2);
+  /* Pending is waiting, not warning — a neutral slate, so only critical,
+     warning and normal carry a hue. The ring shape still sets it apart. */
+  --color-pri-pending: #8a93a3;
+  --color-pri-pending-fill: #8a93a3;
+  --color-pri-pending-ink: #525b6b;
+  --color-pri-pending-soft: rgb(138 147 163 / 0.12);
 
-  --color-pri-normal: #3b82f6;
-  --color-pri-normal-fill: #2563eb;
-  --color-pri-normal-ink: #1d4ed8;
-  --color-pri-normal-soft: rgb(59 130 246 / 0.12);
+  --color-pri-normal: #5b8fd6;
+  --color-pri-normal-fill: #3f6fb0;
+  --color-pri-normal-ink: #2f5f9e;
+  --color-pri-normal-soft: rgb(91 143 214 / 0.07);
 
   /* Green = safe / completed. A finished block in the day, nothing clinical. */
-  --color-pri-safe: #22c55e;
-  --color-pri-safe-fill: #22c55e;
-  --color-pri-safe-ink: #15803d;
-  --color-pri-safe-soft: rgb(34 197 94 / 0.14);
+  --color-pri-safe: #4f9e6e;
+  --color-pri-safe-fill: #4f9e6e;
+  --color-pri-safe-ink: #2f6b48;
+  --color-pri-safe-soft: rgb(79 158 110 / 0.08);
 
   /** Ink laid ON a solid priority fill. */
   --color-pri-on-critical: #ffffff;
@@ -197,7 +255,7 @@
      dialog reads on its scrim. */
   --color-menu: rgb(255 255 255 / 0.99);
   --color-menu-border: rgb(23 32 56 / 0.12);
-  --shadow-menu: 0 16px 40px rgb(15 23 42 / 0.18), 0 2px 6px rgb(15 23 42 / 0.08);
+  --shadow-menu: 0 8px 24px rgb(15 23 42 / 0.12), 0 1px 3px rgb(15 23 42 / 0.08);
 
   /* --------------------------------------------------------- ON-IMAGE CHROME
      A CT is read on black in BOTH themes, so chrome drawn over it cannot use
@@ -228,21 +286,29 @@
   --color-viz-2: #eb6834;
   --color-viz-band: rgb(19 117 71 / 0.10);
   --color-viz-grid: rgb(23 32 56 / 0.10);
+  /* Result states as parts of a whole (the Test results ring): the clinical
+     hues, softened, and stepped in lightness so Out of range and Critical
+     stay apart. Always beside a legend that says the word and the count. */
+  --color-viz-normal: #86b89a;
+  --color-viz-abnormal: #e0978d;
+  --color-viz-critical: #b9524c;
 
-  /* ------------------------------------------------------------------ SHAPE */
-  --radius-card: 18px;
-  --radius-panel: 14px;
-  --radius-field: 14px;
-  --radius-chip: 10px;
+  /* ------------------------------------------------------------------ SHAPE
+     Small corners. A pill stays a pill — dots, avatars, counts and round
+     icon buttons are round on purpose — but a button or a tab is not one. */
+  --radius-card: 10px;
+  --radius-panel: 8px;
+  --radius-field: 8px;
+  --radius-chip: 6px;
   --radius-pill: 999px;
 
-  /* "No excessive blur" — one value, the brief's 14px, for every glass layer. */
-  --blur-glass: 14px;
-  --blur-glass-lg: 14px;
+  /* No blur anywhere: surfaces are solid, so there is nothing to see through. */
+  --blur-glass: 0px;
+  --blur-glass-lg: 0px;
 
-  /* The brief's card shadow, with its inset top highlight. */
-  --shadow-glass: 0 6px 20px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.5);
-  --shadow-glass-lg: 0 12px 32px rgb(0 0 0 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.5);
+  /* A panel sits on the page by its hairline; the shadow is barely there. */
+  --shadow-glass: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-glass-lg: 0 2px 6px rgb(15 23 42 / 0.08);
   --shadow-bubble: 0 10px 30px rgb(79 70 229 / 0.36), 0 2px 6px rgb(31 41 72 / 0.14);
 
   /* ------------------------------------------------------------------- TYPE
@@ -299,19 +365,17 @@
    to a dark-safe variant rather than reused.
    =========================================================================== */
 [data-theme='night'] {
-  --color-page-from: #0d1220;
-  --color-page-via: #111726;
-  --color-page-via-2: #131a2b;
-  --color-page-to: #161d2e;
+  /* One flat page, and opaque panels a step lighter than it. */
+  --color-page-from: #10151f;
+  --color-page-via: #10151f;
+  --color-page-via-2: #10151f;
+  --color-page-to: #10151f;
 
-  --color-bloom-a: rgb(129 140 248 / 0.16);
-  --color-bloom-b: rgb(52 211 153 / 0.08);
-
-  --color-glass-fill: rgb(255 255 255 / 0.06);
-  --color-glass-fill-strong: rgb(255 255 255 / 0.10);
-  --color-glass-fill-muted: rgb(255 255 255 / 0.035);
-  --color-glass-fill-hover: rgb(255 255 255 / 0.12);
-  --color-glass-border: rgb(255 255 255 / 0.12);
+  --color-glass-fill: #1a2130;
+  --color-glass-fill-strong: #1a2130;
+  --color-glass-fill-muted: #161c29;
+  --color-glass-fill-hover: #232b3b;
+  --color-glass-border: rgb(255 255 255 / 0.09);
   --color-glass-hairline: rgb(255 255 255 / 0.08);
   --color-glass-inset: rgb(0 0 0 / 0.20);
 
@@ -323,52 +387,120 @@
 
   --color-brand: #8ab9ee;
   --color-brand-dark: #a8ccf4;
-  --color-brand-soft: rgb(124 176 236 / 0.16);
+  --color-brand-soft: rgb(124 176 236 / 0.1);
   --color-brand-on: #0d1220;
 
   --color-normal: #34d399;
-  --color-normal-soft: rgb(52 211 153 / 0.16);
+  --color-normal-soft: rgb(52 211 153 / 0.09);
   --color-caution: #fbbf24;
-  --color-caution-soft: rgb(251 191 36 / 0.16);
+  --color-caution-soft: rgb(251 191 36 / 0.09);
   --color-abnormal: #fa9090;
-  --color-abnormal-soft: rgb(248 113 113 / 0.16);
+  --color-abnormal-soft: rgb(248 113 113 / 0.09);
   --color-critical: #ff9f9f;
-  --color-critical-soft: rgb(255 138 138 / 0.20);
+  --color-critical-soft: rgb(255 138 138 / 0.11);
   /* Dark ink on the light night fill — 8.2:1, against white's 2.3:1. */
   --color-critical-on: #0d1220;
   --color-abnormal-on: #0d1220;
   --color-normal-on: #0d1220;
   --color-isolation: #b9a3fb;
-  --color-isolation-soft: rgb(167 139 250 / 0.16);
+  --color-isolation-soft: rgb(167 139 250 / 0.09);
   --color-inactive: #a7b0be;
-  --color-inactive-soft: rgb(152 162 179 / 0.14);
+  --color-inactive-soft: rgb(152 162 179 / 0.08);
 
   --color-ai: #a5b4fc;
   --color-ai-strong: #c7d2fe;
-  --color-ai-soft: rgb(165 180 252 / 0.14);
+  --color-ai-soft: rgb(165 180 252 / 0.08);
   --color-ai-ghost: rgb(165 180 252 / 0.07);
   --color-ai-on: #0d1220;
   --color-ai-grad-from: #4f46e5;
   --color-ai-grad-to: #8b86f0;
 
-  /* The priority hues hold up on the dark surface, so the shapes and fills
-     are unchanged. Only the text inks are lifted a step. */
+  /* The priority hues take their own muted night steps — lighter than the
+     day's, so a shape still reads on the dark surface, and softer than the
+     old saturated fills. Ink on a night fill is dark: white on these would
+     not clear 4.5:1. */
+  --color-pri-critical: #d9706a;
+  --color-pri-critical-fill: #d9706a;
+  --color-pri-warning: #d9a14f;
+  --color-pri-warning-fill: #d9a14f;
+  --color-pri-pending: #9aa3b4;
+  --color-pri-pending-fill: #9aa3b4;
+  --color-pri-normal: #6f9fe0;
+  --color-pri-normal-fill: #6f9fe0;
+  --color-pri-safe: #5fb07f;
+  --color-pri-safe-fill: #5fb07f;
+  --color-pri-on-critical: #0d1220;
+  --color-pri-on-normal: #0d1220;
+  --color-pri-on-warning: #0d1220;
+
+  /* Card tints over the night surface: about 22% of each hue over the panel
+     (gold and the three quieter ones less), each checked for 4.5:1. */
+  --color-card-patient-tint: #1e2f4d;
+  --color-card-patient-line: #223a64;
+  --color-card-inpatients-tint: #1d3134;
+  --color-card-inpatients-line: #1f3f38;
+  --color-card-schedule-tint: #222e42;
+  --color-card-schedule-line: #283850;
+  --color-card-signoff-tint: #2c2a48;
+  --color-card-signoff-line: #3a315c;
+  --color-card-notes-tint: #2e2f31;
+  --color-card-notes-line: #423e32;
+  --color-card-discharge-tint: #1a303f;
+  --color-card-discharge-line: #1a3d4b;
+  --color-card-ai-tint: #232652;
+  --color-card-ai-line: #2a2a6e;
+  --color-card-investigations-tint: #26322b;
+  --color-card-investigations-line: #314126;
+  --color-card-medication-tint: #3b243d;
+  --color-card-medication-line: #562747;
+  --color-card-stroke-tint: #352730;
+  --color-card-stroke-line: #4a2c30;
+  --color-card-critical-tint: #382530;
+  --color-card-critical-line: #50282f;
+  --color-card-warning-tint: #352e2a;
+  --color-card-warning-line: #4d3924;
+  --color-card-pending-tint: #293040;
+  --color-card-pending-line: #363e4e;
+  --color-card-ink-muted: #939bae;
+  --color-card-caution: #fbbf24;
+  --color-calendar-surface: #243044;
+  --color-peek-from: #22335a;
+  --color-peek-to: #2e2a55;
+  --color-peek-glow: rgb(111 159 224 / 0.22);
+  --color-peek-dots: rgb(165 180 252 / 0.1);
+  --color-tone-patient-bar: #7ea4e3;
+  --color-tone-patient-ink: var(--color-brand);
+  --color-tone-inpatients-bar: #7fbf9a;
+  --color-tone-inpatients-ink: #8fd1ad;
+  --color-tone-signoff-bar: #a893d1;
+  --color-tone-signoff-ink: #c4b1ea;
+  --color-tone-discharge-bar: #6fb4bf;
+  --color-tone-discharge-ink: #86cdd8;
+  --color-tone-ai-bar: #9d98ec;
+  --color-tone-ai-ink: var(--color-ai);
+  --color-tone-medication-bar: #dd8fb2;
+  --color-tone-medication-ink: #eaa6c4;
+  --color-tone-schedule-bar: #9fb0c6;
+  --color-tone-schedule-ink: var(--color-ink-2);
+  --color-section-opd-tile: #213962;
+  --color-section-inpatients-tile: #1f3d37;
+  --color-section-inpatients-ink: #8fd1ad;
   --color-chrome: rgb(14 19 31 / 0.95);
   /* A step lighter than the chrome so an open menu separates from the app bar. */
   --color-menu: rgb(22 29 45 / 0.99);
   --color-menu-border: rgb(255 255 255 / 0.14);
-  --shadow-menu: 0 18px 44px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
+  --shadow-menu: 0 10px 28px rgb(0 0 0 / 0.45), 0 1px 4px rgb(0 0 0 / 0.35);
 
-  --color-pri-critical-ink: #f87171;
-  --color-pri-critical-soft: rgb(220 38 38 / 0.22);
-  --color-pri-warning-ink: #fbbf24;
-  --color-pri-warning-soft: rgb(245 158 11 / 0.20);
-  --color-pri-pending-ink: #facc15;
-  --color-pri-pending-soft: rgb(250 204 21 / 0.18);
-  --color-pri-normal-ink: #7ab3ff;
-  --color-pri-normal-soft: rgb(59 130 246 / 0.20);
-  --color-pri-safe-ink: #4ade80;
-  --color-pri-safe-soft: rgb(34 197 94 / 0.18);
+  --color-pri-critical-ink: #f19a94;
+  --color-pri-critical-soft: rgb(217 112 106 / 0.1);
+  --color-pri-warning-ink: #e8b86e;
+  --color-pri-warning-soft: rgb(217 161 79 / 0.09);
+  --color-pri-pending-ink: #b4bccb;
+  --color-pri-pending-soft: rgb(154 163 180 / 0.1);
+  --color-pri-normal-ink: #9dbff0;
+  --color-pri-normal-soft: rgb(111 159 224 / 0.09);
+  --color-pri-safe-ink: #8ccda5;
+  --color-pri-safe-soft: rgb(95 176 127 / 0.08);
   --color-ai-glow: rgb(129 140 248 / 0.35);
 
   /* Dark chart steps are SELECTED for the dark surface, not an auto-flip. */
@@ -376,9 +508,12 @@
   --color-viz-2: #d95926;
   --color-viz-band: rgb(52 211 153 / 0.12);
   --color-viz-grid: rgb(255 255 255 / 0.12);
+  --color-viz-normal: #5f9f7a;
+  --color-viz-abnormal: #e8a59c;
+  --color-viz-critical: #c9534c;
 
-  --shadow-glass: 0 6px 20px rgb(0 0 0 / 0.40), inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --shadow-glass-lg: 0 12px 32px rgb(0 0 0 / 0.52), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --shadow-glass: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-glass-lg: 0 2px 6px rgb(0 0 0 / 0.4);
   --shadow-bubble: 0 10px 30px rgb(79 70 229 / 0.50), 0 2px 6px rgb(0 0 0 / 0.40);
 }
 

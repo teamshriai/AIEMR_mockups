@@ -27,6 +27,7 @@ export type AuditEvent =
   | 'NOTE.COSIGN_QUEUED'
   | 'ACCESS.BREAK_GLASS'
   | 'AI.SAF.HARD_STOP_OVERRIDDEN'
+  | 'ADMISSION.REQUESTED'
 
 export interface AuditRow {
   id: string
@@ -93,6 +94,7 @@ const LABELS: Record<AuditEvent, string> = {
   'NOTE.COSIGN_QUEUED': 'Queued for co-sign',
   'ACCESS.BREAK_GLASS': 'Break-glass access',
   'AI.SAF.HARD_STOP_OVERRIDDEN': 'Hard stop overridden',
+  'ADMISSION.REQUESTED': 'Admission requested',
 }
 
 export function auditLabel(event: AuditEvent): string {

@@ -14,7 +14,8 @@
  *   No dual-axis chart, ever. Two measures of different scale are two charts.
  */
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { Button, Chip, Icon, Table, Td, Th, Tr, cx } from './primitives'
 
@@ -52,15 +53,31 @@ export function TrendChart({
   const [hover, setHover] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
 
+  /*
+   * The drawing is as wide as the space it has, in real pixels, so its text is
+   * always 11–12px. A fixed 640-wide viewBox scaled to fit shrank the axis
+   * labels to 7px in a narrow card.
+   */
+  const figureRef = useRef<HTMLElement>(null)
+  const [measured, setMeasured] = useState(0)
+  useEffect(() => {
+    const el = figureRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setMeasured(Math.round(entry.contentRect.width)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const pad = { top: 16, right: 56, bottom: 28, left: 44 }
-  const w = 640
+  const w = measured > 0 ? measured : 640
   const h = height
 
   const values = points.map((p) => p.value)
   const lo = Math.min(...values, refLow ?? Infinity)
   const hi = Math.max(...values, refHigh ?? -Infinity)
   const span = hi - lo || 1
-  const yMin = lo - span * 0.18
+  // A measure that cannot go below zero never draws an axis that does.
+  const yMin = lo >= 0 ? Math.max(0, lo - span * 0.18) : lo - span * 0.18
   const yMax = hi + span * 0.18
 
   const x = (i: number) => pad.left + (i / Math.max(1, points.length - 1)) * (w - pad.left - pad.right)
@@ -74,7 +91,7 @@ export function TrendChart({
   const ticks = [0, 1, 2, 3].map((k) => yMin + ((yMax - yMin) * k) / 3)
 
   return (
-    <figure className="m-0">
+    <figure ref={figureRef} className="m-0">
       <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h3 className="font-semibold tracking-tight">{title}</h3>
@@ -114,7 +131,9 @@ export function TrendChart({
         <div className="relative">
           <svg
             viewBox={`0 0 ${w} ${h}`}
-            className="h-auto w-full"
+            width={w}
+            height={h}
+            className="block w-full"
             role="img"
             aria-label={`${title} over time, ${points.length} results, latest ${points[last].value} ${unit}`}
             onMouseLeave={() => setHover(null)}
@@ -264,6 +283,76 @@ function formatTick(v: number): string {
   if (Math.abs(v) >= 100) return String(Math.round(v))
   if (Math.abs(v) >= 10) return v.toFixed(0)
   return v.toFixed(1)
+}
+
+export interface DonutSlice {
+  key: string
+  label: string
+  value: number
+  /** A CSS colour — a token, never a raw hex. */
+  color: string
+}
+
+/**
+ * Parts of one small whole — how a patient's results fall — as a ring.
+ *
+ * Kept small and quiet: a fixed size, soft slice strength, a hairline gap
+ * between slices, and the total in the middle. The legend beside it is HTML
+ * and carries the word and the count for every slice, so the ring is never
+ * the only place a number lives (§5.3).
+ */
+export function Donut({
+  slices,
+  label,
+  size = 112,
+  thickness = 14,
+  center,
+}: {
+  slices: DonutSlice[]
+  /** The accessible name — what the ring shows, in words. */
+  label: string
+  size?: number
+  thickness?: number
+  /** In the hole — usually the total. */
+  center?: ReactNode
+}) {
+  const shown = slices.filter((s) => s.value > 0)
+  const total = shown.reduce((n, s) => n + s.value, 0)
+  const r = (size - thickness) / 2
+  const circumference = 2 * Math.PI * r
+  const gap = shown.length > 1 ? 2 : 0
+  const arcs = shown.map((s, i) => {
+    const start = shown.slice(0, i).reduce((n, x) => n + (x.value / total) * circumference, 0)
+    return { ...s, start, length: (s.value / total) * circumference }
+  })
+
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label={label}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-glass-inset)" strokeWidth={thickness} />
+        {total > 0 &&
+          arcs.map((a) => (
+            <circle
+              key={a.key}
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              stroke={a.color}
+              strokeWidth={thickness}
+              strokeDasharray={`${Math.max(0, a.length - gap)} ${circumference}`}
+              strokeDashoffset={-a.start}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          ))}
+      </svg>
+      {center !== undefined && (
+        <span aria-hidden className="absolute inset-0 grid place-items-center text-center">
+          {center}
+        </span>
+      )}
+    </div>
+  )
 }
 
 /**

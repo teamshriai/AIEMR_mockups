@@ -222,22 +222,35 @@ async function main() {
 
   const render = await page.evaluate(() => {
     const blocks = document.querySelectorAll('ol li a[href]').length
-    const counts = Array.from(document.querySelectorAll('dl a')).map((a) => a.innerText.trim())
+    const calendar = document.querySelectorAll('[data-calendar-day]').length
+    /** A My Day patient list's rows: the links to a record inside the card whose heading names it. */
+    const rows = (title) => {
+      const card = Array.from(document.querySelectorAll('section')).find(
+        (s) => s.querySelector('h2, h3')?.textContent.trim() === title,
+      )
+      return card ? card.querySelectorAll('li a[href^="/patient/"]').length : -1
+    }
+    const lists = { opd: rows('OPD'), inpatients: rows('Inpatients') }
     const attention = Array.from(document.querySelectorAll('ul li button[type="button"]')).filter((b) =>
       b.querySelector('svg[role="img"]'),
     ).length
     return {
       blocks,
-      counts,
+      calendar,
+      lists,
       attention,
       hOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       greeting: document.querySelector('h1')?.innerText ?? '',
     }
   })
   check(
-    '1 · Render — day plan, counts and attention list all present',
-    render.blocks >= 6 && render.counts.length === 2 && render.greeting.startsWith('Good morning'),
-    `${render.blocks} blocks · ${render.counts.length} counts · "${render.greeting}"`,
+    '1 · Render — day plan, month calendar, patient lists and attention list all present',
+    render.blocks >= 6 &&
+      render.calendar >= 35 &&
+      render.lists.opd === 6 &&
+      render.lists.inpatients === 7 &&
+      render.greeting.startsWith('Good morning'),
+    `${render.blocks} blocks · ${render.calendar} calendar days · OPD ${render.lists.opd} · Inpatients ${render.lists.inpatients} · "${render.greeting}"`,
   )
 
   const widths = [320, 375, 768, 1024, 1440]
@@ -285,10 +298,63 @@ async function main() {
     const spans = Array.from(document.querySelectorAll('ol li a > span:first-child'))
     return spans.map((s) => s.innerText.trim())
   })
-  const clockOrder = times.every((t, i) => i === 0 || times[i - 1] <= t)
+  // An empty timeline must fail this, so the count is part of the check, not just the order.
+  const clockOrder = times.length >= 6 && times.every((t, i) => i === 0 || times[i - 1] <= t)
   check('2b · Timeline is in clock order with the current block marked', clockOrder && /now/i.test(
     await page.evaluate(() => document.body.innerText),
   ), times.join(' '))
+
+  // ── 2c · A date pops its day out beside it — AI brief, sessions, who is booked; Esc closes it
+  // The Today card stays the live day, and the calendar keeps its size.
+  const calendarBefore = await page.evaluate(() =>
+    Math.round(document.querySelector('section[aria-label="Calendar"]').getBoundingClientRect().height),
+  )
+  await page.evaluate(() => document.querySelector('[data-calendar-day="2026-09-09"]').click())
+  await page.until(
+    () => !!document.querySelector('[role="dialog"][aria-label^="Wed 09-Sep-2026"]'),
+    "the date's card",
+  )
+  const peek = await page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"][aria-label^="Wed 09-Sep-2026"]')
+    const text = d.innerText
+    const cell = document.querySelector('[data-calendar-day="2026-09-09"]')
+    const c = cell.getBoundingClientRect()
+    const r = d.getBoundingClientRect()
+    return {
+      title: d.getAttribute('aria-label') ?? '',
+      brief: /AI brief/i.test(text),
+      schedule: /Theatre list/.test(text),
+      booked: /Lakshmi Narayanan/.test(text),
+      links: d.querySelectorAll('a[href^="/patient/"]').length,
+      expanded: cell.getAttribute('aria-expanded') === 'true',
+      // Popped out from its date: the card's edge sits against the cell, above or below it.
+      besideDate: Math.abs(r.top - c.bottom) < 24 || Math.abs(c.top - r.bottom) < 24,
+      todayCard: document.querySelector('.card-today h2')?.textContent ?? '',
+      calendar: Math.round(document.querySelector('section[aria-label="Calendar"]').getBoundingClientRect().height),
+    }
+  })
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(300)
+  const peekClosed = await page.evaluate(() => ({
+    gone: !document.querySelector('[role="dialog"]'),
+    refocused: document.activeElement?.getAttribute('data-calendar-day') === '2026-09-09',
+  }))
+  check(
+    '2c · A calendar date pops its day out beside it — AI brief, sessions, who is booked — and Esc closes it; Today and the calendar stay put',
+    peek.title.startsWith('Wed 09-Sep-2026') &&
+      peek.brief &&
+      peek.schedule &&
+      peek.booked &&
+      peek.links >= 1 &&
+      peek.expanded &&
+      peek.besideDate &&
+      peek.todayCard === 'Today' &&
+      peek.calendar === calendarBefore &&
+      peekClosed.gone &&
+      peekClosed.refocused,
+    `"${peek.title}" · brief ${peek.brief} · schedule ${peek.schedule} · booked ${peek.booked} · ${peek.links} patient link · beside the date ${peek.besideDate} · Today card "${peek.todayCard}" · calendar ${calendarBefore}→${peek.calendar}px · closed ${peekClosed.gone}, focus back ${peekClosed.refocused}`,
+  )
 
   // ── 5 · AI explainability (before mark-seen removes the row) ─────────────
   const ai = await page.evaluate(() => {
@@ -354,13 +420,14 @@ async function main() {
       saysWhy: /AI ranking is off/.test(text),
       bubble: !!document.querySelector('[aria-label*="assistant" i]'),
       dayIntact: /Ward round/.test(text) && /OPD/.test(text),
-      counts: document.querySelectorAll('dl a').length,
+      blocks: document.querySelectorAll('ol li a[href]').length,
+      calendar: document.querySelectorAll('[data-calendar-day]').length,
     }
   })
   check(
-    '5b · AI-OFF — ◆ hidden, bubble unmounted, day plan and counts unaffected',
-    aiOff.noAcuity && aiOff.saysWhy && !aiOff.bubble && aiOff.dayIntact && aiOff.counts === 2,
-    `${toggled} · bubble ${aiOff.bubble ? 'present' : 'gone'} · ${aiOff.counts} counts still shown`,
+    '5b · AI-OFF — ◆ hidden, bubble unmounted, day plan, calendar and lists unaffected',
+    aiOff.noAcuity && aiOff.saysWhy && !aiOff.bubble && aiOff.dayIntact && aiOff.blocks === 7 && aiOff.calendar >= 35,
+    `${toggled} · bubble ${aiOff.bubble ? 'present' : 'gone'} · ${aiOff.blocks} blocks and ${aiOff.calendar} calendar days still shown`,
   )
 
   // Back on. A reload restores it anyway, since the kill switch is per session.
@@ -410,7 +477,7 @@ async function main() {
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: SPEECH_STUB })
   await page.goto('/clinician?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-06-01"]'), 'My Day with the speech stub')
-  // The To-Do Note card's own mic — an icon button, so it is found by its accessible name.
+  // The to-do notes section's own mic — an icon button, so it is found by its accessible name.
   await page.evaluate(clickByText, 'button[aria-label="Dictate a to-do note"]', '')
   // Opened from the mic, the panel is already listening — there is no start button.
   await page.until(() => !!document.querySelector('#dictation-draft'), 'the dictation panel')
@@ -466,7 +533,7 @@ async function main() {
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes
     const saved = rows.filter((r) => r.event === 'NOTE.DRAFT_SAVED')
     const card = Array.from(document.querySelectorAll('section')).find((s) =>
-      /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''),
+      /to-do note/i.test(s.querySelector('h2, h3')?.innerText ?? ''),
     )
     return {
       saved: saved.length,
@@ -502,14 +569,14 @@ async function main() {
     `${draft.len} chars · mic asked ${live.mic}× · nothing stored before Save · model "${afterSave.model}" gate ${afterSave.gate} · on My Day ${afterSave.onMyDay}`,
   )
 
-  // ── 4b · The to-do card: tick off, strike through, delete ────────────────
+  // ── 4b · The to-do notes: tick off, strike through, delete ───────────────
   await page.evaluate(() => {
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2, h3')?.innerText ?? ''))
     card?.querySelector('input[type="checkbox"]')?.click()
   })
   await sleep(300)
   const ticked = await page.evaluate(() => {
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2, h3')?.innerText ?? ''))
     const body = card?.querySelector('li p')
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []
     return { struck: !!body && getComputedStyle(body).textDecorationLine.includes('line-through'), done: notes[0]?.done === true, pill: /All done/.test(card?.innerText ?? '') }
@@ -540,13 +607,13 @@ async function main() {
   await sleep(600)
   const typedSaved = await page.evaluate(() => {
     const notes = JSON.parse(localStorage.getItem('indostates.clinical')).state.voiceNotes.unattached ?? []
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2, h3')?.innerText ?? ''))
     const rows = Array.from(card?.querySelectorAll('li') ?? []).map((li) => li.innerText)
     return { count: notes.length, firstIsOpen: /repeat potassium/.test(rows[0] ?? ''), doneLast: /review tomorrow/.test(rows.at(-1) ?? '') }
   })
   // Delete the typed one.
   await page.evaluate(() => {
-    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2')?.innerText ?? ''))
+    const card = Array.from(document.querySelectorAll('section')).find((s) => /to-do note/i.test(s.querySelector('h2, h3')?.innerText ?? ''))
     card?.querySelector('button[aria-label="Delete this to-do note"]')?.click()
   })
   await sleep(400)
@@ -597,6 +664,7 @@ async function main() {
   await page.evaluate(() => {
     localStorage.removeItem('indostates.clinical')
     localStorage.removeItem('indostates.ai')
+    localStorage.removeItem('indostates.admissions')
   })
   await page.goto('/clinician?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-06-01"]'), 'My Day')
@@ -903,30 +971,34 @@ async function main() {
     `${emptyAtStart.mics} mics · 0 pre-filled · dictated live ${whileLive.len} chars (${afterDictation.provenance}) · scribe heard 4 of 4 ${scribeHeard} · ${afterDictation.bars} → ${afterScribe.bars} decision bars, plan ghost is what was said ${afterScribe.ghostPlan}`,
   )
 
-  // ── The My Day tiles are a partition ──────────────────────────────────────
-  // The bug this guards: `Follow-up` sat beside `OPD` while being a subset of
-  // it, so three patients were counted twice and the header read 15 for a
-  // consultant with 13 — and the ED patient was in the inpatient list but in
-  // no tile at all.
+  // ── The My Day lists are a partition ──────────────────────────────────────
+  // OPD · Inpatients (VOCABULARY.md): every patient is on exactly one list.
+  // The bug this guards: four patients sat in both the clinic list and a bed,
+  // so a ventilated ICU patient showed as "Not arrived" in OPD. As counts it
+  // hid; as names it would show the same person twice.
   await page.goto('/clinician?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-06-01"]'), 'My Day')
-  const tiles = await page.evaluate(function () {
-    const card = Array.from(document.querySelectorAll('section')).find((s) =>
-      /MY PATIENTS/i.test(s.querySelector('h2')?.innerText ?? ''),
-    )
-    if (!card) return { missing: true }
-    const values = Array.from(card.querySelectorAll('dd')).map((d) => Number(d.innerText.trim()))
-    const labels = Array.from(card.querySelectorAll('dt')).map((d) => d.innerText.trim())
-    const header = Number((card.querySelector('h2')?.parentElement?.innerText ?? '').replace(/\D+/g, ''))
-    return { values, labels, header, sum: values.reduce((a, b) => a + b, 0) }
+  const lists = await page.evaluate(function () {
+    const card = (title) =>
+      Array.from(document.querySelectorAll('section')).find((s) => s.querySelector('h2, h3')?.textContent.trim() === title)
+    const hrefs = (title) =>
+      Array.from(card(title)?.querySelectorAll('li a[href^="/patient/"]') ?? []).map((a) => a.getAttribute('href'))
+    const pill = (title) => Number((card(title)?.querySelector('header')?.innerText ?? '').replace(/\D+/g, ''))
+    return { opd: hrefs('OPD'), ip: hrefs('Inpatients'), opdPill: pill('OPD'), ipPill: pill('Inpatients') }
   })
+  const both = lists.opd.filter((h) => lists.ip.includes(h))
   check(
-    'My Day tiles partition the caseload — they sum to the stated total',
-    !tiles.missing && tiles.sum === tiles.header && !tiles.labels.includes('Follow-up'),
-    tiles.missing ? 'card not found' : `${tiles.labels.join(' + ')} = ${tiles.sum}, header ${tiles.header}`,
+    'My Day lists partition the caseload — no patient on both, each count is its rows',
+    lists.opd.length > 0 &&
+      lists.ip.length > 0 &&
+      both.length === 0 &&
+      new Set([...lists.opd, ...lists.ip]).size === lists.opd.length + lists.ip.length &&
+      lists.opdPill === lists.opd.length &&
+      lists.ipPill === lists.ip.length,
+    `OPD ${lists.opd.length} (pill ${lists.opdPill}) · Inpatients ${lists.ip.length} (pill ${lists.ipPill}) · on both: ${both.length}`,
   )
 
-  // The Inpatients tile on My Day must equal the inpatient list's own count.
+  // The Inpatients list on My Day must equal the Inpatients screen's own rows.
   await page.goto('/ip/patients?e2e=1')
   await page.until(() => !!document.querySelector('[data-screen-id="S-08-03"]'), 'Inpatients')
   const ip = await page.evaluate(function () {
@@ -934,11 +1006,10 @@ async function main() {
     const rows = document.querySelectorAll('main ul[aria-label] > li > button').length
     return { heading, rows }
   })
-  const inpatientTiles = (tiles.values ?? []).slice(1).reduce((a, b) => a + b, 0)
   check(
-    'Inpatients is one word, and its parts add up to the whole',
-    ip.heading === 'Inpatients' && ip.rows === inpatientTiles,
-    `heading "${ip.heading}" · ${ip.rows} rows vs Inpatients tile ${inpatientTiles}`,
+    'Inpatients is one word, and My Day lists the same patients as the Inpatients screen',
+    ip.heading === 'Inpatients' && ip.rows === lists.ip.length,
+    `heading "${ip.heading}" · ${ip.rows} rows vs My Day's ${lists.ip.length}`,
   )
 
   // ── The Stroke-AI Console shows a real study ─────────────────────────────
@@ -1063,6 +1134,38 @@ async function main() {
     'Back — steps back through history, and opened cold names where it goes',
     backed && backWent && coldLabel === 'Back to Patient record',
     `history back ${backWent ? 'returned to the record' : 'did not return'} · cold: "${coldLabel}"`,
+  )
+
+  // ── The Overview's first screen holds what a record is opened for ────────
+  // The scan, the vitals, the results ring and every AI reading must all be
+  // visible without scrolling — on the heaviest record (a CT, five AI readings,
+  // four results out of range) at a 1440 × 900 laptop screen. And no red
+  // deterioration band across the top: that reading lives in AI insights now.
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+  await page.goto('/patient/ICH-0044051/record?e2e=1')
+  await page.until(() => !!document.querySelector('[data-screen-id="S-06-11"]'), 'R. Lakshmanan\'s record')
+  await sleep(400)
+  const firstScreen = await page.evaluate(function () {
+    const card = (title) =>
+      Array.from(document.querySelectorAll('section')).find((s) => (s.querySelector('h2')?.textContent ?? '').trim() === title)
+    const cards = ['Report viewer', 'Vitals', 'Test results', 'AI insights'].map((t) => {
+      const el = card(t)
+      return { t, bottom: el ? Math.round(el.getBoundingClientRect().bottom) : null }
+    })
+    return {
+      cards,
+      height: window.innerHeight,
+      riskBand: /Deterioration risk/.test(document.body.innerText),
+      riskInInsights: /Deterioration HIGH/.test(card('AI insights')?.innerText ?? ''),
+    }
+  })
+  await page.send('Emulation.clearDeviceMetricsOverride')
+  check(
+    'Overview first screen — scan, vitals, results ring and AI insights all above the fold; no red risk band',
+    firstScreen.cards.every((c) => c.bottom !== null && c.bottom <= firstScreen.height) &&
+      !firstScreen.riskBand &&
+      firstScreen.riskInInsights,
+    `${firstScreen.cards.map((c) => `${c.t} ${c.bottom ?? 'missing'}`).join(' · ')} (fold ${firstScreen.height}) · red band ${firstScreen.riskBand ? 'present' : 'gone'} · risk in AI insights ${firstScreen.riskInInsights}`,
   )
 
   // ── The ward note carries the doors to results, imaging and the console ──

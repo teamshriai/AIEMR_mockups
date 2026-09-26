@@ -18,14 +18,15 @@ table with three columns of prose, two explanation card grids and a footer. It
 was complete and it was unreadable at a glance: a consultant had to *read* it
 before knowing what to do.
 
-It is now one calm surface that answers three questions and declines a fourth:
+It is now one calm surface that answers four questions and declines a fifth:
 
 | | |
 |---|---|
-| What is my day? | the timeline |
-| What needs me right now? | the attention card |
-| What must I finish before I leave? | the to-finish card, and today's discharges |
-| *What about this patient?* | **not here** — one tap away, in the Quick-Panel |
+| What is my day? | **Today**, and the **Calendar** for the month |
+| Who is mine today? | **Patients Today** — OPD and Inpatients |
+| What needs me right now? | **Needs Action** · Attention |
+| What must I finish before I leave? | **Needs Action** · Tasks, and my To-do notes |
+| *What about this patient?* | **not here** — one tap away, in the Quick-Panel or the record |
 
 The fourth question is the one that used to bloat the screen. Every number about
 a specific patient now lives behind a tap. The third was added in the September
@@ -46,73 +47,142 @@ attention list.
 ## 2 · Layout
 
 ```
-1440                                                    375
-┌──────┬──────────────────────────────────────┐        ┌──────────────────┐
-│ Z2   │ Z4  Good morning, Dr Iyer            │        │ Z1  ☰ ICH  ⌕ ☾ 🔔 │
-│ nav  │     Mon 21-Sep-2026 · Dept · Site    │        ├──────────────────┤
-│      ├──────────────────────────────────────┤        │ Good morning,    │
-│      │ TODAY  [Now · OPD]   Up next 09:05 … │        │ Dr Iyer          │
-│      │ 07:30 ✓ AI MORNING BRIEF         ◆   │        │ Mon 21-Sep-2026… │
-│      │         3 results changed · 1 critical│       ├──────────────────┤
-│      │▍08:00 ● OPD               [NOW]      │        │ 07:30 AI BRIEF   │
-│      │▍        7 patients · 4 new · 3 f-ups │        │▍08:00 OPD  [NOW] │
-│      │ 09:05 ○ TELECONSULT                  │
-│      │ 10:30  WARD ROUND                    │        │ 10:30 WARD ROUND │
-│      │        6 patients · 2 need attention │        │ …                │
-│      │ 12:00  CO-SIGN                       │        ├──────────────────┤
-│      │ 14:00  OPD                           │        │ NEEDS MY         │
-│      │ 16:30  DISCHARGE ROUND           ◆   │        │ ATTENTION        │
-│      ├─────────────────┬────────────────────┤        │ ● Critical lab   │
-│      │ MY PATIENTS     │▌NEEDS MY ATTENTION │        │ ▲ Deterioration  │
-│      │ OPD  7  Ward  4 │▌  ● Critical lab   │        │ ◎ Pending        │
-│      │ ICU  1  F-up  3 │▌  ▲ Deterioration  │        ├──────────────────┤
-│      │                 │▌  ◎ Cannot assess  │        │ MY PATIENTS      │
-│      │                 │▌  ◎ Co-sign        │        ├──────────────────┤
-│      │                 │▌ ◆ Sorted by acuity│   ◆    │ Home Clinic IP … │
-└──────┴─────────────────┴────────────────────┘        └──────────────────┘
+1440                                                                        375
+┌──────┬──────────────────────────────┬─────────────────────────────────┐  ┌──────────────────┐
+│ Z2   │ Z4  Good morning, Dr Iyer · Mon 21-Sep-2026 · Dept · Site      │  │ Z1  ☰ ICH  ⌕ ☾ 🔔 │
+│ nav  ├──────────────────────────────┬─────────────────────────────────┤  ├──────────────────┤
+│      │▛ TODAY [Now·OPD] ◷ Up next  ▜│ Patients Today                  │  │ TODAY            │
+│      │▌ 07:30 ✓ AI morning brief ◆ ▐│ ┌ 👤 OPD 6 ───────────────────┐ │  │ Needs Action     │
+│      │▌▍08:00 ● OPD  • NOW         ▐│ │ ▣ Meera Krishnan  ↺  ◷ Wait ›│ │  │ Patients Today   │
+│      │▌ 09:05 ○ Teleconsult        ▐│ └─────────────────────────────┘ │  │ Calendar         │
+│      │▌ …  (slate card, rail)      ▐│ ┌ 🛏 INPATIENTS 7 ────────────┐ │  ├──────────────────┤
+│      │▙────────────────────────────▟│ │ ▣• R. Lakshmanan · 4B-12 ⚠ ›│ │  │ Home OPD IP …    │
+│      ├──────────────────────────────┤ └─────────────────────────────┘ │  └──────────────────┘
+│      │ Needs Action      1 critical ├─────────────────────────────────┤
+│      │ ATTENTION · TASKS ·          │ Calendar  September 2026 ‹ ›    │
+│      │ TO-DO NOTES  🎙 +             │ (fills to the bottom of the     │
+│      │                              │  left column)                   │
+└──────┴──────────────────────────────┴─────────────────────────────────┘
 ```
 
 Zone mapping — the brief's "TOP HEADER (Z1)" is the atlas's **Z4** page header.
 The global Z1 app bar stays, because it is chrome shared by all 58 screens and
-carries the theme toggle. Z5 holds the timeline and both cards. My Day uses no
-Z6 rail and no Z7a bar. The Z7b assistant bubble renders, because the registry
-row says `GP-17`.
+carries the theme toggle. Z5 holds the three panels. My Day uses no Z6 rail and
+no Z7a bar. The Z7b assistant bubble renders, because the registry row says
+`GP-17`.
 
-**Surfaces.** Five sections, one frame (`SectionCard`): the day (left, 7fr,
-full height), the attention list and *Pending today* stacked in the right
-column (5fr), then *My patients* and *Discharges today* in a second row. The
-to-finish card takes the slack in the right column so the frame is full at
-1440 without a card stretching around three rows. Glass is used for these cards and the app chrome and
-nowhere else; the page itself is the brief's gradient
-(`#eef2ff → #f8fafc 40% → #e0f2fe 70% → #eef2ff`) with no blooms in light.
+**A workspace, not a dashboard.** Three panels rather than seven cards, each
+one solid surface with a hairline edge (`Panel`, `PanelBlock`, `PanelSection`
+in `src/components/myday.tsx`). What used to be a card is a section inside a
+panel, set off by a hairline and a quiet uppercase label with a plain count.
+There are no "See all" links: OPD and Inpatients are one tap away in the nav,
+and a link that repeats the nav is a second path to the same place. Type has
+three levels — panel title (sentence case, semibold), the name on a row
+(medium), its metadata (regular, muted) — and three weights.
 
-- **Schedule rows** are the brief's `.schedule-item`: `12px 16px` padding and a
-  3px left rule, transparent except on the block in progress, where it is the
-  NORMAL blue over the faintest tint of it. A rail runs through one 36px badge
-  per row — green check for done, blue for now, quiet for later.
-- **The attention card** is the brief's `.attention-card`: a 4px left border in
-  the top urgency's hue, a count pill (`1 critical`) and `See all ›`. Rows are
-  status block · reason / name · chevron · mic. No `◆`, no location, no detail.
-- **Counts** are four tiles — icon, big tabular number, label, and one quiet
-  line on what is pending there (`4 seen · 3 to see`, `5 pending`) — that lift
-  2px on hover. The bottom cards lift too; nothing in a list does.
-- **Pending today** rows are icon · label / detail · count pill · chevron,
-  each a link to the screen where the work is done. Derived from
-  `INPATIENTS[].pending`, `COSIGN_QUEUE`, `REFERRALS`, and the clinical store's
-  `voiceNotes`, `notes`, `coSigned` and `triagedReferrals`, so a signed note or
-  a triaged referral leaves the list.
-- **Discharges today** rows are `DISCHARGE_BOARD` rows with `likelihood ===
-  'Today'`: status block · name · bed / blockers · chevron, opening the board.
+- **Left column — the day, then what to do about it.**
+  - **Today** is the one solid card the flat system keeps, at the doctor's
+    request: the slate-blue `card-today` surface (`#3d5a80` in both themes,
+    white inks, 18px corners — `glass.css`), a rail through round badges (a
+    green check for a block already past, the block in progress on a filled
+    blue badge, later ones quiet), the block in progress lifted on a lighter
+    blue band with a *● NOW* pill, bold times, and the counts that matter in
+    colour (*11 results changed*, *3 need attention* in amber, *1 critical* in
+    white). The header carries a white *Now · OPD* pill and *◷ Up next*. `◆`
+    marks a block whose count is AI-derived. Each block opens the screen that
+    owns it.
+  - **Needs Action** sits under it (below), on its top urgency's soft hue.
+- **Right column — who is in the day.**
+  - **Patients Today** replaces the separate OPD and Inpatients cards with two
+    sections that read as different places before a word is read: each has its
+    function's soft hue as its ground (OPD blue, Inpatients green — the same
+    hues those functions carry on every screen), its icon beside a bold label
+    and a plain count (OPD `UserRound`,
+    Inpatients `BedDouble`), a hairline under the header, the same hue behind
+    every row's icon, and a clear gap from the other section. Each scrolls on its
+    own — about five rows, a soft fade when there is more. Stroke personas get
+    one *Telestroke queue* section instead (NIHSS in the row's quiet detail).
 
-Breakpoints: one column below `md` (768) with the attention card **above** My
-Patients, two columns at and above it. Content measure is capped at `5xl`
-(1024px) and left-aligned with the heading.
+    **The row is one grid, the same on every row:** place tile · name and bed ·
+    kind · status · chevron, and it opens the patient's record. The tile is a
+    full-strength icon on its section's hue — OPD `UserRound`, Ward `BedDouble`,
+    ICU `HeartPulse`, ED `Ambulance` — read out and on hover, so the icon never
+    carries it alone; a high-risk patient gets a red dot on the tile's corner.
+    Kind and status are fixed columns on the right, so every status starts at
+    the same x in both sections; below `sm` they drop to a line under the name.
+
+    **Teleconsults are OPD too.** Today's teleconsult queue
+    (`TELECONSULT_QUEUE`, `data/clinical.ts` — the same list the Telehealth
+    screen ranks) is part of the OPD section: a patient on it leads with a
+    `Video` tile instead of the person, and their status is the call's time
+    (neutral `Clock` · "09:05"), or amber `Phone` · "Telephone only" when the
+    patient has no video. A patient on both the clinic list and the queue
+    appears once, as the teleconsult; one in a bed stays on Inpatients, so the
+    two lists remain a partition.
+
+    **Status is a picture first, a word second** (`RowMark`): a coloured icon,
+    then a small word. Colour only for meaning — red critical, amber attention,
+    blue normal — and neutral marks carry no fill.
+
+    | | Mark |
+    |---|---|
+    | High risk | red `TriangleAlert` · "High risk", and the red dot on the tile |
+    | Waiting · Admission in progress | amber `Clock` · amber `Hourglass`, with the word |
+    | In room | blue `DoorOpen` · "In room" |
+    | Not arrived · Admitted today · Discharge today | neutral `CircleDashed` · `LogIn` · `LogOut`, with the word |
+    | Seen | neutral `Check`, **icon only**; the row goes quiet |
+    | Follow-up | neutral `History`, **icon only** |
+    | New patient | blue `UserPlus` · "New patient" |
+
+    Follow-up and Seen are the two words that used to repeat down the list, so
+    they are glyphs; the word stays in the tooltip and the row's accessible
+    name. The new patient is the exception, so it keeps its word. At most two
+    marks per row. The two lists are a partition: `opdRows` leaves out anyone
+    in a bed.
+- **Needs Action** (left column, under Today). The header's one emphasis is
+  the critical count. Three sections:
+  - **Attention** — status shape · reason / name · chevron · mic. The row opens
+    the Quick-Panel. `Sorted by AI acuity ▾` under the list; the LOW-confidence
+    ranking arrives collapsed.
+  - **Tasks** — icon · label / detail · count · chevron, each a link to the
+    screen where the work is done. The count is plain unless the item is urgent.
+  - **To-do notes** — the doctor's own reminders, with the mic (dictate) and
+    `+` (type) in the section header.
+- **Calendar** (right column, under Patients Today; `MonthCalendarCard`,
+  `src/components/monthcalendar.tsx`) on its own surface, a touch lighter than
+  the cards around it, with the faintest lift. With `fill` it takes the rest of
+  the column and its weeks share the height, so the two columns end level. The
+  month is the header ("September 2026"), with two small arrows and a quiet
+  *Today* once you have left the month; a new month slides in from the side you
+  moved towards (180ms, off under reduced motion). Today is a soft filled circle
+  with a faint halo. Under each date, how full it is as dots (`dayLoad`): one
+  light, two moderate, three busy, the last one red where the day carries
+  something critical — a legend line under the grid says so, never text inside
+  the cells.
+
+  **A date pops its day out beside it** (`DayPeek`) — on hover after a short
+  pause, or pinned by a click, a tap or Enter. The card is deliberately not the
+  Today card: a light, lifted card with a soft glow, pointing at its date and
+  placed below it or, where there is no room, above. Its head is a diary-page
+  wash with the date large, the month and weekday, a three-bar busy meter and
+  icon chips for sessions and bookings; then the day drawn across its hours
+  (sessions as bars in their function's hue, patients booked as pins, a red Now
+  line today); the ◆ **AI brief** (AI-608, hidden with the AI switch off); the
+  sessions as tiles in their function's hue; and the patients booked with
+  their initials and time — each a link to where it lives. Pinned, the page
+  behind dims a little while the calendar stays sharp, and the card takes
+  focus; Esc, a click outside or a scroll closes it and returns focus to the
+  date. The Today card is never changed by the calendar.
+
+Breakpoints: one column below `lg`, in the order Today, Needs Action,
+Patients Today, Calendar; from `lg` (1280) two columns at 5fr / 6fr — Today
+over Needs Action on the left, Patients Today over the Calendar on the right.
+The patient lists show about five rows below `lg` and seven from it.
 
 **What is deliberately not on this screen** — the clinician's registration
 number, the next token, predicted waits, AI provenance beside patient names,
-`Note outstanding` on every ward row, and any results widget. All of it is one
-tap away. (Seen counts returned in September as the OPD tile's one-line
-sub-label, because a consultant asked how far the clinic had got.)
+vitals or results in the lists, and any results widget. All of it is one tap
+away.
 
 ---
 
@@ -133,7 +203,7 @@ screen whose root is `flex-1` fills the frame instead of floating in the top
 third. The Z6 rail opens **collapsed** to a tab carrying `railTitle` and an
 optional `railBadge` count, because on 43 screens it held reference prose.
 
-**The calm kit (`src/components/calm.tsx`).** `SectionCard` (one frosted frame
+**The calm kit (`src/components/calm.tsx`).** `SectionCard` (one solid panel
 per section, optional `accent`, `lift`, `fill`), `SectionTitle`, `CountPill`,
 `PillLink`, `PillTabs`, `ScopeTabs` + `useScope` (the slice in `?scope=`),
 `Why` (an explanation folded behind one quiet line) and `Disclosure`
@@ -189,21 +259,28 @@ vision deficiency (§5.3) and because none of the four hues can carry text.
 Every shape carries a hairline in its measured `-ink`. Without it `#F2C94C` at
 11px is invisible on a white card and "pending" reads as an empty cell.
 
-### `TimelineBlock` / `DayTimeline`
+### `TimelineBlock` / `DayTimeline` — `src/components/myday.tsx`
 
-`grid-cols-[3.75rem_1fr]`, widening at `sm`. Time is the largest thing in the
-row (16px → 18px, weight 600, tabular); the title is medium; the summary is one
-line at 0.92em. Past blocks drop to 60% opacity; the block containing `NOW`
-carries a `now` pill. A single hairline rule joins the sequence — the only chrome.
+The day as a railed timeline: time, a 36px badge on the rail (check for done,
+brand for now, quiet for later), title and one-line summary. Each block is a
+link to the screen owning that activity.
 
-`emphasis: { text, tone }[]` marks the substrings worth colouring. Everything
-else stays quiet, per "highlight only important numbers".
+### `MonthCalendarCard` / `DayPeek` — `src/components/monthcalendar.tsx`
 
-### `PatientCounts`
+The month grid and a date popped out. A date is a `<button>` in a plain `div`
+(never `ul/li`) with `data-calendar-day="YYYY-MM-DD"`, an `aria-label` that
+names the date, what is on it and its load ("… — moderate day"),
+`aria-current="date"` on today, and `aria-haspopup="dialog"` / `aria-expanded`
+for its card; cells are 44px targets. The card is a non-modal `role="dialog"`
+named for its date, portalled to the body so the calendar never changes size.
 
-Counts only, never lists. `min-w-0` on the grid, the link and the `<dt>`, and
-explicit `minmax(0,1fr)` tracks — a grid item and a flex item both default to
-`min-width: auto`, which pushed the page 34px wide at 320.
+### `PatientList` — `src/components/myday.tsx`
+
+One of My Day's patient lists. Rows (`PatientListRow`: patient, detail, kind
+tag, status tag) are links to `/patient/:uhid/record`; a row the chosen
+calendar block is about carries `data-related="true"` and a brand-soft tint.
+Scrolls inside its card (22rem below `xl`, the card's height from `xl`) with a
+fade at the bottom while there is more.
 
 ### `AttentionItem` row
 
@@ -255,11 +332,14 @@ whole series is in the accessible name.
 ## 4 · Tokens
 
 ```css
-/* page */   --color-page-from #eef2ff · via #f8fafc · via-2 #e0f2fe · to #eef2ff
-/* glass */  fill rgb(255 255 255/.55) · strong .72 · border rgb(255 255 255/.6)
-             blur 14px · radius-card 18px · radius-panel 14px
-             shadow 0 6px 20px rgb(0 0 0/.08), inset 0 1px 0 rgb(255 255 255/.5)
-/* motion */ .lift  transition: all 250ms ease; hover translateY(-2px)
+/* page */    --color-page-* #f3f5f8 (night #10151f) — one flat colour, no blooms
+/* surface */ fill #fff · muted #f5f7fa · hover #f1f4f8 · border rgb(23 32 56/.1)
+              (night #1a2130 · #161c29 · #232b3b) — opaque, no backdrop blur
+              radius card 10 · panel 8 · field 8 · chip 6 · pill 999 (dots, counts)
+              shadow 0 1px 2px rgb(15 23 42/.05) — the edge is the hairline
+/* motion */  .lift — a firmer shadow on hover; nothing moves
+/* tints */   card tints and every *-soft fill at half their earlier strength;
+              --color-pri-pending is neutral slate #8a93a3 (night #9aa3b4)
 
 --color-pri-critical: #dc2626;  --color-pri-critical-fill: #dc2626;  /* white on it 4.8 */
 --color-pri-warning:  #f59e0b;  --color-pri-warning-fill:  #f59e0b;  /* "moderate" */
@@ -324,12 +404,11 @@ their glyphs.
 
 | From | To | Carries |
 |---|---|---|
-| OPD count | `/op-queue` | — |
-| Follow-up count | `/op-queue?type=follow-up` | pre-applied, visible, removable |
-| Ward count | `/ip/patients?location=ward` | ditto |
-| ICU count | `/ip/patients?location=icu` | ditto |
-| See all | `/ip/patients` | AI-acuity sort on |
-| Any timeline block | the screen owning that activity | — |
+| A Patients Today row (OPD or Inpatients) | `/patient/:uhid/record` | — |
+| An Attention row | the Quick-Panel for that item | — |
+| A Tasks row | the screen where that work is done | — |
+| A Today block | the screen owning that activity | — |
+| A calendar date | opens that day's panel; its rows go to the schedule screens or the patient's appointments | — |
 | Unauthenticated request | `/login?next=<path>` | honoured on success |
 
 ### Mock API contract
@@ -469,22 +548,23 @@ against the DOM the browser rendered.
 
 | # | Test | Result |
 |---|---|---|
-| 1 | **Render** — day plan, counts and attention list all present | pass · 7 blocks, 4 counts, "Good morning, Dr Iyer" |
+| 1 | **Render** — day plan, month calendar, patient lists and attention list all present | pass · 7 blocks, 35 calendar days, OPD 6, Inpatients 7, "Good morning, Dr. Iyer" |
 | 1b | **No horizontal scroll** at 320 / 375 / 768 / 1024 / 1440 | pass · clean at all five |
 | 2 | **Priority ordering** — critical → warning → pending, capped at 5 | pass · `Critical → Warning → Pending → Pending → Pending` |
 | 2b | **Timeline** in clock order with the current block marked | pass · 07:30 08:00 09:05 10:30 12:00 14:00 16:30 |
+| 2c | **A calendar date opens** with an AI brief, the day's schedule and its appointments; Esc closes it | pass · Mon 21-Sep-2026, 6 patient links |
 | 3 | **Mark seen** — row clears, audit row written, survives a reload | pass · 5 → 4 rows, 1 audit event |
 | 4 | **Voice transcribe** — fallback declared, editable, saved only on confirm | pass · 139 chars, nothing stored before Save, gate G2 |
 | 5 | **AI explainability** — band, `Why?` opens 4 panels, no layout shift | pass · 4 panels, width 1440 → 1440 |
-| 5b | **AI-OFF** — `◆` hidden, bubble unmounted, day plan unaffected | pass · bubble gone, 4 counts still shown |
+| 5b | **AI-OFF** — `◆` hidden, bubble unmounted, day plan, calendar and lists unaffected | pass · bubble gone, 7 blocks and 35 calendar days still shown |
 | 6 | **Login** — `?next`, one uniform failure, lock at five, next honoured | pass · landed `/ip/patients` |
 | 7 | **Critical event alert** — toast, `Notification`, deep link | pass · "Critical lab — Joseph Mathew" |
 | 8 | **Offline mark-seen** — queued with a visible count, then flushed | pass · queued 1 → flushed 0 |
 | 9 | **Notes open empty** — 4 mics, nothing pre-filled, Voice selected; dictation lands in the field with provenance `dictated` and no decision bar; *Draft with AI* adds decision bars only to the sections still empty and disables Sign | pass · 255 chars dictated · 0 → 3 decision bars |
 | 10 | **One truth for a note section** — Accept fills the field; clearing it does not bring the draft back; Defer blocks Sign; a code picked from the ICD-10 search enables Sign once all four sections have text; Save draft toasts; decisions survive a reload | pass · accepted 332 chars → cleared stays empty (ghost false) · deferred blocks Sign true · coded J18.9 · saved manual · Sign enabled true → after reload true, 3 decided, 0 undecided |
 | — | **Every button acts** — no visible, enabled button without a handler on any routed screen | pass · none across 52 screens |
-| — | **My Day tiles partition the caseload** — OPD + Ward + ICU + ED equals the header | pass · 13 = 13 |
-| — | **Inpatients is one word** and its parts add up to the list | pass · 6 rows = Ward + ICU + ED |
+| — | **My Day lists partition the caseload** — no patient on both lists; each count pill is its rows | pass · OPD 6 · Inpatients 7 · on both 0 |
+| — | **Inpatients is one word**, and My Day lists the same patients as the Inpatients screen | pass · 7 = 7 |
 | — | **Stroke-AI Console** — real NCCT pixels, slices scrub, unmarked image reachable | pass |
 | — | **Calm check** — 52 screens: no table, breadcrumb, spec line, overflow or open rail; no paragraph over six lines | pass |
 
@@ -838,3 +918,57 @@ questions about this scan that open the assistant with a cited answer.
 Tidy up with AI · Diagnosis and ICD-10 · OP number / IP number · Saved / Autosave
 on · Pending today · Cleared for discharge · Sign assessment. Nine more checker
 rules.
+
+## 13 · Workspace pass — three panels, and a flat surface product-wide
+
+**My Day is a workspace, not a dashboard** (§2). Seven cards became three
+panels: *Schedule* over *Patients Today* on the left (60%), *Needs Action* on
+the right (40%), the *Calendar* full width beneath. OPD and Inpatients are two
+sections of one panel, each scrolling on its own; *Needs my attention*, *Pending
+today* and the *To-Do Note* card are the *Attention*, *Tasks* and *To-do notes*
+sections of one. Patient rows lead with a muted place icon and carry at most
+two tags; the Ward / ICU / ED tag went, because the icon and the bed say it.
+The Schedule lost its rail, its icon badges and its done-checks, and colours
+only critical counts. The three *See all* links went: each repeated the nav.
+
+**The surface is flat, everywhere** (§4). The page is one colour; panels are
+opaque with a hairline and a barely-there shadow; nothing blurs, glows, lifts
+or fades in behind a modal; corners are 6–10px; buttons and tabs are no longer
+pills; the AI button is a solid indigo, not a gradient; the attention card lost
+its coloured top rule. Card tints and soft fills are half their old strength,
+and "pending" is neutral, so only red, amber and blue carry meaning. The inks
+did not change. Contrast, both themes, all screens: 118 of 122 runs clean,
+against 105 before — no screen that passed started failing; the four left are
+text drawn on the CT image (S-18-14, S-18-15) and the perfusion chips (S-18-16).
+
+**Words.** Schedule · Patients Today · Needs Action · Attention · Tasks ·
+To-do notes (VOCABULARY.md).
+
+**Patients Today, visual first.** The two sections now differ by ground (faint
+blue for OPD, slate for Inpatients), by a header icon beside a bold label, by
+the hue of every row's icon tile, and by a gap. Rows are one grid — tile · name
+· kind · status · › — so kind and status run in columns; the tile's icon is at
+full strength, with a red dot for a high-risk patient. Status is a coloured
+icon with a small word; Follow-up and Seen, which repeated on most rows, are
+the icon alone with the word kept for the tooltip and the screen reader.
+
+**Today, as it was; two columns.** The day is its own card again, in the
+highlighted design the doctor asked to keep — solid slate, rail, badges, the
+Now band — scoped to that one card (`card-today`) while the rest of the portal
+stays flat. Needs Action moved under it; Patients Today sits to its right, with
+a half-width calendar under the lists filling the column to the same height.
+
+**Soft hues, by function, everywhere.** Every card now carries the soft hue of
+what it is for — patient blue, inpatients green, schedule slate, documentation
+purple, own notes gold, discharge teal, AI indigo, investigations olive,
+medication rose, stroke coral, attention by urgency — in both themes. A screen
+sets its function once (`shell/screenTones.ts`) and its cards inherit it; a
+card doing a different job names its own. On My Day: Needs Action takes its top
+urgency, OPD blue, Inpatients green, the calendar slate, and Today stays the
+solid slate card. Contrast, all screens and both themes: no screen that passed
+started failing. Teleconsult patients now sit in OPD with a video tile.
+
+**The calendar, refined in place.** Same box — 611 × 470 at 1440 — with a
+lighter surface, the month as its header, a haloed today, busy-day dots and a
+short slide between months. A date now pops a pictorial card out beside it
+instead of opening a side panel, and the Today card stays the live day.

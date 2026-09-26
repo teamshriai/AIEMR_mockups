@@ -55,7 +55,7 @@ export function NavRail() {
                   to={item.to}
                   title={item.label}
                   className={cx(
-                    'flex min-h-11 items-center gap-3 rounded-pill px-3 py-2.5',
+                    'flex min-h-11 items-center gap-3 rounded-field px-3 py-2.5',
                     'transition-colors duration-150 ease-out-clinical',
                     active
                       ? 'bg-brand-soft font-semibold text-brand'
@@ -78,7 +78,7 @@ export function NavRail() {
                     aria-haspopup="dialog"
                     aria-keyshortcuts="/"
                     className={cx(
-                      'flex min-h-11 w-full items-center gap-3 rounded-pill px-3 py-2.5',
+                      'flex min-h-11 w-full items-center gap-3 rounded-field px-3 py-2.5',
                       'text-ink-2 transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover hover:text-ink',
                       collapsed && 'md:justify-center md:px-2',
                       'justify-center md:justify-start',
@@ -102,7 +102,7 @@ export function NavRail() {
               aria-expanded={showMore}
               title="More"
               className={cx(
-                'flex min-h-11 w-full items-center gap-3 rounded-pill px-3 py-2.5',
+                'flex min-h-11 w-full items-center gap-3 rounded-field px-3 py-2.5',
                 'text-ink-3 transition-colors duration-150 ease-out-clinical hover:bg-glass-fill-hover hover:text-ink',
                 collapsed && 'md:justify-center md:px-2',
                 'justify-center md:justify-start',
@@ -123,7 +123,7 @@ export function NavRail() {
                   to={item.to}
                   title={item.label}
                   className={cx(
-                    'flex min-h-11 items-center gap-3 rounded-pill px-3 py-2.5 text-[0.95em]',
+                    'flex min-h-11 items-center gap-3 rounded-field px-3 py-2.5 text-[0.95em]',
                     'transition-colors duration-150 ease-out-clinical',
                     active
                       ? 'bg-brand-soft font-semibold text-brand'
