@@ -252,7 +252,7 @@ export function SessionTemplatesPage() {
               id="new-session-clinic"
               value={draft.clinic}
               onChange={(e) => setDraft((d) => ({ ...d, clinic: e.target.value }))}
-              placeholder="General medicine, follow-up only"
+              placeholder="Neurosurgery, follow-up only"
               autoFocus
             />
           </Field>

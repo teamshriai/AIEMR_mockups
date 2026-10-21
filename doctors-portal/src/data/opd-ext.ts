@@ -1,5 +1,5 @@
 /**
- * Seven more outpatients for today's General Medicine OPD, so the clinic list
+ * Seven more outpatients for today's Neurosurgery OPD, so the clinic list
  * reads as a real session: two walk-ins already in the waiting room, two
  * booked follow-ups later in the morning and three booked into the afternoon
  * session.
@@ -203,13 +203,13 @@ export const OPD_CLINIC_EXT: ClinicRow[] = [
 ]
 
 export const OPD_ENCOUNTERS: Encounter[] = [
-  { id: 'E-118464', encounterNo: 'OP/26-27/118464', patientId: 'SD-P-39', type: 'OP', startedAt: W01_ARRIVED, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'W-01' },
-  { id: 'E-118465', encounterNo: 'OP/26-27/118465', patientId: 'SD-P-40', type: 'OP', startedAt: W02_ARRIVED, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'W-02' },
-  { id: 'E-118466', encounterNo: 'OP/26-27/118466', patientId: 'SD-P-41', type: 'OP', startedAt: AT_0920, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'MED-046' },
-  { id: 'E-118467', encounterNo: 'OP/26-27/118467', patientId: 'SD-P-42', type: 'OP', startedAt: AT_0930, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'MED-047' },
-  { id: 'E-118468', encounterNo: 'OP/26-27/118468', patientId: 'SD-P-43', type: 'OP', startedAt: AT_1400, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'MED-061' },
-  { id: 'E-118469', encounterNo: 'OP/26-27/118469', patientId: 'SD-P-44', type: 'OP', startedAt: AT_1420, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'MED-062' },
-  { id: 'E-118470', encounterNo: 'OP/26-27/118470', patientId: 'SD-P-45', type: 'OP', startedAt: AT_1440, consultantStaffId: 'SD-S-01', department: 'General Medicine', token: 'MED-063' },
+  { id: 'E-118464', encounterNo: 'OP/26-27/118464', patientId: 'SD-P-39', type: 'OP', startedAt: W01_ARRIVED, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'W-01' },
+  { id: 'E-118465', encounterNo: 'OP/26-27/118465', patientId: 'SD-P-40', type: 'OP', startedAt: W02_ARRIVED, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'W-02' },
+  { id: 'E-118466', encounterNo: 'OP/26-27/118466', patientId: 'SD-P-41', type: 'OP', startedAt: AT_0920, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'MED-046' },
+  { id: 'E-118467', encounterNo: 'OP/26-27/118467', patientId: 'SD-P-42', type: 'OP', startedAt: AT_0930, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'MED-047' },
+  { id: 'E-118468', encounterNo: 'OP/26-27/118468', patientId: 'SD-P-43', type: 'OP', startedAt: AT_1400, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'MED-061' },
+  { id: 'E-118469', encounterNo: 'OP/26-27/118469', patientId: 'SD-P-44', type: 'OP', startedAt: AT_1420, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'MED-062' },
+  { id: 'E-118470', encounterNo: 'OP/26-27/118470', patientId: 'SD-P-45', type: 'OP', startedAt: AT_1440, consultantStaffId: 'SD-S-01', department: 'Neurosurgery', token: 'MED-063' },
 ]
 
 // ─────────────────────────────────────────────────────────────── Problems
@@ -845,7 +845,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     subjective: 'Fever with chills since yesterday and a dry cough. Body aches. No breathlessness, chest pain, rash or bleeding. No travel. Two people at his depot have had a similar illness.',
     objective: 'Temp 38.6, pulse 104, BP 130/82, SpO₂ 97% on air, respiratory rate 20. Scattered wheeze at both bases. White cells 11.8, CRP 28, platelets 212. Dengue NS1 and malaria antigen negative. Chest X-ray: no consolidation.',
     assessment: 'Acute febrile illness with cough, most likely acute bronchitis. No pneumonia.',
-    plan: 'Paracetamol for fever, plenty of fluids and rest. No antibiotic for now. Come to the General Medicine OPD if the fever lasts beyond day 4, or at once with breathlessness.',
+    plan: 'Paracetamol for fever, plenty of fluids and rest. No antibiotic for now. Come to the Neurosurgery OPD if the fever lasts beyond day 4, or at once with breathlessness.',
   },
   // SD-P-40 · Saraswathi Chinnasamy
   {
@@ -854,7 +854,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(3, 16, 10, 15),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Feels well. Takes her medicines regularly with her daughter’s help. Walks to the temple each evening.',
     objective: 'BP 148/88, pulse 78, weight 69 kg. Feet: sensation and pulses normal. HbA1c 7.4%, sodium 139, creatinine 82.',
     assessment: 'Type 2 diabetes just above target. Hypertension above target on telmisartan 40 mg.',
@@ -866,7 +866,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(6, 15, 10, 15),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Her home readings are 150 to 160 systolic. No chest pain or breathlessness. No low sugars.',
     objective: 'BP 152/90, pulse 80, weight 68.5 kg. HbA1c 7.6%, fasting glucose 142 mg/dL, sodium 138, potassium 4.2.',
     assessment: 'Hypertension and type 2 diabetes, both above target.',
@@ -879,7 +879,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(3, 10, 11, 0, 2025),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Admitted overnight on 2 March with an asthma attack after a cold, and finishing her prednisolone. Before that, a month of wheeze and night cough, using her salbutamol inhaler four times a day and woken most nights.',
     objective: 'Peak flow 290 L/min, SpO₂ 96%. Widespread wheeze. FEV1 68% predicted with 18% reversibility. Eosinophils 0.62.',
     assessment: 'Bronchial asthma, uncontrolled, after a viral trigger.',
@@ -891,7 +891,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(9, 15, 11, 0, 2025),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'No night waking since April. Uses the reliever puff once or twice a week. Asthma Control Test score 22.',
     objective: 'Peak flow 360 L/min, chest clear. FEV1 79% predicted.',
     assessment: 'Bronchial asthma, well controlled on step 4.',
@@ -903,7 +903,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(3, 16, 11, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Still well on the lower dose. No attacks, no steroid courses and no time off work. Asthma Control Test score 24.',
     objective: 'Peak flow 400 L/min, chest clear. FEV1 85% predicted, eosinophils 0.41.',
     assessment: 'Bronchial asthma, controlled for a year.',
@@ -928,7 +928,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(1, 16, 11, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Discharge summary',
-    setting: 'Ward 4B · General Medicine',
+    setting: 'Ward 4B · Neurosurgery',
     subjective: 'Breathing back to his usual. Walking on the ward without oxygen.',
     objective: 'SpO₂ 93% on air, respiratory rate 20. Inhaler technique checked and corrected.',
     assessment: 'COPD exacerbation, recovered.',
@@ -940,7 +940,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(4, 20, 10, 30),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'No further attacks. Breathless after one flight of stairs. Uses the salbutamol two or three times a week.',
     objective: 'SpO₂ 95%, respiratory rate 18, weight 61.5 kg. Prolonged expiration, no wheeze.',
     assessment: 'COPD, GOLD 2, stable since the January exacerbation.',
@@ -969,7 +969,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     subjective: 'Burning pain in the upper abdomen for three hours, after a late dinner on a night shift. Similar milder pain on and off for three months, worse when hungry, eased by antacids. No vomiting, black stools, weight loss or trouble swallowing. Takes no painkillers.',
     objective: 'Pulse 92, BP 126/78, afebrile. Tender in the epigastrium, no guarding. ECG normal. Troponin, lipase and liver tests normal. Haemoglobin 13.9.',
     assessment: 'Dyspepsia, likely gastritis. Not cardiac and not pancreatitis.',
-    plan: 'IV pantoprazole here, then pantoprazole 40 mg daily for four weeks. Stool H. pylori antigen and an ultrasound of the abdomen. General Medicine OPD with the results.',
+    plan: 'IV pantoprazole here, then pantoprazole 40 mg daily for four weeks. Stool H. pylori antigen and an ultrasound of the abdomen. Neurosurgery OPD with the results.',
   },
   // SD-P-44 · Jayanthi Ravichandran
   {
@@ -978,7 +978,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(1, 10, 10, 45),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Painful, swollen knuckles and wrists for three weeks, with an hour of morning stiffness. Takes methotrexate 10 mg every Sunday without missing a dose.',
     objective: 'Six swollen and eight tender joints. DAS28-ESR 5.1. ESR 52, ALT 24, haemoglobin 12.2. Hand X-rays in November: one early erosion, no new damage.',
     assessment: 'Rheumatoid arthritis flare on methotrexate 10 mg weekly.',
@@ -990,7 +990,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(6, 15, 10, 45),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Joints much better. Twenty minutes of morning stiffness. Some tiredness. Does not drink alcohol.',
     objective: 'One swollen and two tender joints. DAS28-ESR 3.1. ESR 30, ALT 34, haemoglobin 11.6, white cells 6.1.',
     assessment: 'Rheumatoid arthritis in low activity. ALT a little up and haemoglobin a little down on methotrexate.',
@@ -1003,7 +1003,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(1, 12, 11, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'A painful, swollen right big toe for four days, his third attack in a year. Took ibuprofen from the pharmacy for two days. Runs a tea shop and drinks beer at weekends.',
     objective: 'Hot, swollen right first toe joint. BP 146/90, weight 86 kg. Creatinine 134, eGFR 56, uric acid 9.8, urine albumin-creatinine ratio 82.',
     assessment: 'Acute gout of the right first toe joint. Chronic kidney disease stage 3a with albumin in the urine.',
@@ -1015,7 +1015,7 @@ export const OPD_PAST_NOTES: PastNote[] = [
     at: on(5, 18, 11, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'No gout attack since January. Stopped beer. Takes all three medicines.',
     objective: 'BP 140/88, weight 85 kg. Creatinine 138, eGFR 54, uric acid 8.1, potassium 4.7, urine albumin-creatinine ratio 70. Ultrasound: kidneys of normal size with mildly raised echogenicity.',
     assessment: 'Chronic kidney disease stage 3a, stable. Gout without attacks, uric acid above target.',
@@ -1178,34 +1178,34 @@ export const OPD_APPOINTMENTS: Appointment[] = [
   { id: 'AP-3903', patientId: 'SD-P-39', at: on(9, 19, 21, 50), kind: 'Investigation', status: 'Completed', clinic: 'Radiology', with: 'Radiography', purpose: 'Chest X-ray' },
   { id: 'AP-3904', patientId: 'SD-P-39', at: on(2, 10, 9, 0, 2027), kind: 'Review', status: 'Booked', clinic: 'Preventive health check', with: 'Health check physician', purpose: 'Yearly health check', prepare: ['Fast from 10 PM the night before'] },
   // SD-P-40 · Saraswathi Chinnasamy: a walk-in today, so nothing booked for today
-  { id: 'AP-4001', patientId: 'SD-P-40', at: on(3, 16, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Diabetes and blood pressure review' },
-  { id: 'AP-4002', patientId: 'SD-P-40', at: on(6, 15, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Diabetes and blood pressure review' },
+  { id: 'AP-4001', patientId: 'SD-P-40', at: on(3, 16, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Diabetes and blood pressure review' },
+  { id: 'AP-4002', patientId: 'SD-P-40', at: on(6, 15, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Diabetes and blood pressure review' },
   { id: 'AP-4003', patientId: 'SD-P-40', at: on(9, 14, 10, 15), kind: 'Investigation', status: 'Completed', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'HbA1c, fasting glucose, sodium, potassium, creatinine and lipids' },
   { id: 'AP-4004', patientId: 'SD-P-40', at: on(10, 5, 15, 0), kind: 'Review', status: 'Booked', clinic: 'Diabetes clinic', with: 'Diabetes educator', purpose: 'Foot care, and how to spot and treat a low sugar', prepare: ['Bring the glucose meter and the home blood pressure log'] },
   // SD-P-41 · Nithya Sekar
-  { id: 'AP-4101', patientId: 'SD-P-41', at: on(3, 16, 10, 50), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Asthma review' },
+  { id: 'AP-4101', patientId: 'SD-P-41', at: on(3, 16, 10, 50), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Asthma review' },
   { id: 'AP-4102', patientId: 'SD-P-41', at: on(9, 18, 9, 30), kind: 'Investigation', status: 'Completed', clinic: 'Pulmonary function laboratory', with: 'Respiratory technician', purpose: 'Spirometry with reversibility, and FeNO' },
-  { id: 'AP-4103', patientId: 'SD-P-41', at: AT_0920, kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Asthma review: inhaler step-down with the September spirometry', location: OPD_ROOM },
+  { id: 'AP-4103', patientId: 'SD-P-41', at: AT_0920, kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Asthma review: inhaler step-down with the September spirometry', location: OPD_ROOM },
   { id: 'AP-4104', patientId: 'SD-P-41', at: on(10, 19, 16, 0), kind: 'Review', status: 'Booked', clinic: 'Asthma clinic', with: 'Asthma nurse educator', purpose: 'Inhaler technique and the action plan after the step-down', prepare: ['Bring both inhalers and the peak flow diary'] },
   // SD-P-42 · Arumugam Velusamy
-  { id: 'AP-4201', patientId: 'SD-P-42', at: on(4, 20, 10, 15), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Review three months after the January admission' },
+  { id: 'AP-4201', patientId: 'SD-P-42', at: on(4, 20, 10, 15), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Review three months after the January admission' },
   { id: 'AP-4202', patientId: 'SD-P-42', at: on(9, 18, 10, 0), kind: 'Investigation', status: 'Completed', clinic: 'Pulmonary function laboratory', with: 'Respiratory technician', purpose: 'Spirometry and a six-minute walk' },
-  { id: 'AP-4203', patientId: 'SD-P-42', at: AT_0930, kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'COPD review with the September spirometry', location: OPD_ROOM },
+  { id: 'AP-4203', patientId: 'SD-P-42', at: AT_0930, kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'COPD review with the September spirometry', location: OPD_ROOM },
   { id: 'AP-4204', patientId: 'SD-P-42', at: on(10, 7, 10, 0), kind: 'Review', status: 'Booked', clinic: 'Pulmonary rehabilitation', with: 'Physiotherapist', purpose: 'The first of eight rehabilitation sessions', prepare: ['Wear comfortable shoes', 'Bring the salbutamol inhaler'] },
   // SD-P-43 · Karthik Shanmugam
   { id: 'AP-4301', patientId: 'SD-P-43', at: on(6, 10, 9, 0, 2024), kind: 'Review', status: 'Completed', clinic: 'Preventive health check', with: 'Health check physician', purpose: 'Pre-employment health check' },
   { id: 'AP-4302', patientId: 'SD-P-43', at: on(9, 13, 22, 10), kind: 'Review', status: 'Completed', clinic: 'Emergency', with: 'Emergency team', purpose: 'Upper abdominal pain' },
   { id: 'AP-4303', patientId: 'SD-P-43', at: on(9, 14, 9, 30), kind: 'Investigation', status: 'Completed', clinic: 'Radiology', with: 'Ultrasonography', purpose: 'Ultrasound of the abdomen', prepare: ['Fast for six hours before'] },
-  { id: 'AP-4304', patientId: 'SD-P-43', at: AT_1400, kind: 'Review', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'New consultation: recurrent epigastric pain with a positive H. pylori stool antigen', location: OPD_ROOM },
+  { id: 'AP-4304', patientId: 'SD-P-43', at: AT_1400, kind: 'Review', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'New consultation: recurrent epigastric pain with a positive H. pylori stool antigen', location: OPD_ROOM },
   // SD-P-44 · Jayanthi Ravichandran
-  { id: 'AP-4401', patientId: 'SD-P-44', at: on(6, 15, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Rheumatoid arthritis review' },
+  { id: 'AP-4401', patientId: 'SD-P-44', at: on(6, 15, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Rheumatoid arthritis review' },
   { id: 'AP-4402', patientId: 'SD-P-44', at: on(9, 18, 10, 45), kind: 'Investigation', status: 'Completed', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Liver tests, blood count, ESR and creatinine on methotrexate' },
-  { id: 'AP-4403', patientId: 'SD-P-44', at: AT_1420, kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Rheumatoid arthritis review: the rising ALT on methotrexate', location: OPD_ROOM },
+  { id: 'AP-4403', patientId: 'SD-P-44', at: AT_1420, kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Rheumatoid arthritis review: the rising ALT on methotrexate', location: OPD_ROOM },
   { id: 'AP-4404', patientId: 'SD-P-44', at: on(11, 16, 10, 0), kind: 'Review', status: 'Booked', clinic: 'Ophthalmology', with: 'Optometrist', purpose: 'Yearly eye screening on hydroxychloroquine', prepare: ['Do not drive yourself: the drops blur vision for a few hours'] },
   // SD-P-45 · Prabhu Natarajan
-  { id: 'AP-4501', patientId: 'SD-P-45', at: on(5, 18, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Kidney function and gout review' },
+  { id: 'AP-4501', patientId: 'SD-P-45', at: on(5, 18, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Kidney function and gout review' },
   { id: 'AP-4502', patientId: 'SD-P-45', at: on(9, 17, 10, 45), kind: 'Investigation', status: 'Completed', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Creatinine, eGFR, uric acid, potassium and urine albumin' },
-  { id: 'AP-4503', patientId: 'SD-P-45', at: AT_1440, kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Kidney function and uric acid review', location: OPD_ROOM },
+  { id: 'AP-4503', patientId: 'SD-P-45', at: AT_1440, kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Kidney function and uric acid review', location: OPD_ROOM },
   { id: 'AP-4504', patientId: 'SD-P-45', at: on(10, 8, 11, 0), kind: 'Review', status: 'Booked', clinic: 'Dietitian', with: 'Clinical dietitian', purpose: 'A low-purine, low-salt diet for the kidneys and gout', prepare: ['Bring a food diary for three days'] },
 ]
 

@@ -27,7 +27,7 @@ export const SESSIONS: Session[] = [
     start: '08:00',
     end: '12:00',
     slotMin: 10,
-    clinic: 'General medicine, new and follow-up',
+    clinic: 'Neurosurgery, new and follow-up',
     capacity: 24,
     effectiveFrom: '01-Apr-2026',
     observation:
@@ -36,7 +36,7 @@ export const SESSIONS: Session[] = [
     observationConfidence: 0.91,
   },
   { id: 'T-2', day: 'Tuesday', start: '14:00', end: '17:00', slotMin: 15, clinic: 'Thyroid and endocrine follow-up', capacity: 12, effectiveFrom: '01-Apr-2026' },
-  { id: 'T-3', day: 'Thursday', start: '08:00', end: '11:00', slotMin: 10, clinic: 'General medicine, follow-up only', capacity: 18, effectiveFrom: '01-Apr-2026' },
+  { id: 'T-3', day: 'Thursday', start: '08:00', end: '11:00', slotMin: 10, clinic: 'Neurosurgery, follow-up only', capacity: 18, effectiveFrom: '01-Apr-2026' },
   {
     id: 'T-4',
     day: 'Friday',

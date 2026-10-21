@@ -435,11 +435,11 @@ export const STAFF: Staff[] = [
     id: 'SD-S-01',
     name: 'Dr. Rajsrinivas',
     persona: 'P-04',
-    personaLabel: 'Consultant, general medicine',
+    personaLabel: 'Consultant, neurosurgery',
     facilityCode: 'ISH',
     identifier: 'IN-HPR-2291840',
     identifierKind: 'HPR',
-    speciality: 'General Medicine',
+    speciality: 'Neurosurgery',
   },
   {
     id: 'SD-S-02',

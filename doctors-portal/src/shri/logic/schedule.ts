@@ -54,7 +54,7 @@ export interface ShriAppointment extends Omit<Appointment, 'status'> {
 export function usualClinic(book: ShriAppointment[], staffName: string): string {
   const counts = new Map<string, number>()
   for (const a of book) if (a.with === staffName && a.kind !== 'Teleconsult') counts.set(a.clinic, (counts.get(a.clinic) ?? 0) + 1)
-  return [...counts].sort((x, y) => y[1] - x[1])[0]?.[0] ?? 'General Medicine OPD'
+  return [...counts].sort((x, y) => y[1] - x[1])[0]?.[0] ?? 'Neurosurgery OPD'
 }
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
@@ -168,7 +168,7 @@ export function clinicMatches(appointmentClinic: string, sessionClinic: string):
   const a = appointmentClinic.toLowerCase()
   const s = sessionClinic.toLowerCase()
   if (a.includes('endocrine') || a.includes('thyroid') || a.includes('diabetes')) return s.includes('thyroid') || s.includes('endocrine')
-  if (a.includes('general medicine')) return s.startsWith('general medicine')
+  if (a.includes('neurosurgery')) return s.startsWith('neurosurgery')
   return s.split(/[ ,]+/).some((w) => w.length > 3 && a.includes(w))
 }
 

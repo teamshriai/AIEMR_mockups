@@ -118,7 +118,7 @@ export const TELE_QUEUE_EXT: TeleRow[] = [
 
 export const TELE_ENCOUNTERS: Encounter[] = [
   { id: 'E-118461', encounterNo: 'OP/26-27/118461', patientId: 'SD-P-36', type: 'TELE', startedAt: minutesAhead(95), consultantStaffId: 'SD-S-01', department: 'Endocrinology' },
-  { id: 'E-118462', encounterNo: 'OP/26-27/118462', patientId: 'SD-P-37', type: 'TELE', startedAt: minutesAhead(105), consultantStaffId: 'SD-S-01', department: 'General Medicine' },
+  { id: 'E-118462', encounterNo: 'OP/26-27/118462', patientId: 'SD-P-37', type: 'TELE', startedAt: minutesAhead(105), consultantStaffId: 'SD-S-01', department: 'Neurosurgery' },
   { id: 'E-118463', encounterNo: 'OP/26-27/118463', patientId: 'SD-P-38', type: 'TELE', startedAt: minutesAhead(110), consultantStaffId: 'SD-S-01', department: 'General Surgery' },
 ]
 
@@ -412,7 +412,7 @@ export const TELE_PAST_NOTES: PastNote[] = [
     at: on(9, 15, 11, 0, 2025),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Feels well. Takes levothyroxine before breakfast and telmisartan in the morning.',
     objective: 'BP 140/88, pulse 70, weight 63.5 kg. No goitre. TSH 4.1 mIU/L.',
     assessment: 'Hypothyroidism adequately replaced on 75 mcg. Hypertension at the upper limit of target.',
@@ -424,7 +424,7 @@ export const TELE_PAST_NOTES: PastNote[] = [
     at: on(3, 16, 11, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'More tired in the afternoons and feels the cold. Has not missed a dose. Takes her calcium tablet at night, away from the levothyroxine.',
     objective: 'BP 136/84, pulse 66, weight 64.5 kg. Dry skin. TSH 5.2 mIU/L, free T4 1.1 ng/dL.',
     assessment: 'Hypothyroidism, borderline under-replaced. Blood pressure at target.',
@@ -437,7 +437,7 @@ export const TELE_PAST_NOTES: PastNote[] = [
     at: on(3, 16, 10, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Teleconsult',
-    setting: 'Teleconsult · General Medicine',
+    setting: 'Teleconsult · Neurosurgery',
     subjective: 'Works shifts at a textile mill and eats late at night. Walks twice a week. Takes metformin 500 mg twice daily without stomach upset.',
     objective: 'On video: well. HbA1c 7.1%, fasting glucose 132 mg/dL, LDL 104 mg/dL.',
     assessment: 'Type 2 diabetes just above target on metformin 500 mg twice daily.',
@@ -449,7 +449,7 @@ export const TELE_PAST_NOTES: PastNote[] = [
     at: on(6, 15, 10, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Walking more, but still eating late on night shifts. No thirst or weight loss.',
     objective: 'BP 134/82, weight 81 kg, BMI 27.4. Feet: sensation and pulses normal. HbA1c 7.3%, fasting glucose 136 mg/dL.',
     assessment: 'Type 2 diabetes above target and rising.',
@@ -571,12 +571,12 @@ export const TELE_PRESCRIPTIONS: PrescriptionRecord[] = [
 
 export const TELE_APPOINTMENTS: Appointment[] = [
   // SD-P-36 · Kamala Devi
-  { id: 'AP-3601', patientId: 'SD-P-36', at: on(3, 16, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Thyroid and blood pressure review' },
+  { id: 'AP-3601', patientId: 'SD-P-36', at: on(3, 16, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Thyroid and blood pressure review' },
   { id: 'AP-3602', patientId: 'SD-P-36', at: on(9, 18, 10, 45), kind: 'Investigation', status: 'Completed', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Thyroid function, creatinine and potassium' },
   { id: 'AP-3603', patientId: 'SD-P-36', at: on(9, 21, 10, 15), kind: 'Teleconsult', status: 'Today', clinic: 'Teleconsult', with: 'Dr. Rajsrinivas', purpose: 'Levothyroxine dose review with the September results', location: 'Video' },
   { id: 'AP-3604', patientId: 'SD-P-36', at: on(11, 2, 9, 0), kind: 'Investigation', status: 'Booked', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Thyroid function six weeks after the dose review', prepare: ['Take the levothyroxine after the blood test that morning'] },
   // SD-P-37 · Vignesh Ramalingam
-  { id: 'AP-3701', patientId: 'SD-P-37', at: on(6, 15, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Diabetes review' },
+  { id: 'AP-3701', patientId: 'SD-P-37', at: on(6, 15, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Diabetes review' },
   { id: 'AP-3702', patientId: 'SD-P-37', at: on(9, 19, 10, 15), kind: 'Investigation', status: 'Completed', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'HbA1c, fasting glucose, lipids, creatinine and urine albumin' },
   { id: 'AP-3703', patientId: 'SD-P-37', at: on(9, 21, 10, 25), kind: 'Teleconsult', status: 'Today', clinic: 'Teleconsult', with: 'Dr. Rajsrinivas', purpose: 'HbA1c review on metformin', location: 'Video' },
   { id: 'AP-3704', patientId: 'SD-P-37', at: on(10, 6, 16, 0), kind: 'Review', status: 'Booked', clinic: 'Diabetes clinic', with: 'Diabetes educator', purpose: 'Meal plan for night shifts', prepare: ['Bring a food diary for three working days'] },

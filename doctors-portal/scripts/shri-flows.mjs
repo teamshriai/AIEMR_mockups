@@ -307,7 +307,7 @@ const FLOWS = [
       await page.open('/')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-01"]')`), 'S-06-01 is drawn')
       const text = await page.text()
-      for (const t of ['Good morning, Dr. Rajsrinivas', 'Mon 21-Sep-2026 · General Medicine · Indostates Health Hospital, Coimbatore'])
+      for (const t of ['Good morning, Dr. Rajsrinivas', 'Mon 21-Sep-2026 · Neurosurgery · Indostates Health Hospital, Coimbatore'])
         expect(text.includes(t), `greeting line "${t}"`)
       const critical = await page.evaluate(`document.querySelector('[data-kpi="critical"]').textContent`)
       expect(critical.includes('Serum potassium 6.8 mmol/L · Mathew'), `the critical KPI names the unacknowledged result: ${critical}`)

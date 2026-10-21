@@ -127,7 +127,7 @@ export const STROKE_CASES: StrokeCase[] = [
       bp: '138/82',
       notPerformed: 'CTA not performed — the deficit was resolving and the history pointed to a seizure.',
       recommendation: 'Stand down. Neurology review for the seizure; no stroke treatment is indicated.',
-      receiving: 'Ward 4B · general medicine',
+      receiving: 'Ward 4B · neurosurgery',
     },
   },
   {

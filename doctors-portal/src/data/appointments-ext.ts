@@ -35,7 +35,7 @@ export const APPOINTMENTS_EXT: Appointment[] = [
     at: on(10, 1, 8, 30),
     kind: 'Follow-up',
     status: 'Booked',
-    clinic: 'General Medicine OPD',
+    clinic: 'Neurosurgery OPD',
     with: 'Dr. Rajsrinivas',
     purpose: 'Sodium recheck result and anticoagulation plan',
     location: 'Room 4, OPD block',

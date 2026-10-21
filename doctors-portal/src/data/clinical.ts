@@ -47,7 +47,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
     type: 'OP',
     startedAt: minutesAgo(14),
     consultantStaffId: 'SD-S-01',
-    department: 'General Medicine',
+    department: 'Neurosurgery',
     token: 'MED-045',
   },
   {
@@ -57,7 +57,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
     type: 'IP',
     startedAt: new Date(2026, 8, 17, 14, 20),
     consultantStaffId: 'SD-S-01',
-    department: 'General Medicine',
+    department: 'Neurosurgery',
     ward: '4B',
   },
   {
@@ -107,7 +107,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
     type: 'OP',
     startedAt: minutesAgo(26),
     consultantStaffId: 'SD-S-01',
-    department: 'General Medicine',
+    department: 'Neurosurgery',
     token: 'MED-041',
   },
   {
@@ -147,7 +147,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
     type: 'OP',
     startedAt: minutesAgo(18),
     consultantStaffId: 'SD-S-01',
-    department: 'General Medicine',
+    department: 'Neurosurgery',
     token: 'MED-042',
   },
   {
@@ -157,7 +157,7 @@ const ENCOUNTERS_BASE: Encounter[] = [
     type: 'OP',
     startedAt: minutesAgo(70),
     consultantStaffId: 'SD-S-01',
-    department: 'General Medicine',
+    department: 'Neurosurgery',
     token: 'MED-036',
   },
 ]
@@ -409,7 +409,7 @@ export const DISCHARGE_DRAFT_SD_P_03: DischargeSectionSeed[] = [
     label: 'Follow-up',
     required: true,
     draft:
-      'Chest clinic in 6 weeks with a repeat chest X-ray beforehand. Serum creatinine and electrolytes in 1 week at the local laboratory. General medicine review with Dr. Rajsrinivas in 4 weeks.',
+      'Chest clinic in 6 weeks with a repeat chest X-ray beforehand. Serum creatinine and electrolytes in 1 week at the local laboratory. Neurosurgery review with Dr. Rajsrinivas in 4 weeks.',
   },
   {
     key: 'redflags',

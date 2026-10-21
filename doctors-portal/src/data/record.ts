@@ -316,10 +316,10 @@ export interface Appointment {
 
 const APPOINTMENTS_BASE: Appointment[] = [
   // SD-P-01
-  { id: 'AP-0101', patientId: 'SD-P-01', at: on(3, 14, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Thyroid review' },
-  { id: 'AP-0102', patientId: 'SD-P-01', at: on(9, 21, 9, 10), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Thyroid review with results', location: 'Room 4, OPD block' },
+  { id: 'AP-0101', patientId: 'SD-P-01', at: on(3, 14, 10, 30), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Thyroid review' },
+  { id: 'AP-0102', patientId: 'SD-P-01', at: on(9, 21, 9, 10), kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Thyroid review with results', location: 'Room 4, OPD block' },
   { id: 'AP-0103', patientId: 'SD-P-01', at: on(12, 21, 9, 0), kind: 'Investigation', status: 'Booked', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Ferritin and haemoglobin recheck', prepare: ['No fasting needed'] },
-  { id: 'AP-0104', patientId: 'SD-P-01', at: on(3, 22, 10, 0, 2027), kind: 'Follow-up', status: 'Booked', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Six-monthly thyroid review', prepare: ['Thyroid function test a week before', 'Bring the levothyroxine strip'] },
+  { id: 'AP-0104', patientId: 'SD-P-01', at: on(3, 22, 10, 0, 2027), kind: 'Follow-up', status: 'Booked', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Six-monthly thyroid review', prepare: ['Thyroid function test a week before', 'Bring the levothyroxine strip'] },
   // SD-P-02
   { id: 'AP-0201', patientId: 'SD-P-02', at: on(9, 12, 9, 0), kind: 'Review', status: 'Completed', clinic: 'Pre-operative assessment', with: 'Cardiothoracic team', purpose: 'Fitness for CABG' },
   { id: 'AP-0202', patientId: 'SD-P-02', at: on(9, 28, 10, 0), kind: 'Review', status: 'Booked', clinic: 'Wound clinic', with: 'Sr. Lalitha Raman', purpose: 'Sternal and leg wound check', prepare: ['Keep the dressing dry until then'] },
@@ -348,7 +348,7 @@ const APPOINTMENTS_BASE: Appointment[] = [
   { id: 'AP-1003', patientId: 'SD-P-10', at: on(10, 19, 16, 0), kind: 'Teleconsult', status: 'Booked', clinic: 'Teleconsult', with: 'Dr. Rajsrinivas', purpose: 'Week-10 review', prepare: ['Liver tests and lipids the week before'] },
   // SD-P-11
   { id: 'AP-1101', patientId: 'SD-P-11', at: on(9, 7, 11, 0), kind: 'Review', status: 'Completed', clinic: 'Ward 4B', with: 'Dr. Rajsrinivas', purpose: 'Discharge after subdural evacuation' },
-  { id: 'AP-1102', patientId: 'SD-P-11', at: on(9, 21, 8, 30), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Three-week review — anticoagulation decision', location: 'Room 4, OPD block' },
+  { id: 'AP-1102', patientId: 'SD-P-11', at: on(9, 21, 8, 30), kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Three-week review — anticoagulation decision', location: 'Room 4, OPD block' },
   { id: 'AP-1103', patientId: 'SD-P-11', at: on(9, 28, 9, 0), kind: 'Investigation', status: 'Booked', clinic: 'Laboratory', with: 'Phlebotomy', purpose: 'Sodium recheck' },
   { id: 'AP-1104', patientId: 'SD-P-11', at: on(10, 12, 10, 30), kind: 'Follow-up', status: 'Booked', clinic: 'Neurosurgery OPD', with: 'Neurosurgeon', purpose: 'Review with a repeat CT head', prepare: ['CT head on arrival — no fasting needed', 'Bring a family member'] },
   // SD-P-12
@@ -360,12 +360,12 @@ const APPOINTMENTS_BASE: Appointment[] = [
   { id: 'AP-1401', patientId: 'SD-P-14', at: on(9, 7, 10, 0), kind: 'Review', status: 'Completed', clinic: 'Anticoagulation clinic, Tiruppur', with: 'Pharmacist', purpose: 'INR check — 2.6' },
   { id: 'AP-1402', patientId: 'SD-P-14', at: new Date(2026, 8, 21, 3, 10), kind: 'Transfer', status: 'Today', clinic: 'Neuro-ICU, hub', with: 'AMB-ITP-02', purpose: 'Transfer to the hub for neurosurgery', location: 'Tiruppur → Coimbatore' },
   // SD-P-15
-  { id: 'AP-1501', patientId: 'SD-P-15', at: on(9, 9, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Recurrent headache' },
-  { id: 'AP-1502', patientId: 'SD-P-15', at: on(9, 21, 8, 40), kind: 'Follow-up', status: 'Today', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Two-week review on propranolol', location: 'Room 4, OPD block' },
-  { id: 'AP-1503', patientId: 'SD-P-15', at: on(12, 21, 10, 0), kind: 'Follow-up', status: 'Booked', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'Three-month migraine review', prepare: ['Bring the headache diary'] },
+  { id: 'AP-1501', patientId: 'SD-P-15', at: on(9, 9, 10, 0), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Recurrent headache' },
+  { id: 'AP-1502', patientId: 'SD-P-15', at: on(9, 21, 8, 40), kind: 'Follow-up', status: 'Today', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Two-week review on propranolol', location: 'Room 4, OPD block' },
+  { id: 'AP-1503', patientId: 'SD-P-15', at: on(12, 21, 10, 0), kind: 'Follow-up', status: 'Booked', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'Three-month migraine review', prepare: ['Bring the headache diary'] },
   // SD-P-16
   { id: 'AP-1601', patientId: 'SD-P-16', at: on(9, 14, 22, 50), kind: 'Review', status: 'Completed', clinic: 'Emergency', with: 'Emergency team', purpose: 'Head injury assessment' },
-  { id: 'AP-1602', patientId: 'SD-P-16', at: on(9, 21, 7, 40), kind: 'Follow-up', status: 'Completed', clinic: 'General Medicine OPD', with: 'Dr. Rajsrinivas', purpose: 'One-week head-injury review' },
+  { id: 'AP-1602', patientId: 'SD-P-16', at: on(9, 21, 7, 40), kind: 'Follow-up', status: 'Completed', clinic: 'Neurosurgery OPD', with: 'Dr. Rajsrinivas', purpose: 'One-week head-injury review' },
 ]
 
 /** The first set, and the later entries (`record-ext.ts`). */
@@ -395,7 +395,7 @@ export interface PastNote {
   at: Date
   by: string
   kind: 'Consultation' | 'Progress note' | 'Admission assessment' | 'Discharge summary' | 'Procedure note' | 'Teleconsult' | 'Emergency note'
-  /** Where it was written — "OPD · General Medicine". */
+  /** Where it was written — "OPD · Neurosurgery". */
   setting: string
   subjective: string
   objective: string
@@ -410,7 +410,7 @@ const PAST_NOTES_BASE: PastNote[] = [
     at: on(3, 14, 10, 30),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Well. No tiredness, weight stable, periods regular. Taking levothyroxine every morning before breakfast.',
     objective: 'Pulse 74, BP 116/72, weight 58 kg. No goitre.',
     assessment: 'Hypothyroidism, clinically and biochemically euthyroid on 75 mcg (TSH 3.1).',
@@ -446,7 +446,7 @@ const PAST_NOTES_BASE: PastNote[] = [
     at: on(9, 17, 15, 30),
     by: 'Dr. Rajsrinivas',
     kind: 'Admission assessment',
-    setting: 'Ward 4B · General Medicine',
+    setting: 'Ward 4B · Neurosurgery',
     subjective: 'Three days of fever, productive cough and right-sided chest pain. Known type 2 diabetes. Penicillin allergy (rash).',
     objective: 'Temp 38.9, RR 24, SpO₂ 93% on air, pulse 104. Bronchial breathing right base. CURB-65 score 2.',
     assessment: 'Community-acquired pneumonia, right lower lobe, moderate severity.',
@@ -458,7 +458,7 @@ const PAST_NOTES_BASE: PastNote[] = [
     at: on(9, 20, 9, 30),
     by: 'Dr. Rajsrinivas',
     kind: 'Progress note',
-    setting: 'Ward 4B · General Medicine',
+    setting: 'Ward 4B · Neurosurgery',
     subjective: 'Cough less productive, still febrile in the evenings.',
     objective: 'Temp 38.1, RR 22, SpO₂ 94% on 2 L. CRP 138 (from 96).',
     assessment: 'Slow response at 72 hours.',
@@ -554,7 +554,7 @@ const PAST_NOTES_BASE: PastNote[] = [
     at: on(9, 7, 11, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Discharge summary',
-    setting: 'Ward 4B · General Medicine',
+    setting: 'Ward 4B · Neurosurgery',
     subjective: 'Headache resolved after burr-hole evacuation on 1 September. Walking with a stick.',
     objective: 'GCS 15, power 5/5. Post-operative CT: collection evacuated, shift resolved. Sodium 134.',
     assessment: 'Right subdural haematoma, evacuated; recovering well.',
@@ -614,7 +614,7 @@ const PAST_NOTES_BASE: PastNote[] = [
     at: on(9, 9, 10, 0),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Throbbing one-sided headaches with nausea for 4 years, six a month lately, one worse than usual last week. No aura, no weakness.',
     objective: 'BP 116/72, neurological examination and fundi normal.',
     assessment: 'Migraine without aura, increased frequency. No red flags.',
@@ -638,7 +638,7 @@ const PAST_NOTES_BASE: PastNote[] = [
     at: on(9, 21, 7, 55),
     by: 'Dr. Rajsrinivas',
     kind: 'Consultation',
-    setting: 'OPD · General Medicine',
+    setting: 'OPD · Neurosurgery',
     subjective: 'Headaches gone since Friday. Sleeping and concentrating normally. Back at college.',
     objective: 'GCS 15, normal neurological examination. Forearm abrasion healing.',
     assessment: 'Minor head injury, recovered.',
